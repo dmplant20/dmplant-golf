@@ -1,0 +1,131 @@
+{
+  "app": {
+    "name": "Inter Stellar GOLF",
+    "tagline": "Golf Club Management"
+  },
+  "nav": {
+    "home": "Home",
+    "members": "Members",
+    "finance": "Finance",
+    "tournament": "Tournament",
+    "chat": "Chat",
+    "more": "More"
+  },
+  "auth": {
+    "login": "Login",
+    "logout": "Logout",
+    "register": "Sign Up",
+    "email": "Email",
+    "password": "Password",
+    "name": "Full Name (Korean)",
+    "nameEn": "Full Name (English)",
+    "nameAbbr": "Name Abbreviation (e.g. CSB)",
+    "phone": "Phone Number",
+    "loginTitle": "Sign In",
+    "registerTitle": "Create Account",
+    "noAccount": "Don't have an account?",
+    "haveAccount": "Already have an account?",
+    "forgotPassword": "Forgot Password",
+    "continueWithEmail": "Continue with Email"
+  },
+  "club": {
+    "register": "Register Club",
+    "name": "Club Name",
+    "nameEn": "Club Name (English)",
+    "join": "Apply to Join",
+    "pending": "Pending Approval",
+    "approved": "Approved",
+    "rejected": "Rejected",
+    "selectClub": "Select Club",
+    "myClubs": "My Clubs",
+    "joinRequests": "Join Requests",
+    "approve": "Approve",
+    "reject": "Reject",
+    "role": {
+      "president": "President",
+      "secretary": "Secretary",
+      "officer": "Officer",
+      "member": "Member"
+    }
+  },
+  "member": {
+    "handicap": "Handicap",
+    "clubHandicap": "Club Handicap",
+    "personalHandicap": "Personal Handicap",
+    "attendance": "Attended",
+    "absent": "Absent",
+    "profile": "Profile"
+  },
+  "finance": {
+    "title": "Finance",
+    "balance": "Balance",
+    "income": "Income",
+    "expense": "Expense",
+    "fee": "Membership Fee",
+    "fine": "Fine",
+    "donation": "Donation",
+    "annualFee": "Annual Fee",
+    "monthlyFee": "Monthly Fee",
+    "addTransaction": "Add Transaction",
+    "scanReceipt": "Scan Receipt",
+    "penaltyRules": "Penalty Rules"
+  },
+  "tournament": {
+    "title": "Tournament",
+    "create": "Create Tournament",
+    "grouping": "Group Formation",
+    "autoHandicap": "Auto (by Handicap)",
+    "autoRandom": "Auto (Random)",
+    "manual": "Manual",
+    "scoreEntry": "Enter Score",
+    "scanScorecard": "Scan Scorecard",
+    "ranking": "Ranking",
+    "monthly": "Monthly",
+    "official": "Official",
+    "score": "Score",
+    "netScore": "Net Score",
+    "avgScore": "Average Score"
+  },
+  "chat": {
+    "title": "Chat",
+    "clubChat": "Club Chat",
+    "groupChat": "Group Chat",
+    "newMessage": "Type a message...",
+    "send": "Send"
+  },
+  "announcement": {
+    "title": "Announcements",
+    "new": "New Post",
+    "meeting": "Meeting",
+    "celebration": "Celebration",
+    "condolence": "Condolence",
+    "events": "Events"
+  },
+  "album": {
+    "title": "Album",
+    "addPhoto": "Add Photo",
+    "createAlbum": "Create Album"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "confirm": "Confirm",
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "success": "Done",
+    "search": "Search",
+    "filter": "Filter",
+    "all": "All",
+    "noData": "No data",
+    "camera": "Camera",
+    "gallery": "Gallery",
+    "upload": "Upload"
+  },
+  "currency": {
+    "KRW": "Won (₩)",
+    "VND": "Dong (₫)",
+    "IDR": "Rupiah (Rp)"
+  }
+}

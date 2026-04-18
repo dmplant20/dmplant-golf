@@ -1,0 +1,131 @@
+{
+  "app": {
+    "name": "Inter Stellar GOLF",
+    "tagline": "골프 모임 관리"
+  },
+  "nav": {
+    "home": "홈",
+    "members": "회원",
+    "finance": "재무",
+    "tournament": "대회",
+    "chat": "채팅",
+    "more": "더보기"
+  },
+  "auth": {
+    "login": "로그인",
+    "logout": "로그아웃",
+    "register": "회원가입",
+    "email": "이메일",
+    "password": "비밀번호",
+    "name": "이름 (한글)",
+    "nameEn": "이름 (영문)",
+    "nameAbbr": "영문 약자 (예: CSB)",
+    "phone": "전화번호",
+    "loginTitle": "로그인",
+    "registerTitle": "계정 만들기",
+    "noAccount": "계정이 없으신가요?",
+    "haveAccount": "이미 계정이 있으신가요?",
+    "forgotPassword": "비밀번호 찾기",
+    "continueWithEmail": "이메일로 계속하기"
+  },
+  "club": {
+    "register": "클럽 등록",
+    "name": "클럽명",
+    "nameEn": "클럽명 (영문)",
+    "join": "가입 신청",
+    "pending": "승인 대기 중",
+    "approved": "승인됨",
+    "rejected": "거부됨",
+    "selectClub": "클럽 선택",
+    "myClubs": "내 클럽",
+    "joinRequests": "가입 대기",
+    "approve": "승인",
+    "reject": "거부",
+    "role": {
+      "president": "회장",
+      "secretary": "총무",
+      "officer": "운영진",
+      "member": "일반회원"
+    }
+  },
+  "member": {
+    "handicap": "핸디",
+    "clubHandicap": "클럽 핸디",
+    "personalHandicap": "개인 핸디",
+    "attendance": "출석",
+    "absent": "미출석",
+    "profile": "프로필"
+  },
+  "finance": {
+    "title": "재무",
+    "balance": "잔액",
+    "income": "수입",
+    "expense": "지출",
+    "fee": "회비",
+    "fine": "벌금",
+    "donation": "찬조",
+    "annualFee": "년회비",
+    "monthlyFee": "월회비",
+    "addTransaction": "내역 추가",
+    "scanReceipt": "영수증 촬영",
+    "penaltyRules": "벌금 규정"
+  },
+  "tournament": {
+    "title": "대회",
+    "create": "대회 생성",
+    "grouping": "조편성",
+    "autoHandicap": "자동 (핸디순)",
+    "autoRandom": "자동 (랜덤)",
+    "manual": "수동",
+    "scoreEntry": "스코어 입력",
+    "scanScorecard": "스코어카드 촬영",
+    "ranking": "순위",
+    "monthly": "월례회",
+    "official": "공식",
+    "score": "스코어",
+    "netScore": "넷 스코어",
+    "avgScore": "평균 타수"
+  },
+  "chat": {
+    "title": "채팅",
+    "clubChat": "전체 채팅",
+    "groupChat": "그룹 채팅",
+    "newMessage": "메시지를 입력하세요...",
+    "send": "전송"
+  },
+  "announcement": {
+    "title": "공지사항",
+    "new": "새 공지",
+    "meeting": "회의",
+    "celebration": "경사",
+    "condolence": "조사",
+    "events": "경조사"
+  },
+  "album": {
+    "title": "앨범",
+    "addPhoto": "사진 추가",
+    "createAlbum": "앨범 만들기"
+  },
+  "common": {
+    "save": "저장",
+    "cancel": "취소",
+    "delete": "삭제",
+    "edit": "수정",
+    "confirm": "확인",
+    "loading": "로딩 중...",
+    "error": "오류가 발생했습니다",
+    "success": "완료되었습니다",
+    "search": "검색",
+    "filter": "필터",
+    "all": "전체",
+    "noData": "데이터가 없습니다",
+    "camera": "카메라",
+    "gallery": "갤러리",
+    "upload": "업로드"
+  },
+  "currency": {
+    "KRW": "원 (₩)",
+    "VND": "동 (₫)",
+    "IDR": "루피아 (Rp)"
+  }
+}
