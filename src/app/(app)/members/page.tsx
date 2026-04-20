@@ -55,9 +55,14 @@ export default function MembersPage() {
     load()
   }
 
-  async function updateHandicap(membershipId: string, clubHc: number, personalHc: number, role: string) {
+  async function updateMember(membershipId: string, clubHc: number, personalHc: number, role: string, feeType: string | null) {
     const supabase = createClient()
-    await supabase.from('club_memberships').update({ club_handicap: clubHc, personal_handicap: personalHc, role }).eq('id', membershipId)
+    await supabase.from('club_memberships').update({
+      club_handicap: clubHc,
+      personal_handicap: personalHc,
+      role,
+      fee_type: feeType || null,
+    }).eq('id', membershipId)
     setEditMember(null)
     load()
   }
@@ -98,6 +103,8 @@ export default function MembersPage() {
                 </div>
                 <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                   <span className={`text-xs px-2 py-0.5 rounded-full ${ROLE_COLORS[m.role]}`}>{roleLabel(m.role)}</span>
+                  {m.fee_type === 'annual' && <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-900/50 text-yellow-300">{ko ? '년회비' : 'Annual'}</span>}
+                  {m.fee_type === 'monthly' && <span className="text-xs px-2 py-0.5 rounded-full bg-blue-900/50 text-blue-300">{ko ? '월회비' : 'Monthly'}</span>}
                   {m.club_handicap != null && <span className="text-xs text-green-400">{ko ? '클럽핸디' : 'Club HC'}: {m.club_handicap}</span>}
                   {m.personal_handicap != null && <span className="text-xs text-blue-400">{ko ? '개인핸디' : 'Personal HC'}: {m.personal_handicap}</span>}
                 </div>
@@ -140,7 +147,7 @@ export default function MembersPage() {
 
       {/* Edit Modal */}
       {editMember && (
-        <EditMemberModal member={editMember} ko={ko} onClose={() => setEditMember(null)} onSave={updateHandicap} />
+        <EditMemberModal member={editMember} ko={ko} onClose={() => setEditMember(null)} onSave={updateMember} />
       )}
     </div>
   )
@@ -150,6 +157,8 @@ function EditMemberModal({ member, ko, onClose, onSave }: any) {
   const [clubHc, setClubHc] = useState(member.club_handicap ?? '')
   const [personalHc, setPersonalHc] = useState(member.personal_handicap ?? '')
   const [role, setRole] = useState(member.role)
+  const [feeType, setFeeType] = useState<string>(member.fee_type ?? '')
+
   const roles = [
     { value: 'president', ko: '회장', en: 'President' },
     { value: 'secretary', ko: '총무', en: 'Secretary' },
@@ -171,6 +180,29 @@ function EditMemberModal({ member, ko, onClose, onSave }: any) {
               {roles.map((r) => <option key={r.value} value={r.value}>{ko ? r.ko : r.en}</option>)}
             </select>
           </div>
+
+          <div>
+            <label className="text-sm text-gray-400 block mb-2">{ko ? '회비 유형' : 'Fee Type'}</label>
+            <div className="flex gap-2">
+              {[
+                { v: '', label: ko ? '미지정' : 'Not Set' },
+                { v: 'annual', label: ko ? '년회비' : 'Annual' },
+                { v: 'monthly', label: ko ? '월회비' : 'Monthly' },
+              ].map(({ v, label }) => (
+                <button key={v} type="button" onClick={() => setFeeType(v)}
+                  className={`flex-1 py-2 rounded-xl text-sm transition ${
+                    feeType === v
+                      ? v === 'annual' ? 'bg-yellow-700 text-white'
+                        : v === 'monthly' ? 'bg-blue-700 text-white'
+                        : 'bg-gray-600 text-white'
+                      : 'bg-gray-800 text-gray-400'
+                  }`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div>
             <label className="text-sm text-gray-400 block mb-1">{ko ? '클럽 핸디' : 'Club Handicap'}</label>
             <input type="number" step="0.1" value={clubHc} onChange={(e) => setClubHc(e.target.value)}
@@ -183,7 +215,7 @@ function EditMemberModal({ member, ko, onClose, onSave }: any) {
           </div>
           <div className="flex gap-3 pt-2">
             <button onClick={onClose} className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300">{ko ? '취소' : 'Cancel'}</button>
-            <button onClick={() => onSave(member.id, parseFloat(clubHc) || 0, parseFloat(personalHc) || 0, role)}
+            <button onClick={() => onSave(member.id, parseFloat(clubHc) || 0, parseFloat(personalHc) || 0, role, feeType || null)}
               className="flex-1 py-3 rounded-xl bg-green-700 text-white font-semibold">{ko ? '저장' : 'Save'}</button>
           </div>
         </div>

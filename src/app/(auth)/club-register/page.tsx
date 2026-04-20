@@ -9,7 +9,7 @@ export default function ClubRegisterPage() {
   const { lang } = useAuthStore()
   const ko = lang === 'ko'
 
-  const [form, setForm] = useState({ name: '', nameEn: '', currency: 'KRW', feeType: 'monthly', annualFee: '', monthlyFee: '' })
+  const [form, setForm] = useState({ name: '', nameEn: '', currency: 'KRW' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -21,16 +21,14 @@ export default function ClubRegisterPage() {
     if (!user) { router.push('/login'); return }
 
     const { data: club, error: clubError } = await supabase.from('clubs').insert({
-      name: form.name, name_en: form.nameEn, currency: form.currency,
-      fee_type: form.feeType,
-      annual_fee: form.annualFee ? parseInt(form.annualFee) : null,
-      monthly_fee: form.monthlyFee ? parseInt(form.monthlyFee) : null,
+      name: form.name,
+      name_en: form.nameEn || null,
+      currency: form.currency,
       created_by: user.id,
     }).select().single()
 
     if (clubError) { setError(clubError.message); setLoading(false); return }
 
-    // Register creator as president
     await supabase.from('club_memberships').insert({
       club_id: club.id, user_id: user.id, role: 'president', status: 'approved', joined_at: new Date().toISOString()
     })
@@ -38,7 +36,11 @@ export default function ClubRegisterPage() {
     router.push('/dashboard')
   }
 
-  const currencies = [{ value: 'KRW', label: '원 (₩) - KRW' }, { value: 'VND', label: '동 (₫) - VND' }, { value: 'IDR', label: '루피아 (Rp) - IDR' }]
+  const currencies = [
+    { value: 'KRW', label: '원 (₩) - KRW' },
+    { value: 'VND', label: '동 (₫) - VND' },
+    { value: 'IDR', label: '루피아 (Rp) - IDR' },
+  ]
 
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center px-4 py-10">
@@ -48,54 +50,53 @@ export default function ClubRegisterPage() {
           <h1 className="text-lg font-bold text-white">Inter Stellar GOLF</h1>
         </div>
 
-        <h2 className="text-xl font-semibold text-white mb-5">{ko ? '새 클럽 등록' : 'Register New Club'}</h2>
+        <h2 className="text-xl font-semibold text-white mb-2">{ko ? '새 클럽 등록' : 'Register New Club'}</h2>
+        <p className="text-gray-500 text-xs mb-5">
+          {ko
+            ? '회비 금액은 로그인 후 클럽 설정에서 회장/총무가 지정할 수 있습니다.'
+            : 'Fee amounts can be set by president/secretary in Club Settings after login.'}
+        </p>
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm text-gray-400 mb-1">{ko ? '클럽명 (한글)' : 'Club Name (Korean)'} *</label>
-            <input required value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-green-500" placeholder={ko ? '예: MGF 골프회' : 'e.g. MGF Golf Club'} />
+            <label className="block text-sm text-gray-400 mb-1">{ko ? '클럽명 (한글) *' : 'Club Name *'}</label>
+            <input
+              required
+              value={form.name}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+              className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-green-500"
+              placeholder={ko ? '예: MGF 골프회' : 'e.g. MGF Golf Club'}
+            />
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">{ko ? '클럽명 (영문)' : 'Club Name (English)'}</label>
-            <input value={form.nameEn} onChange={(e) => setForm((f) => ({ ...f, nameEn: e.target.value }))}
-              className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-green-500" />
+            <input
+              value={form.nameEn}
+              onChange={(e) => setForm((f) => ({ ...f, nameEn: e.target.value }))}
+              className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-green-500"
+              placeholder="MGF Golf Club"
+            />
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">{ko ? '통화' : 'Currency'}</label>
-            <select value={form.currency} onChange={(e) => setForm((f) => ({ ...f, currency: e.target.value }))}
+            <select
+              value={form.currency}
+              onChange={(e) => setForm((f) => ({ ...f, currency: e.target.value }))}
               className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white">
               {currencies.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
           </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">{ko ? '회비 방식' : 'Fee Type'}</label>
-            <div className="flex gap-2">
-              {[['annual', ko ? '년회비' : 'Annual'], ['monthly', ko ? '월회비' : 'Monthly']].map(([v, l]) => (
-                <button key={v} type="button" onClick={() => setForm((f) => ({ ...f, feeType: v }))}
-                  className={`flex-1 py-2.5 rounded-xl text-sm transition ${form.feeType === v ? 'bg-green-700 text-white' : 'bg-gray-800 text-gray-400'}`}>{l}</button>
-              ))}
-            </div>
-          </div>
-          {form.feeType === 'annual' && (
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">{ko ? '년회비 금액' : 'Annual Fee Amount'}</label>
-              <input type="number" value={form.annualFee} onChange={(e) => setForm((f) => ({ ...f, annualFee: e.target.value }))}
-                className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white" placeholder="0" />
-            </div>
-          )}
-          {form.feeType === 'monthly' && (
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">{ko ? '월회비 금액' : 'Monthly Fee Amount'}</label>
-              <input type="number" value={form.monthlyFee} onChange={(e) => setForm((f) => ({ ...f, monthlyFee: e.target.value }))}
-                className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white" placeholder="0" />
-            </div>
-          )}
+
           {error && <p className="text-red-400 text-sm">{error}</p>}
-          <button type="submit" disabled={loading}
+
+          <button
+            type="submit"
+            disabled={loading}
             className="w-full bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white font-semibold py-3 rounded-xl transition">
             {loading ? (ko ? '등록 중...' : 'Registering...') : (ko ? '클럽 등록' : 'Register Club')}
           </button>
         </form>
+
         <p className="mt-4 text-center text-xs text-gray-600">
           {ko ? '클럽을 등록하면 자동으로 회장으로 등록됩니다' : 'You will be registered as president upon club creation'}
         </p>

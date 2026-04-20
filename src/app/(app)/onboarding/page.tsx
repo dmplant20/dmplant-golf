@@ -13,7 +13,7 @@ export default function OnboardingPage() {
   const [tab, setTab] = useState<'create' | 'join'>('create')
 
   // Create club form
-  const [createForm, setCreateForm] = useState({ name: '', nameEn: '', currency: 'KRW', feeType: 'monthly' })
+  const [createForm, setCreateForm] = useState({ name: '', nameEn: '', currency: 'KRW' })
   const [creating, setCreating] = useState(false)
 
   // Join club
@@ -31,7 +31,6 @@ export default function OnboardingPage() {
       name: createForm.name,
       name_en: createForm.nameEn || null,
       currency: createForm.currency,
-      fee_type: createForm.feeType,
       created_by: user.id,
     }).select().single()
 
@@ -134,18 +133,6 @@ export default function OnboardingPage() {
                   className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white">
                   {currencies.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                 </select>
-              </div>
-              <div>
-                <label className="block text-sm text-gray-400 mb-2">{ko ? '회비 방식' : 'Fee Type'}</label>
-                <div className="flex gap-2">
-                  {[['monthly', ko ? '월회비' : 'Monthly'], ['annual', ko ? '년회비' : 'Annual']].map(([v, l]) => (
-                    <button key={v} type="button"
-                      onClick={() => setCreateForm((f) => ({ ...f, feeType: v }))}
-                      className={`flex-1 py-2 rounded-xl text-sm transition ${createForm.feeType === v ? 'bg-green-700 text-white' : 'bg-gray-800 text-gray-400'}`}>
-                      {l}
-                    </button>
-                  ))}
-                </div>
               </div>
             </div>
 
