@@ -82,6 +82,11 @@ export default function LoginPage() {
           >
             {loading ? (ko ? '로그인 중...' : 'Signing in...') : (ko ? '로그인' : 'Sign In')}
           </button>
+          <div className="text-right">
+            <Link href="/forgot-password" className="text-sm text-gray-500 hover:text-green-400 transition">
+              {ko ? '비밀번호를 잊으셨나요?' : 'Forgot password?'}
+            </Link>
+          </div>
         </form>
 
         <div className="mt-6 text-center space-y-2">

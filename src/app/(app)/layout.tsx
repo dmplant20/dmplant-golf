@@ -1,6 +1,6 @@
 'use client'
 import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores/authStore'
 import AppHeader from '@/components/layout/AppHeader'
@@ -8,6 +8,7 @@ import BottomNav from '@/components/layout/BottomNav'
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
+  const pathname = usePathname()
   const { setUser, setMyClubs, setCurrentClub, currentClubId } = useAuthStore()
 
   useEffect(() => {
@@ -36,25 +37,32 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         }))
         setMyClubs(clubs)
         if (!currentClubId) setCurrentClub(clubs[0].id)
+      } else {
+        // 가입된 클럽 없음 → 온보딩으로
+        if (pathname !== '/onboarding') {
+          router.replace('/onboarding')
+        }
       }
     }
 
     init()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_OUT') { router.replace('/login') }
+      if (event === 'SIGNED_OUT') router.replace('/login')
     })
 
     return () => subscription.unsubscribe()
   }, [])
 
+  const isOnboarding = pathname === '/onboarding'
+
   return (
     <div className="flex flex-col min-h-screen bg-gray-950">
-      <AppHeader />
-      <main className="flex-1 overflow-y-auto pb-20">
+      {!isOnboarding && <AppHeader />}
+      <main className={`flex-1 overflow-y-auto ${isOnboarding ? '' : 'pb-20'}`}>
         {children}
       </main>
-      <BottomNav />
+      {!isOnboarding && <BottomNav />}
     </div>
   )
 }
