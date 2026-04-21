@@ -44,7 +44,7 @@ export default function DashboardPage() {
         supabase.from('clubs').select('currency').eq('id', currentClubId).single(),
         supabase.from('announcements').select('id,title,title_en,created_at').eq('club_id', currentClubId).order('created_at', { ascending: false }).limit(3),
         supabase.from('finance_transactions').select('type,amount').eq('club_id', currentClubId),
-        supabase.from('recurring_meetings').select('week_of_month,day_of_week,start_time,course_name').eq('club_id', currentClubId).maybeSingle(),
+        supabase.from('recurring_meetings').select('week_of_month,day_of_week,start_time,venue,notes').eq('club_id', currentClubId).maybeSingle(),
       ])
       let balance = 0
       txns?.forEach((t: any) => {
@@ -68,7 +68,7 @@ export default function DashboardPage() {
           }
         }
       }
-      setStats({ members: members ?? 0, balance, nextMeeting, nextCourse: pattern?.course_name ?? '' })
+      setStats({ members: members ?? 0, balance, nextMeeting, nextCourse: pattern?.venue ?? '' })
       setAnnouncements(notices ?? [])
       if (club?.currency) setCurrency(club.currency)
       setLoading(false)
@@ -121,7 +121,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-3 gap-2.5">
         {[
           { icon: Users, label: ko ? '총 회원' : 'Members', value: `${stats.members}${ko ? '명' : ''}`, color: '#60a5fa', bg: 'rgba(59,130,246,0.1)' },
-          { icon: Wallet, label: ko ? '클럽 잔액' : 'Balance', value: `${sym}${(stats.balance/1000).toFixed(0)}K`, color: '#fbbf24', bg: 'rgba(251,191,36,0.1)' },
+          { icon: Wallet, label: ko ? '클럽 잔액' : 'Balance', value: stats.balance === 0 ? `${sym}0` : `${sym}${(stats.balance/1000).toFixed(0)}K`, color: '#fbbf24', bg: 'rgba(251,191,36,0.1)' },
           { icon: CalendarDays, label: ko ? '다음 모임' : 'Next', value: stats.nextMeeting || '—', color: '#34d399', bg: 'rgba(52,211,153,0.1)' },
         ].map(({ icon: Icon, label, value, color, bg }) => (
           <div key={label} className="stat-card rounded-2xl p-3.5">
