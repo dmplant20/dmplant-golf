@@ -10,6 +10,7 @@ const supabase = createClient(
 
 export default function Page() {
   const [courses, setCourses] = useState<any[]>([])
+  const [message, setMessage] = useState('loading...')
 
   useEffect(() => {
     loadData()
@@ -23,14 +24,17 @@ export default function Page() {
 
     if (error) {
       console.error(error)
+      setMessage(`ERROR: ${error.message}`)
     } else {
-      setCourses(data)
+      setCourses(data || [])
+      setMessage(`Loaded ${data?.length || 0} courses`)
     }
   }
 
   return (
     <div style={{ padding: 20 }}>
       <h1>🏌️ Golf Courses</h1>
+      <p>{message}</p>
 
       {courses.map((c, i) => (
         <div key={i}>
