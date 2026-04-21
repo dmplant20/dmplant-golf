@@ -24,13 +24,30 @@ type Layout = {
   total_yards: number | null
 }
 
+type Hole = {
+  id: string
+  layout_id: string
+  hole_number: number
+  par: number
+  yards: number | null
+  handicap_index: number | null
+  hole_name: string | null
+}
+
 export default function Page() {
   const [courses, setCourses] = useState<Course[]>([])
   const [layouts, setLayouts] = useState<Layout[]>([])
-  const [message, setMessage] = useState('loading...')
+  const [holes, setHoles] = useState<Hole[]>([])
+
+  const [message, setMessage] = useState('loading courses...')
   const [layoutMessage, setLayoutMessage] = useState('')
+  const [holeMessage, setHoleMessage] = useState('')
+
   const [selectedCourseId, setSelectedCourseId] = useState('')
   const [selectedCourseName, setSelectedCourseName] = useState('')
+
+  const [selectedLayoutId, setSelectedLayoutId] = useState('')
+  const [selectedLayoutName, setSelectedLayoutName] = useState('')
 
   useEffect(() => {
     loadCourses()
@@ -55,7 +72,13 @@ export default function Page() {
   async function handleCourseClick(courseId: string, courseName: string) {
     setSelectedCourseId(courseId)
     setSelectedCourseName(courseName)
+
+    setSelectedLayoutId('')
+    setSelectedLayoutName('')
     setLayouts([])
+    setHoles([])
+    setHoleMessage('')
+
     setLayoutMessage('Loading layouts...')
 
     const { data, error } = await supabase
@@ -74,46 +97,97 @@ export default function Page() {
     setLayoutMessage(`Loaded ${data?.length || 0} layouts`)
   }
 
+  async function handleLayoutClick(layoutId: string, layoutName: string) {
+    setSelectedLayoutId(layoutId)
+    setSelectedLayoutName(layoutName)
+    setHoles([])
+    setHoleMessage('Loading holes...')
+
+    const { data, error } = await supabase
+      .from('golf_course_holes')
+      .select('id, layout_id, hole_number, par, yards, handicap_index, hole_name')
+      .eq('layout_id', layoutId)
+      .order('hole_number')
+
+    if (error) {
+      console.error(error)
+      setHoleMessage(`ERROR: ${error.message}`)
+      return
+    }
+
+    setHoles(data || [])
+    setHoleMessage(`Loaded ${data?.length || 0} holes`)
+  }
+
   return (
     <div style={{ padding: 20 }}>
       <h1>🏌️ Golf Courses</h1>
       <p>{message}</p>
 
       <div style={{ marginBottom: 30 }}>
-        {courses.map((c) => (
+        {courses.map((course) => (
           <div
-            key={c.id}
-            onClick={() => handleCourseClick(c.id, c.name)}
+            key={course.id}
+            onClick={() => handleCourseClick(course.id, course.name)}
             style={{
               cursor: 'pointer',
               marginBottom: 10,
-              padding: '8px 0',
+              padding: '10px 0',
               borderBottom: '1px solid #333',
-              fontWeight: selectedCourseId === c.id ? 'bold' : 'normal',
+              fontWeight: selectedCourseId === course.id ? 'bold' : 'normal',
             }}
           >
-            {c.name} ({c.region})
+            {course.name} ({course.region})
           </div>
         ))}
       </div>
 
       {selectedCourseId && (
-        <div style={{ marginTop: 30 }}>
+        <div style={{ marginTop: 30, marginBottom: 30 }}>
           <h2>📍 Layouts for {selectedCourseName}</h2>
           <p>{layoutMessage}</p>
 
           {layouts.map((layout) => (
             <div
               key={layout.id}
+              onClick={() => handleLayoutClick(layout.id, layout.layout_name)}
               style={{
+                cursor: 'pointer',
                 marginBottom: 10,
                 padding: '10px 0',
                 borderBottom: '1px solid #444',
+                fontWeight: selectedLayoutId === layout.id ? 'bold' : 'normal',
               }}
             >
               <div>{layout.layout_name}</div>
               <div style={{ fontSize: 14, opacity: 0.8 }}>
                 Tee: {layout.tee_name || '-'} / Holes: {layout.total_holes || '-'} / Par: {layout.total_par || '-'}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {selectedLayoutId && (
+        <div style={{ marginTop: 30 }}>
+          <h2>⛳ Holes for {selectedLayoutName}</h2>
+          <p>{holeMessage}</p>
+
+          {holes.map((hole) => (
+            <div
+              key={hole.id}
+              style={{
+                marginBottom: 10,
+                padding: '10px 0',
+                borderBottom: '1px solid #555',
+              }}
+            >
+              <div>
+                Hole {hole.hole_number}
+                {hole.hole_name ? ` - ${hole.hole_name}` : ''}
+              </div>
+              <div style={{ fontSize: 14, opacity: 0.8 }}>
+                Par: {hole.par} / Yards: {hole.yards || '-'} / HCP: {hole.handicap_index || '-'}
               </div>
             </div>
           ))}
