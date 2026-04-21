@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
@@ -34,6 +34,8 @@ type Hole = {
   hole_name: string | null
 }
 
+type HoleScoreMap = Record<string, number>
+
 export default function Page() {
   const [courses, setCourses] = useState<Course[]>([])
   const [layouts, setLayouts] = useState<Layout[]>([])
@@ -48,6 +50,9 @@ export default function Page() {
 
   const [selectedLayoutId, setSelectedLayoutId] = useState('')
   const [selectedLayoutName, setSelectedLayoutName] = useState('')
+
+  const [roundStarted, setRoundStarted] = useState(false)
+  const [scores, setScores] = useState<HoleScoreMap>({})
 
   useEffect(() => {
     loadCourses()
@@ -77,6 +82,8 @@ export default function Page() {
     setSelectedLayoutName('')
     setLayouts([])
     setHoles([])
+    setScores({})
+    setRoundStarted(false)
     setHoleMessage('')
 
     setLayoutMessage('Loading layouts...')
@@ -101,6 +108,8 @@ export default function Page() {
     setSelectedLayoutId(layoutId)
     setSelectedLayoutName(layoutName)
     setHoles([])
+    setScores({})
+    setRoundStarted(false)
     setHoleMessage('Loading holes...')
 
     const { data, error } = await supabase
@@ -118,6 +127,52 @@ export default function Page() {
     setHoles(data || [])
     setHoleMessage(`Loaded ${data?.length || 0} holes`)
   }
+
+  function startRound() {
+    if (!selectedLayoutId || holes.length === 0) {
+      alert('먼저 코스를 선택하세요.')
+      return
+    }
+
+    const initialScores: HoleScoreMap = {}
+    holes.forEach((hole) => {
+      initialScores[hole.id] = hole.par
+    })
+
+    setScores(initialScores)
+    setRoundStarted(true)
+  }
+
+  function resetRound() {
+    const initialScores: HoleScoreMap = {}
+    holes.forEach((hole) => {
+      initialScores[hole.id] = hole.par
+    })
+    setScores(initialScores)
+  }
+
+  function changeScore(holeId: string, delta: number) {
+    setScores((prev) => {
+      const current = prev[holeId] ?? 0
+      const next = Math.max(1, current + delta)
+      return {
+        ...prev,
+        [holeId]: next,
+      }
+    })
+  }
+
+  const totalScore = useMemo(() => {
+    return holes.reduce((sum, hole) => {
+      return sum + (scores[hole.id] ?? 0)
+    }, 0)
+  }, [holes, scores])
+
+  const totalPar = useMemo(() => {
+    return holes.reduce((sum, hole) => sum + hole.par, 0)
+  }, [holes])
+
+  const overUnder = totalScore - totalPar
 
   return (
     <div style={{ padding: 20 }}>
@@ -173,22 +228,96 @@ export default function Page() {
           <h2>⛳ Holes for {selectedLayoutName}</h2>
           <p>{holeMessage}</p>
 
+          <div style={{ marginBottom: 20 }}>
+            {!roundStarted ? (
+              <button
+                onClick={startRound}
+                style={{
+                  padding: '10px 16px',
+                  cursor: 'pointer',
+                  border: '1px solid #666',
+                  background: '#111',
+                  color: '#fff',
+                }}
+              >
+                라운드 시작
+              </button>
+            ) : (
+              <div>
+                <button
+                  onClick={resetRound}
+                  style={{
+                    padding: '10px 16px',
+                    cursor: 'pointer',
+                    border: '1px solid #666',
+                    background: '#111',
+                    color: '#fff',
+                    marginRight: 12,
+                  }}
+                >
+                  점수 초기화
+                </button>
+
+                <span style={{ fontSize: 18, fontWeight: 'bold' }}>
+                  Total: {totalScore} / Par: {totalPar} / {overUnder === 0 ? 'E' : overUnder > 0 ? `+${overUnder}` : overUnder}
+                </span>
+              </div>
+            )}
+          </div>
+
           {holes.map((hole) => (
             <div
               key={hole.id}
               style={{
                 marginBottom: 10,
-                padding: '10px 0',
+                padding: '12px 0',
                 borderBottom: '1px solid #555',
               }}
             >
-              <div>
+              <div style={{ marginBottom: 6 }}>
                 Hole {hole.hole_number}
                 {hole.hole_name ? ` - ${hole.hole_name}` : ''}
               </div>
-              <div style={{ fontSize: 14, opacity: 0.8 }}>
+
+              <div style={{ fontSize: 14, opacity: 0.8, marginBottom: 10 }}>
                 Par: {hole.par} / Yards: {hole.yards || '-'} / HCP: {hole.handicap_index || '-'}
               </div>
+
+              {roundStarted && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <button
+                    onClick={() => changeScore(hole.id, -1)}
+                    style={{
+                      width: 36,
+                      height: 36,
+                      cursor: 'pointer',
+                      border: '1px solid #666',
+                      background: '#111',
+                      color: '#fff',
+                    }}
+                  >
+                    -
+                  </button>
+
+                  <div style={{ minWidth: 40, textAlign: 'center', fontSize: 18, fontWeight: 'bold' }}>
+                    {scores[hole.id]}
+                  </div>
+
+                  <button
+                    onClick={() => changeScore(hole.id, 1)}
+                    style={{
+                      width: 36,
+                      height: 36,
+                      cursor: 'pointer',
+                      border: '1px solid #666',
+                      background: '#111',
+                      color: '#fff',
+                    }}
+                  >
+                    +
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>
