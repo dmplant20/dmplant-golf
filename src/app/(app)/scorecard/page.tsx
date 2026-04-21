@@ -7,6 +7,7 @@ import {
   Flag, BarChart2, Calendar, MapPin, ChevronRight,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import CourseSearchInput from '@/components/ui/CourseSearchInput'
 
 // ── 기본 파 배열 ──────────────────────────────────────────────────────────
 // 72파 기준: OUT 36, IN 36
@@ -376,47 +377,29 @@ export default function ScorecardPage() {
                 </div>
               </div>
 
-              {/* 골프장 선택 */}
+              {/* 골프장 자동완성 검색 */}
               <div>
-                <label className="text-xs text-gray-400 block mb-1.5"><MapPin size={11} className="inline mr-1" />{ko ? '골프장' : 'Golf Course'}</label>
-                <input
-                  value={courseSearch}
-                  onChange={e => setCourseSearch(e.target.value)}
-                  placeholder={ko ? '이름 검색 또는 직접 입력...' : 'Search or type manually...'}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm"
+                <label className="text-xs text-gray-400 block mb-1.5">
+                  <MapPin size={11} className="inline mr-1" />{ko ? '골프장' : 'Golf Course'}
+                </label>
+                <CourseSearchInput
+                  value={newForm.courseName}
+                  onChange={v => setNewForm(f => ({ ...f, courseName: v, courseId: '' }))}
+                  onSelect={c => {
+                    setNewForm(f => ({ ...f, courseName: c.name, courseId: c.id, coursePar: c.par ?? 72 }))
+                    setPars(computePars(c.par ?? 72, newForm.holes))
+                  }}
+                  placeholder={ko ? '2글자 이상 입력하면 자동검색...' : 'Type 2+ chars to search...'}
                 />
-                {/* 검색 결과 */}
-                {courseSearch.length > 0 && (
-                  <div className="mt-1.5 max-h-40 overflow-y-auto rounded-xl border border-gray-700 divide-y divide-gray-800">
-                    {/* 직접 입력 옵션 */}
-                    <button onClick={() => { setNewForm(f => ({ ...f, courseName: courseSearch, courseId: '' })); setCourseSearch('') }}
-                      className="w-full px-3 py-2.5 text-left text-sm text-green-400 hover:bg-gray-800 transition">
-                      ✏ {ko ? `"${courseSearch}" 직접 사용` : `Use "${courseSearch}"`}
-                    </button>
-                    {courses
-                      .filter(c => c.name.toLowerCase().includes(courseSearch.toLowerCase()) || (c.name_vn ?? '').toLowerCase().includes(courseSearch.toLowerCase()))
-                      .slice(0, 6)
-                      .map(c => (
-                        <button key={c.id} onClick={() => {
-                          setNewForm(f => ({ ...f, courseName: c.name, courseId: c.id, coursePar: c.par ?? 72 }))
-                          setPars(computePars(c.par ?? 72, newForm.holes))
-                          setCourseSearch('')
-                        }} className={`w-full px-3 py-2.5 text-left transition flex justify-between items-center hover:bg-gray-800 ${newForm.courseId === c.id ? 'bg-green-900/40' : ''}`}>
-                          <div>
-                            <p className="text-sm text-white">{c.name}</p>
-                            {c.name_vn && <p className="text-xs text-gray-500">{c.name_vn}</p>}
-                          </div>
-                          <span className="text-xs text-gray-400 flex-shrink-0">Par {c.par} · {c.distance_km}km</span>
-                        </button>
-                      ))}
-                  </div>
-                )}
                 {newForm.courseName && (
-                  <div className="mt-1.5 flex items-center gap-2 bg-green-900/20 border border-green-800/30 rounded-xl px-3 py-2">
-                    <MapPin size={12} className="text-green-400" />
+                  <div className="mt-1.5 flex items-center gap-2 rounded-xl px-3 py-2"
+                    style={{ background: 'rgba(22,163,74,0.12)', border: '1px solid rgba(34,197,94,0.2)' }}>
+                    <MapPin size={12} className="text-green-400 flex-shrink-0" />
                     <p className="text-sm text-green-300 flex-1 truncate">{newForm.courseName}</p>
-                    <span className="text-xs text-gray-400">Par {newForm.coursePar}</span>
-                    <button onClick={() => setNewForm(f => ({ ...f, courseName: '', courseId: '' }))} className="text-gray-500"><X size={14} /></button>
+                    <span className="text-xs" style={{ color: '#5a7a5a' }}>Par {newForm.coursePar}</span>
+                    <button onClick={() => setNewForm(f => ({ ...f, courseName: '', courseId: '' }))} style={{ color: '#5a7a5a' }}>
+                      <X size={14} />
+                    </button>
                   </div>
                 )}
               </div>

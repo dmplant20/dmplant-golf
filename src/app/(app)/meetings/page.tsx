@@ -9,6 +9,7 @@ import {
   TrendingDown, TrendingUp, Minus,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import CourseSearchInput from '@/components/ui/CourseSearchInput'
 
 // ── helpers ────────────────────────────────────────────────────────────────
 function getNthWeekday(year: number, month: number, week: number, dow: number): Date | null {
@@ -756,76 +757,15 @@ export default function MeetingsPage() {
           <label className="text-xs text-gray-400 block mb-1.5">{ko ? '모임 시간' : 'Time'}</label>
           <input type="time" value={pForm.time} onChange={e => setPForm(f => ({ ...f, time: e.target.value }))} className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm" />
         </div>
-        {/* Venue with course picker */}
+        {/* Venue with course autocomplete */}
         <div>
           <label className="text-xs text-gray-400 block mb-1.5">{ko ? '골프장 / 장소' : 'Golf Course / Venue'}</label>
-          {showCoursePicker ? (
-            <div className="space-y-2">
-              <input
-                value={courseSearch}
-                onChange={e => setCourseSearch(e.target.value)}
-                placeholder={ko ? '골프장 이름 검색...' : 'Search courses...'}
-                className="w-full bg-gray-800 border border-green-700 rounded-xl px-4 py-2.5 text-white text-sm outline-none"
-                autoFocus
-              />
-              <div className="max-h-48 overflow-y-auto rounded-xl border border-gray-700 divide-y divide-gray-800">
-                {coursesLoading ? (
-                  <p className="text-xs text-gray-500 text-center py-6">{ko ? '불러오는 중...' : 'Loading...'}</p>
-                ) : courses.filter(c =>
-                    !courseSearch ||
-                    c.name.toLowerCase().includes(courseSearch.toLowerCase()) ||
-                    (c.name_vn ?? '').toLowerCase().includes(courseSearch.toLowerCase())
-                  ).length === 0 ? (
-                  <p className="text-xs text-gray-500 text-center py-4">{ko ? '검색 결과 없음' : 'No results'}</p>
-                ) : courses.filter(c =>
-                    !courseSearch ||
-                    c.name.toLowerCase().includes(courseSearch.toLowerCase()) ||
-                    (c.name_vn ?? '').toLowerCase().includes(courseSearch.toLowerCase())
-                  ).map(c => (
-                    <button key={c.id}
-                      onClick={() => { setPForm(f => ({ ...f, venue: c.name })); setShowCoursePicker(false); setCourseSearch('') }}
-                      className={`w-full text-left px-3 py-2.5 transition flex items-start justify-between gap-2 ${pForm.venue === c.name ? 'bg-green-900/50' : 'bg-gray-900 hover:bg-gray-800'}`}>
-                      <div className="min-w-0">
-                        <p className={`text-sm font-medium truncate ${pForm.venue === c.name ? 'text-green-300' : 'text-white'}`}>{c.name}</p>
-                        {c.name_vn && <p className="text-xs text-gray-500 truncate">{c.name_vn}</p>}
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        <p className="text-xs text-gray-400">{c.holes}H · Par {c.par}</p>
-                        {c.distance_km && <p className="text-xs text-gray-500">{c.distance_km}km</p>}
-                        {c.green_fee_weekday_vnd && <p className="text-xs text-green-500">₫{(c.green_fee_weekday_vnd/1000000).toFixed(1)}M~</p>}
-                      </div>
-                    </button>
-                  ))
-                }
-              </div>
-              <button onClick={() => { setShowCoursePicker(false); setCourseSearch('') }}
-                className="text-xs text-gray-500 hover:text-gray-300 transition">
-                ✏ {ko ? '직접 입력' : 'Type manually'}
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-1.5">
-              <div className="flex gap-2">
-                <input value={pForm.venue} onChange={e => setPForm(f => ({ ...f, venue: e.target.value }))}
-                  placeholder={ko ? '예: OO 골프장' : 'e.g. OO Golf Club'}
-                  className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm" />
-                <button onClick={() => { loadCourses(); setShowCoursePicker(true) }}
-                  className="bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-green-400 text-xs hover:bg-gray-700 hover:border-green-700 transition whitespace-nowrap">
-                  ⛳ {ko ? '목록' : 'List'}
-                </button>
-              </div>
-              {pForm.venue && courses.length > 0 && (() => {
-                const sel = courses.find(c => c.name === pForm.venue)
-                if (!sel) return null
-                return (
-                  <div className="bg-green-900/20 border border-green-800/30 rounded-xl px-3 py-2 flex items-center justify-between">
-                    <p className="text-xs text-green-300">{sel.holes}H · Par {sel.par} · {sel.distance_km}km</p>
-                    {sel.green_fee_weekday_vnd && <p className="text-xs text-gray-400">평일 ₫{(sel.green_fee_weekday_vnd/1000000).toFixed(1)}M</p>}
-                  </div>
-                )
-              })()}
-            </div>
-          )}
+          <CourseSearchInput
+            value={pForm.venue}
+            onChange={v => setPForm(f => ({ ...f, venue: v }))}
+            onSelect={c => setPForm(f => ({ ...f, venue: c.name }))}
+            placeholder={ko ? '2글자 이상 입력하면 자동검색...' : 'Type 2+ chars to search...'}
+          />
         </div>
         <div>
           <label className="text-xs text-gray-400 block mb-1.5">{ko ? '메모 (선택)' : 'Notes (optional)'}</label>

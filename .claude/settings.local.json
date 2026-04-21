@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh repo *)",
+      "Bash(railway --version)",
+      "Bash(npm list *)",
+      "Bash(npx @railway/cli --version)",
+      "Bash(npx @railway/cli whoami)",
+      "Bash(npx @railway/cli login --browserless)",
+      "Bash(npx vercel *)",
+      "Bash(vercel --version)",
+      "Bash(npx tsc *)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000)",
+      "Bash(npm install *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/album)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/profile)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/finance)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/members)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/tournament)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/announcement)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/meetings)",
+      "WebSearch",
+      "WebFetch(domain:alegolf.com)",
+      "WebFetch(domain:www.golfsavers.com)",
+      "WebFetch(domain:www.golflux.com)",
+      "WebFetch(domain:www.golfasian.com)",
+      "WebFetch(domain:www.golftripz.com)",
+      "WebFetch(domain:www.playgolfvietnam.com)",
+      "WebFetch(domain:vietuniquegolf.com)",
+      "WebFetch(domain:golftourismvietnam.com)",
+      "WebFetch(domain:www.vietnamgolfcc.com)",
+      "WebFetch(domain:royallongangolfandcountryclub.com)",
+      "Bash(npm run *)"
+    ]
+  }
+}
