@@ -37,6 +37,10 @@ type Hole = {
 type HoleScoreMap = Record<string, number>
 
 export default function Page() {
+  const [user, setUser] = useState<any>(null)
+  const [email, setEmail] = useState('')
+  const [authMessage, setAuthMessage] = useState('')
+
   const [courses, setCourses] = useState<Course[]>([])
   const [layouts, setLayouts] = useState<Layout[]>([])
   const [holes, setHoles] = useState<Hole[]>([])
@@ -57,8 +61,55 @@ export default function Page() {
   const [scores, setScores] = useState<HoleScoreMap>({})
 
   useEffect(() => {
+    checkUser()
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null)
+    })
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [])
+
+  useEffect(() => {
     loadCourses()
   }, [])
+
+  async function checkUser() {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    setUser(user ?? null)
+  }
+
+  async function handleLogin() {
+    setAuthMessage('Sending login link...')
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: window.location.origin,
+      },
+    })
+
+    if (error) {
+      console.error(error)
+      setAuthMessage(`ERROR: ${error.message}`)
+      return
+    }
+
+    setAuthMessage('로그인 링크를 이메일로 보냈습니다. 메일함을 확인하세요.')
+  }
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    setUser(null)
+    setAuthMessage('로그아웃되었습니다.')
+  }
 
   async function loadCourses() {
     const { data, error } = await supabase
@@ -153,6 +204,7 @@ export default function Page() {
     holes.forEach((hole) => {
       initialScores[hole.id] = hole.par
     })
+
     setScores(initialScores)
     setSaveMessage('')
   }
@@ -191,28 +243,15 @@ export default function Page() {
       return
     }
 
+    if (!user) {
+      setSaveMessage('ERROR: 먼저 로그인하세요.')
+      return
+    }
+
     setSaving(true)
     setSaveMessage('Saving round...')
 
     try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser()
-
-      if (userError) {
-        console.error(userError)
-        setSaveMessage(`ERROR: ${userError.message}`)
-        setSaving(false)
-        return
-      }
-
-      if (!user) {
-        setSaveMessage('ERROR: 로그인된 사용자가 없습니다.')
-        setSaving(false)
-        return
-      }
-
       const { data: roundData, error: roundError } = await supabase
         .from('rounds')
         .insert({
@@ -265,7 +304,69 @@ export default function Page() {
 
   return (
     <div style={{ padding: 20, maxWidth: 900, margin: '0 auto' }}>
-      <h1>🏌️ Golf Courses</h1>
+      <h1>🏌️ Golf App</h1>
+
+      <div
+        style={{
+          border: '1px solid #444',
+          padding: 16,
+          marginBottom: 24,
+          borderRadius: 8,
+        }}
+      >
+        <h2>🔐 로그인</h2>
+
+        {user ? (
+          <div>
+            <p>로그인됨: {user.email}</p>
+            <button
+              onClick={handleLogout}
+              style={{
+                padding: '10px 16px',
+                cursor: 'pointer',
+                border: '1px solid #666',
+                background: '#111',
+                color: '#fff',
+              }}
+            >
+              로그아웃
+            </button>
+          </div>
+        ) : (
+          <div>
+            <input
+              type="email"
+              placeholder="이메일 입력"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              style={{
+                padding: 10,
+                width: '100%',
+                maxWidth: 320,
+                marginRight: 12,
+                marginBottom: 12,
+                border: '1px solid #666',
+              }}
+            />
+            <br />
+            <button
+              onClick={handleLogin}
+              style={{
+                padding: '10px 16px',
+                cursor: 'pointer',
+                border: '1px solid #666',
+                background: '#111',
+                color: '#fff',
+              }}
+            >
+              로그인 링크 보내기
+            </button>
+          </div>
+        )}
+
+        {authMessage && <p style={{ marginTop: 12 }}>{authMessage}</p>}
+      </div>
+
       <p>{message}</p>
 
       <div style={{ marginBottom: 30 }}>
