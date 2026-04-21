@@ -44,6 +44,7 @@ export default function Page() {
   const [message, setMessage] = useState('loading courses...')
   const [layoutMessage, setLayoutMessage] = useState('')
   const [holeMessage, setHoleMessage] = useState('')
+  const [saveMessage, setSaveMessage] = useState('')
 
   const [selectedCourseId, setSelectedCourseId] = useState('')
   const [selectedCourseName, setSelectedCourseName] = useState('')
@@ -52,6 +53,7 @@ export default function Page() {
   const [selectedLayoutName, setSelectedLayoutName] = useState('')
 
   const [roundStarted, setRoundStarted] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [scores, setScores] = useState<HoleScoreMap>({})
 
   useEffect(() => {
@@ -84,6 +86,7 @@ export default function Page() {
     setHoles([])
     setScores({})
     setRoundStarted(false)
+    setSaveMessage('')
     setHoleMessage('')
 
     setLayoutMessage('Loading layouts...')
@@ -110,6 +113,7 @@ export default function Page() {
     setHoles([])
     setScores({})
     setRoundStarted(false)
+    setSaveMessage('')
     setHoleMessage('Loading holes...')
 
     const { data, error } = await supabase
@@ -141,6 +145,7 @@ export default function Page() {
 
     setScores(initialScores)
     setRoundStarted(true)
+    setSaveMessage('')
   }
 
   function resetRound() {
@@ -149,6 +154,7 @@ export default function Page() {
       initialScores[hole.id] = hole.par
     })
     setScores(initialScores)
+    setSaveMessage('')
   }
 
   function changeScore(holeId: string, delta: number) {
@@ -174,8 +180,91 @@ export default function Page() {
 
   const overUnder = totalScore - totalPar
 
+  async function saveRound() {
+    if (!roundStarted) {
+      alert('먼저 라운드를 시작하세요.')
+      return
+    }
+
+    if (!selectedCourseId || !selectedLayoutId) {
+      alert('골프장과 코스를 먼저 선택하세요.')
+      return
+    }
+
+    setSaving(true)
+    setSaveMessage('Saving round...')
+
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser()
+
+      if (userError) {
+        console.error(userError)
+        setSaveMessage(`ERROR: ${userError.message}`)
+        setSaving(false)
+        return
+      }
+
+      if (!user) {
+        setSaveMessage('ERROR: 로그인된 사용자가 없습니다.')
+        setSaving(false)
+        return
+      }
+
+      const { data: roundData, error: roundError } = await supabase
+        .from('rounds')
+        .insert({
+          user_id: user.id,
+          golf_course_id: selectedCourseId,
+          layout_id: selectedLayoutId,
+          tee_name: 'White',
+          scorecard_orientation: 'portrait',
+          total_score: totalScore,
+        })
+        .select('id')
+        .single()
+
+      if (roundError) {
+        console.error(roundError)
+        setSaveMessage(`ERROR: ${roundError.message}`)
+        setSaving(false)
+        return
+      }
+
+      const roundId = roundData.id
+
+      const holeRows = holes.map((hole) => ({
+        round_id: roundId,
+        hole_id: hole.id,
+        hole_number: hole.hole_number,
+        par: hole.par,
+        strokes: scores[hole.id] ?? hole.par,
+      }))
+
+      const { error: scoreError } = await supabase
+        .from('round_hole_scores')
+        .insert(holeRows)
+
+      if (scoreError) {
+        console.error(scoreError)
+        setSaveMessage(`ERROR: ${scoreError.message}`)
+        setSaving(false)
+        return
+      }
+
+      setSaveMessage(`Saved successfully. Round ID: ${roundId}`)
+    } catch (err) {
+      console.error(err)
+      setSaveMessage('ERROR: unexpected error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
-    <div style={{ padding: 20 }}>
+    <div style={{ padding: 20, maxWidth: 900, margin: '0 auto' }}>
       <h1>🏌️ Golf Courses</h1>
       <p>{message}</p>
 
@@ -238,12 +327,13 @@ export default function Page() {
                   border: '1px solid #666',
                   background: '#111',
                   color: '#fff',
+                  marginRight: 12,
                 }}
               >
                 라운드 시작
               </button>
             ) : (
-              <div>
+              <>
                 <button
                   onClick={resetRound}
                   style={{
@@ -258,12 +348,33 @@ export default function Page() {
                   점수 초기화
                 </button>
 
+                <button
+                  onClick={saveRound}
+                  disabled={saving}
+                  style={{
+                    padding: '10px 16px',
+                    cursor: saving ? 'not-allowed' : 'pointer',
+                    border: '1px solid #666',
+                    background: saving ? '#666' : '#0a7',
+                    color: '#fff',
+                    marginRight: 12,
+                  }}
+                >
+                  {saving ? '저장중...' : '라운드 저장'}
+                </button>
+
                 <span style={{ fontSize: 18, fontWeight: 'bold' }}>
                   Total: {totalScore} / Par: {totalPar} / {overUnder === 0 ? 'E' : overUnder > 0 ? `+${overUnder}` : overUnder}
                 </span>
-              </div>
+              </>
             )}
           </div>
+
+          {saveMessage && (
+            <p style={{ marginBottom: 20, fontWeight: 'bold' }}>
+              {saveMessage}
+            </p>
+          )}
 
           {holes.map((hole) => (
             <div
