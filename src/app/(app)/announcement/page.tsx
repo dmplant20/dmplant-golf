@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores/authStore'
 import { Bell, Plus, Calendar, Heart, Users, X } from 'lucide-react'
+import { OFFICER_ROLES } from '../members/page'
 
 const EVENT_ICONS: Record<string, any> = { meeting: Users, celebration: Heart, condolence: Bell, other: Calendar }
 const EVENT_COLORS: Record<string, string> = { meeting: 'text-blue-400', celebration: 'text-yellow-400', condolence: 'text-gray-400', other: 'text-purple-400' }
@@ -11,7 +12,7 @@ export default function AnnouncementPage() {
   const { currentClubId, user, lang, myClubs } = useAuthStore()
   const ko = lang === 'ko'
   const myRole = myClubs.find((c) => c.id === currentClubId)?.role ?? 'member'
-  const canManage = ['president', 'secretary', 'officer'].includes(myRole)
+  const canManage = OFFICER_ROLES.includes(myRole)
 
   const [tab, setTab] = useState<'notice' | 'event'>('notice')
   const [notices, setNotices] = useState<any[]>([])

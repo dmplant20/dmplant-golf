@@ -1,16 +1,16 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, Users, Wallet, Trophy, MessageCircle, MoreHorizontal } from 'lucide-react'
+import { Home, Users, Wallet, CalendarDays, MessageCircle, MoreHorizontal } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 
 const navItems = [
-  { href: '/dashboard', icon: Home, ko: '홈', en: 'Home' },
-  { href: '/members', icon: Users, ko: '회원', en: 'Members' },
-  { href: '/finance', icon: Wallet, ko: '재무', en: 'Finance' },
-  { href: '/tournament', icon: Trophy, ko: '대회', en: 'Tournament' },
-  { href: '/chat', icon: MessageCircle, ko: '채팅', en: 'Chat' },
-  { href: '/more', icon: MoreHorizontal, ko: '더보기', en: 'More' },
+  { href: '/dashboard', icon: Home,          ko: '홈',   en: 'Home' },
+  { href: '/members',   icon: Users,          ko: '회원', en: 'Members' },
+  { href: '/finance',   icon: Wallet,         ko: '재무', en: 'Finance' },
+  { href: '/meetings',  icon: CalendarDays,   ko: '모임', en: 'Meetings' },
+  { href: '/chat',      icon: MessageCircle,  ko: '채팅', en: 'Chat' },
+  { href: '/more',      icon: MoreHorizontal, ko: '더보기', en: 'More' },
 ]
 
 export default function BottomNav() {

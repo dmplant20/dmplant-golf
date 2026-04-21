@@ -2,7 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores/authStore'
-import { Image, AlertCircle, LogOut, Globe, User, Settings, ChevronRight, CalendarDays } from 'lucide-react'
+import { Image, AlertCircle, LogOut, Globe, User, Settings, ChevronRight, CalendarDays, ClipboardList } from 'lucide-react'
 import Link from 'next/link'
 
 export default function MorePage() {
@@ -19,6 +19,7 @@ export default function MorePage() {
 
   const items = [
     { href: '/meetings', icon: CalendarDays, label: ko ? '정기모임 일정' : 'Regular Meetings', color: 'text-green-400' },
+    { href: '/scorecard', icon: ClipboardList, label: ko ? '개인 스코어카드' : 'My Scorecard', color: 'text-sky-400' },
     { href: '/album', icon: Image, label: ko ? '사진 앨범' : 'Photo Album', color: 'text-pink-400' },
     { href: '/announcement', icon: AlertCircle, label: ko ? '경조사 / 회의' : 'Events & Meetings', color: 'text-purple-400' },
     { href: '/settings', icon: Settings, label: ko ? '클럽 설정' : 'Club Settings', color: 'text-gray-400' },

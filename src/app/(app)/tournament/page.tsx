@@ -3,12 +3,13 @@ import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores/authStore'
 import { Trophy, Plus, Camera, Users, ChevronRight, Star } from 'lucide-react'
+import { OFFICER_ROLES } from '../members/page'
 
 export default function TournamentPage() {
   const { currentClubId, user, lang, myClubs } = useAuthStore()
   const ko = lang === 'ko'
   const myRole = myClubs.find((c) => c.id === currentClubId)?.role ?? 'member'
-  const canManage = ['president', 'secretary', 'officer'].includes(myRole)
+  const canManage = OFFICER_ROLES.includes(myRole)
 
   const [tab, setTab] = useState<'list' | 'ranking'>('list')
   const [tournaments, setTournaments] = useState<any[]>([])

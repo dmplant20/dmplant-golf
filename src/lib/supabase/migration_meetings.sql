@@ -30,3 +30,93 @@ CREATE TABLE IF NOT EXISTS meeting_overrides (
   created_at timestamptz DEFAULT now(),
   UNIQUE(club_id, year, month)
 );
+
+-- 3. RLS 활성화
+ALTER TABLE recurring_meetings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE meeting_overrides  ENABLE ROW LEVEL SECURITY;
+
+-- 4. recurring_meetings RLS 정책
+--    조회: 해당 클럽 멤버라면 누구나
+CREATE POLICY "recurring_meetings_select"
+  ON recurring_meetings FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM club_memberships
+      WHERE club_memberships.club_id = recurring_meetings.club_id
+        AND club_memberships.user_id = auth.uid()
+        AND club_memberships.status  = 'approved'
+    )
+  );
+
+--    수정/삽입: 회장·총무만
+CREATE POLICY "recurring_meetings_insert"
+  ON recurring_meetings FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM club_memberships
+      WHERE club_memberships.club_id = recurring_meetings.club_id
+        AND club_memberships.user_id = auth.uid()
+        AND club_memberships.role    IN ('president', 'secretary')
+        AND club_memberships.status  = 'approved'
+    )
+  );
+
+CREATE POLICY "recurring_meetings_update"
+  ON recurring_meetings FOR UPDATE
+  USING (
+    EXISTS (
+      SELECT 1 FROM club_memberships
+      WHERE club_memberships.club_id = recurring_meetings.club_id
+        AND club_memberships.user_id = auth.uid()
+        AND club_memberships.role    IN ('president', 'secretary')
+        AND club_memberships.status  = 'approved'
+    )
+  );
+
+-- 5. meeting_overrides RLS 정책
+CREATE POLICY "meeting_overrides_select"
+  ON meeting_overrides FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM club_memberships
+      WHERE club_memberships.club_id = meeting_overrides.club_id
+        AND club_memberships.user_id = auth.uid()
+        AND club_memberships.status  = 'approved'
+    )
+  );
+
+CREATE POLICY "meeting_overrides_insert"
+  ON meeting_overrides FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM club_memberships
+      WHERE club_memberships.club_id = meeting_overrides.club_id
+        AND club_memberships.user_id = auth.uid()
+        AND club_memberships.role    IN ('president', 'secretary')
+        AND club_memberships.status  = 'approved'
+    )
+  );
+
+CREATE POLICY "meeting_overrides_update"
+  ON meeting_overrides FOR UPDATE
+  USING (
+    EXISTS (
+      SELECT 1 FROM club_memberships
+      WHERE club_memberships.club_id = meeting_overrides.club_id
+        AND club_memberships.user_id = auth.uid()
+        AND club_memberships.role    IN ('president', 'secretary')
+        AND club_memberships.status  = 'approved'
+    )
+  );
+
+CREATE POLICY "meeting_overrides_delete"
+  ON meeting_overrides FOR DELETE
+  USING (
+    EXISTS (
+      SELECT 1 FROM club_memberships
+      WHERE club_memberships.club_id = meeting_overrides.club_id
+        AND club_memberships.user_id = auth.uid()
+        AND club_memberships.role    IN ('president', 'secretary')
+        AND club_memberships.status  = 'approved'
+    )
+  );

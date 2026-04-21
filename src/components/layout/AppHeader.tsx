@@ -69,7 +69,6 @@ export default function AppHeader() {
           </button>
           <button className="relative text-gray-400 hover:text-green-400 transition">
             <Bell size={20} />
-            <span className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full text-[10px] flex items-center justify-center text-white">3</span>
           </button>
         </div>
       </div>

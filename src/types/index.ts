@@ -1,6 +1,6 @@
 export type Currency = 'KRW' | 'VND' | 'IDR'
 
-export type UserRole = 'president' | 'secretary' | 'officer' | 'member'
+export type UserRole = 'president' | 'vice_president' | 'secretary' | 'auditor' | 'advisor' | 'officer' | 'member'
 
 export type MembershipStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn'
 
