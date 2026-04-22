@@ -172,7 +172,7 @@ export default function ScorecardPage() {
 
     const { data, error } = await supabase
       .from('rounds')
-      .select('id, total_score, created_at, played_at, tee_name, scorecard_orientation, golf_course_id, layout_id')
+     .select('id, total_score, created_at, tee_name, scorecard_orientation, golf_course_id, layout_id')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
 
