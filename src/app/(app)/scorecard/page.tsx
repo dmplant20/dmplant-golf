@@ -11,7 +11,7 @@ const supabase = createClient(
 type Course = {
   id: string
   name: string
-  region: string
+  region: string | null
 }
 
 type Layout = {
@@ -36,6 +36,17 @@ type Hole = {
 
 type HoleScoreMap = Record<string, number>
 
+type SavedRound = {
+  id: string
+  total_score: number | null
+  created_at?: string | null
+  played_at?: string | null
+  tee_name?: string | null
+  scorecard_orientation?: string | null
+  golf_course_id?: string | null
+  layout_id?: string | null
+}
+
 export default function ScorecardPage() {
   const [user, setUser] = useState<any>(null)
   const [email, setEmail] = useState('')
@@ -44,11 +55,13 @@ export default function ScorecardPage() {
   const [courses, setCourses] = useState<Course[]>([])
   const [layouts, setLayouts] = useState<Layout[]>([])
   const [holes, setHoles] = useState<Hole[]>([])
+  const [myRounds, setMyRounds] = useState<SavedRound[]>([])
 
   const [message, setMessage] = useState('loading courses...')
   const [layoutMessage, setLayoutMessage] = useState('')
   const [holeMessage, setHoleMessage] = useState('')
   const [saveMessage, setSaveMessage] = useState('')
+  const [roundListMessage, setRoundListMessage] = useState('')
 
   const [selectedCourseId, setSelectedCourseId] = useState('')
   const [selectedCourseName, setSelectedCourseName] = useState('')
@@ -67,7 +80,14 @@ export default function ScorecardPage() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
+      const currentUser = session?.user ?? null
+      setUser(currentUser)
+
+      if (currentUser) {
+        loadMyRounds(currentUser.id)
+      } else {
+        setMyRounds([])
+      }
     })
 
     return () => {
@@ -75,12 +95,29 @@ export default function ScorecardPage() {
     }
   }, [])
 
+  useEffect(() => {
+    if (user?.id) {
+      loadMyRounds(user.id)
+    }
+  }, [user?.id])
+
   async function checkUser() {
     const {
       data: { user },
+      error,
     } = await supabase.auth.getUser()
 
+    if (error) {
+      console.error(error)
+      setAuthMessage(`ERROR: ${error.message}`)
+      return
+    }
+
     setUser(user ?? null)
+
+    if (user?.id) {
+      await loadMyRounds(user.id)
+    }
   }
 
   async function handleLogin() {
@@ -94,7 +131,7 @@ export default function ScorecardPage() {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: window.location.origin + '/scorecard',
+        emailRedirectTo: `${window.location.origin}/scorecard`,
       },
     })
 
@@ -110,6 +147,7 @@ export default function ScorecardPage() {
   async function handleLogout() {
     await supabase.auth.signOut()
     setUser(null)
+    setMyRounds([])
     setAuthMessage('로그아웃되었습니다.')
   }
 
@@ -127,6 +165,25 @@ export default function ScorecardPage() {
 
     setCourses(data || [])
     setMessage(`Loaded ${data?.length || 0} courses`)
+  }
+
+  async function loadMyRounds(userId: string) {
+    setRoundListMessage('내 기록 불러오는 중...')
+
+    const { data, error } = await supabase
+      .from('rounds')
+      .select('id, total_score, created_at, played_at, tee_name, scorecard_orientation, golf_course_id, layout_id')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error(error)
+      setRoundListMessage(`ERROR: ${error.message}`)
+      return
+    }
+
+    setMyRounds(data || [])
+    setRoundListMessage(`내 기록 ${data?.length || 0}건`)
   }
 
   async function handleCourseClick(courseId: string, courseName: string) {
@@ -187,7 +244,7 @@ export default function ScorecardPage() {
 
   function startRound() {
     if (!selectedLayoutId || holes.length === 0) {
-      alert('먼저 코스를 선택하세요.')
+      alert('먼저 골프장과 코스를 선택하세요.')
       return
     }
 
@@ -214,6 +271,7 @@ export default function ScorecardPage() {
     setScores((prev) => {
       const current = prev[holeId] ?? 0
       const next = Math.max(1, current + delta)
+
       return {
         ...prev,
         [holeId]: next,
@@ -230,6 +288,21 @@ export default function ScorecardPage() {
   }, [holes])
 
   const overUnder = totalScore - totalPar
+
+  const averageScore = useMemo(() => {
+    const valid = myRounds.filter((round) => typeof round.total_score === 'number')
+    if (valid.length === 0) return null
+
+    const total = valid.reduce((sum, round) => sum + (round.total_score ?? 0), 0)
+    return (total / valid.length).toFixed(1)
+  }, [myRounds])
+
+  function formatDate(value?: string | null) {
+    if (!value) return '-'
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return value
+    return date.toLocaleString()
+  }
 
   async function saveRound() {
     if (!roundStarted) {
@@ -251,23 +324,24 @@ export default function ScorecardPage() {
     setSaveMessage('Saving round...')
 
     try {
+      const roundPayload = {
+        user_id: user.id,
+        golf_course_id: selectedCourseId,
+        layout_id: selectedLayoutId,
+        tee_name: 'White',
+        scorecard_orientation: 'portrait',
+        total_score: totalScore,
+      }
+
       const { data: roundData, error: roundError } = await supabase
         .from('rounds')
-        .insert({
-          user_id: user.id,
-          golf_course_id: selectedCourseId,
-          layout_id: selectedLayoutId,
-          tee_name: 'White',
-          scorecard_orientation: 'portrait',
-          total_score: totalScore,
-        })
+        .insert(roundPayload)
         .select('id')
         .single()
 
       if (roundError) {
-        console.error(roundError)
-        setSaveMessage(`ERROR: ${roundError.message}`)
-        setSaving(false)
+        console.error('round insert error:', roundError)
+        setSaveMessage(`ERROR(rounds): ${roundError.message}`)
         return
       }
 
@@ -281,21 +355,21 @@ export default function ScorecardPage() {
         strokes: scores[hole.id] ?? hole.par,
       }))
 
-      const { error: scoreError } = await supabase
+      const { error: holeScoreError } = await supabase
         .from('round_hole_scores')
         .insert(holeRows)
 
-      if (scoreError) {
-        console.error(scoreError)
-        setSaveMessage(`ERROR: ${scoreError.message}`)
-        setSaving(false)
+      if (holeScoreError) {
+        console.error('round_hole_scores insert error:', holeScoreError)
+        setSaveMessage(`ERROR(round_hole_scores): ${holeScoreError.message}`)
         return
       }
 
       setSaveMessage(`Saved successfully. Round ID: ${roundId}`)
-    } catch (err) {
+      await loadMyRounds(user.id)
+    } catch (err: any) {
       console.error(err)
-      setSaveMessage('ERROR: unexpected error')
+      setSaveMessage(`ERROR: ${err?.message || 'unexpected error'}`)
     } finally {
       setSaving(false)
     }
@@ -366,9 +440,31 @@ export default function ScorecardPage() {
         {authMessage && <p style={{ marginTop: 12 }}>{authMessage}</p>}
       </div>
 
+      <div
+        style={{
+          border: '1px solid #444',
+          padding: 16,
+          marginBottom: 24,
+          borderRadius: 8,
+        }}
+      >
+        <h2>📊 내 기록 요약</h2>
+        {user ? (
+          <>
+            <p>{roundListMessage}</p>
+            <p>총 라운드: {myRounds.length}</p>
+            <p>평균 스코어: {averageScore ?? '-'}</p>
+          </>
+        ) : (
+          <p>로그인하면 내 기록과 평균 스코어를 볼 수 있습니다.</p>
+        )}
+      </div>
+
       <p>{message}</p>
 
       <div style={{ marginBottom: 30 }}>
+        <h2>🏞️ 골프장 선택</h2>
+
         {courses.map((course) => (
           <div
             key={course.id}
@@ -381,7 +477,7 @@ export default function ScorecardPage() {
               fontWeight: selectedCourseId === course.id ? 'bold' : 'normal',
             }}
           >
-            {course.name} ({course.region})
+            {course.name} {course.region ? `(${course.region})` : ''}
           </div>
         ))}
       </div>
@@ -531,6 +627,39 @@ export default function ScorecardPage() {
           ))}
         </div>
       )}
+
+      <div
+        style={{
+          border: '1px solid #444',
+          padding: 16,
+          marginTop: 32,
+          marginBottom: 32,
+          borderRadius: 8,
+        }}
+      >
+        <h2>🧾 내 최근 라운드</h2>
+
+        {!user ? (
+          <p>로그인 후 확인 가능합니다.</p>
+        ) : myRounds.length === 0 ? (
+          <p>아직 저장된 라운드가 없습니다.</p>
+        ) : (
+          myRounds.map((round, index) => (
+            <div
+              key={round.id}
+              style={{
+                padding: '12px 0',
+                borderBottom: index === myRounds.length - 1 ? 'none' : '1px solid #333',
+              }}
+            >
+              <div>Round ID: {round.id}</div>
+              <div>Score: {round.total_score ?? '-'}</div>
+              <div>Date: {formatDate(round.played_at || round.created_at)}</div>
+              <div>Tee: {round.tee_name || '-'}</div>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   )
 }
