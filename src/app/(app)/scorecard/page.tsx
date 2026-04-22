@@ -117,7 +117,16 @@ export default function ScorecardPage() {
 
     if (user?.id) {
       await loadMyRounds(user.id)
-    }
+    }if (error) {
+  console.error(error)
+
+  if (error.message !== 'Auth session missing!') {
+    setAuthMessage(`ERROR: ${error.message}`)
+  }
+
+  setUser(null)
+  return
+}
   }
 
   async function handleLogin() {
