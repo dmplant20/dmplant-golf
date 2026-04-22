@@ -5,7 +5,7 @@ import { useAuthStore } from '@/stores/authStore'
 import {
   Plus, Camera, TrendingUp, TrendingDown, Wallet,
   ChevronDown, ChevronUp, Receipt, Copy, Check,
-  Edit2, Upload, Building2, X, QrCode,
+  Edit2, Upload, Building2, X, QrCode, Gift, AlertTriangle,
 } from 'lucide-react'
 import { OFFICER_ROLES } from '../members/page'
 
@@ -26,14 +26,17 @@ export default function FinancePage() {
   const canManage = ['president', 'secretary'].includes(myRole)
   const isOfficer = OFFICER_ROLES.includes(myRole)
 
-  const [txns,        setTxns]        = useState<any[]>([])
-  const [currency,    setCurrency]    = useState('KRW')
-  const [showAdd,     setShowAdd]     = useState(false)
-  const [loading,     setLoading]     = useState(true)
-  const [ocrLoading,  setOcrLoading]  = useState(false)
-  const [expandedId,  setExpandedId]  = useState<string | null>(null)
-  const [receiptUrl,  setReceiptUrl]  = useState<string | null>(null)
-  const [members,     setMembers]     = useState<any[]>([])
+  const [txns,         setTxns]         = useState<any[]>([])
+  const [sponsorships, setSponsorships] = useState<any[]>([])
+  const [fineRules,    setFineRules]    = useState<any>(null)
+  const [currency,     setCurrency]     = useState('KRW')
+  const [showAdd,      setShowAdd]      = useState(false)
+  const [loading,      setLoading]      = useState(true)
+  const [ocrLoading,   setOcrLoading]   = useState(false)
+  const [expandedId,   setExpandedId]   = useState<string | null>(null)
+  const [receiptUrl,   setReceiptUrl]   = useState<string | null>(null)
+  const [members,      setMembers]      = useState<any[]>([])
+  const [showFineRules,setShowFineRules]= useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   // ── payment info ───────────────────────────────────────────────────────
@@ -60,14 +63,17 @@ export default function FinancePage() {
     const query = isOfficer
       ? supabase.from('finance_transactions').select('*, users!member_id(full_name, full_name_en), recorder:users!recorded_by(full_name, full_name_en)')
       : supabase.from('finance_transactions').select('*, users!member_id(full_name, full_name_en)')
-    const [{ data: transactions }, { data: club }, { data: mems }, { data: pi }] = await Promise.all([
+    const [{ data: transactions }, { data: club }, { data: mems }, { data: pi }, { data: sponsors }] = await Promise.all([
       query.eq('club_id', currentClubId).order('transaction_date', { ascending: false }),
-      supabase.from('clubs').select('currency').eq('id', currentClubId).single(),
+      supabase.from('clubs').select('currency,fine_handicap_per_stroke,fine_handicap_max,fine_notes').eq('id', currentClubId).single(),
       supabase.from('club_memberships').select('user_id, users(full_name, full_name_en)').eq('club_id', currentClubId).eq('status', 'approved'),
       supabase.from('club_payment_info').select('*').eq('club_id', currentClubId).maybeSingle(),
+      supabase.from('sponsorships').select('*').eq('club_id', currentClubId).order('sponsor_date', { ascending: false }),
     ])
     setTxns(transactions ?? [])
+    setSponsorships(sponsors ?? [])
     if (club?.currency) setCurrency(club.currency)
+    if (club?.fine_handicap_per_stroke || club?.fine_notes) setFineRules(club)
     setMembers(mems ?? [])
     setPayInfo(pi ?? null)
     if (pi) setPayForm({ bankName: pi.bank_name ?? '', bankAccount: pi.bank_account ?? '', bankHolder: pi.bank_holder ?? '', memo: pi.memo ?? '' })
@@ -521,6 +527,98 @@ export default function FinancePage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ━━ 벌금 규정 (전 회원 열람) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      {fineRules && (
+        <div className="glass-card rounded-2xl overflow-hidden">
+          <button className="w-full px-4 py-3.5 flex items-center gap-3"
+            onClick={() => setShowFineRules(v => !v)}>
+            <AlertTriangle size={16} style={{ color: '#fbbf24' }} className="flex-shrink-0" />
+            <span className="text-sm font-semibold text-white flex-1 text-left">
+              {ko ? '🏌️ 벌금 규정' : '🏌️ Fine Rules'}
+            </span>
+            {fineRules.fine_handicap_per_stroke && (
+              <span className="text-xs mr-1" style={{ color: '#5a7a5a' }}>
+                {sym}{Number(fineRules.fine_handicap_per_stroke).toLocaleString()}{ko ? '/타' : '/stroke'}
+              </span>
+            )}
+            {showFineRules ? <ChevronUp size={14} style={{ color: '#5a7a5a' }} /> : <ChevronDown size={14} style={{ color: '#5a7a5a' }} />}
+          </button>
+          {showFineRules && (
+            <div className="px-4 pb-4 space-y-2.5" style={{ borderTop: '1px solid rgba(34,197,94,0.1)' }}>
+              {fineRules.fine_handicap_per_stroke && (
+                <div className="mt-3 rounded-xl px-3.5 py-3"
+                  style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.18)' }}>
+                  <p className="text-xs font-semibold mb-1" style={{ color: '#fbbf24' }}>
+                    {ko ? '헨디오버 벌금' : 'Handicap-over fine'}
+                  </p>
+                  <p className="text-sm font-bold text-white">
+                    {sym}{Number(fineRules.fine_handicap_per_stroke).toLocaleString()}
+                    <span className="text-xs font-normal ml-1" style={{ color: '#a3b8a3' }}>{ko ? '/ 타당' : '/ stroke'}</span>
+                    {fineRules.fine_handicap_max && (
+                      <>
+                        <span style={{ color: '#5a7a5a' }}> · </span>
+                        <span style={{ color: '#fde68a' }}>{ko ? '최고' : 'max'} </span>
+                        {sym}{Number(fineRules.fine_handicap_max).toLocaleString()}
+                      </>
+                    )}
+                  </p>
+                </div>
+              )}
+              {fineRules.fine_notes && (
+                <div className="rounded-xl px-3.5 py-3"
+                  style={{ background: 'rgba(251,191,36,0.05)', border: '1px solid rgba(251,191,36,0.1)' }}>
+                  <p className="text-xs leading-relaxed whitespace-pre-wrap" style={{ color: '#c0b060' }}>
+                    {fineRules.fine_notes}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ━━ 찬조 내역 (전 회원 열람) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      {(sponsorships.length > 0 || canManage) && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Gift size={14} style={{ color: '#a78bfa' }} />
+              <h3 className="text-sm font-semibold" style={{ color: '#a3b8a3' }}>{ko ? '찬조 내역' : 'Sponsorships'}</h3>
+            </div>
+            {canManage && (
+              <span className="text-xs" style={{ color: '#5a7a5a' }}>
+                {ko ? '(클럽 설정에서 등록)' : '(Register in Settings)'}
+              </span>
+            )}
+          </div>
+          {sponsorships.length === 0 ? (
+            <div className="glass-card rounded-xl py-6 text-center">
+              <p className="text-sm" style={{ color: '#3a5a3a' }}>{ko ? '찬조 내역이 없습니다' : 'No sponsorships'}</p>
+            </div>
+          ) : sponsorships.map(s => {
+            const cSym = { KRW: '₩', VND: '₫', IDR: 'Rp' }[s.currency as string] ?? sym
+            const isItem = s.type === 'item'
+            const valueStr = isItem
+              ? `${s.item_description ?? ''}${s.estimated_value ? ` (${cSym}${Number(s.estimated_value).toLocaleString()} ${ko ? '상당' : 'est.'})` : ''}`
+              : `${cSym}${Number(s.amount).toLocaleString()}`
+            return (
+              <div key={s.id} className="rounded-xl overflow-hidden"
+                style={{ background: 'linear-gradient(135deg,rgba(124,58,237,0.1),rgba(6,13,6,0.95))', border: '1px solid rgba(124,58,237,0.2)' }}>
+                <div className="px-4 py-3 flex items-center gap-3">
+                  <span className="text-xl flex-shrink-0">{isItem ? '🎁' : '💰'}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-semibold text-sm">{s.member_name} {ko ? '회원' : ''}</p>
+                    <p className="text-xs mt-0.5" style={{ color: '#c4b5fd' }}>{valueStr}</p>
+                    {s.note && <p className="text-xs italic mt-0.5" style={{ color: '#7a6a9a' }}>{s.note}</p>}
+                  </div>
+                  <p className="text-xs flex-shrink-0" style={{ color: '#5a4a7a' }}>{s.sponsor_date}</p>
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
 
