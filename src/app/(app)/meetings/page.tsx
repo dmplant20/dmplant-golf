@@ -764,7 +764,7 @@ export default function MeetingsPage() {
             value={pForm.venue}
             onChange={v => setPForm(f => ({ ...f, venue: v }))}
             onSelect={c => setPForm(f => ({ ...f, venue: c.name }))}
-            placeholder={ko ? '2글자 이상 입력하면 자동검색...' : 'Type 2+ chars to search...'}
+            placeholder={ko ? '골프장명 입력하면 자동검색...' : 'Type to search courses...'}
           />
         </div>
         <div>

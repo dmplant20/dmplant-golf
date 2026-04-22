@@ -11,6 +11,13 @@ interface Course {
   holes: number
   par: number
   distance_km: number | null
+  green_fee_weekday_vnd?: number | null
+  green_fee_weekend_vnd?: number | null
+  address?: string | null
+  phone?: string | null
+  website?: string | null
+  designer?: string | null
+  description?: string | null
 }
 
 interface Props {
@@ -19,19 +26,20 @@ interface Props {
   onSelect: (course: Course) => void
   placeholder?: string
   className?: string
+  minChars?: number
 }
 
-export default function CourseSearchInput({ value, onChange, onSelect, placeholder = '골프장 검색...', className = '' }: Props) {
+export default function CourseSearchInput({ value, onChange, onSelect, placeholder = '골프장 검색...', className = '', minChars = 1 }: Props) {
   const [results, setResults] = useState<Course[]>([])
   const [loading, setLoading] = useState(false)
   const [open, setOpen] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
 
-  // 2글자 이상 입력 시 자동 검색
+  // minChars 이상 입력 시 자동 검색
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    if (value.trim().length < 2) {
+    if (value.trim().length < minChars) {
       setResults([])
       setOpen(false)
       return
@@ -42,7 +50,7 @@ export default function CourseSearchInput({ value, onChange, onSelect, placehold
       const q = value.trim().toLowerCase()
       const { data } = await supabase
         .from('golf_courses')
-        .select('id,name,name_vn,province,holes,par,distance_km')
+        .select('id,name,name_vn,province,holes,par,distance_km,green_fee_weekday_vnd,green_fee_weekend_vnd,address,phone,website,designer,description')
         .eq('is_active', true)
         .or(`name.ilike.%${q}%,name_vn.ilike.%${q}%,province.ilike.%${q}%`)
         .order('distance_km', { nullsFirst: false })
@@ -51,7 +59,7 @@ export default function CourseSearchInput({ value, onChange, onSelect, placehold
       setOpen(true)
       setLoading(false)
     }, 250)
-  }, [value])
+  }, [value, minChars])
 
   // 외부 클릭 시 닫기
   useEffect(() => {
@@ -76,7 +84,7 @@ export default function CourseSearchInput({ value, onChange, onSelect, placehold
         <input
           value={value}
           onChange={e => onChange(e.target.value)}
-          onFocus={() => value.length >= 2 && results.length > 0 && setOpen(true)}
+          onFocus={() => value.length >= minChars && results.length > 0 && setOpen(true)}
           placeholder={placeholder}
           className="input-field pl-9 pr-9"
           autoComplete="off"
@@ -134,7 +142,7 @@ export default function CourseSearchInput({ value, onChange, onSelect, placehold
       )}
 
       {/* 결과 없음 */}
-      {open && !loading && results.length === 0 && value.trim().length >= 2 && (
+      {open && !loading && results.length === 0 && value.trim().length >= minChars && (
         <div className="course-dropdown">
           <div className="px-4 py-3 text-center">
             <p className="text-sm" style={{ color: '#5a7a5a' }}>검색 결과가 없습니다</p>

@@ -7,6 +7,7 @@ import {
   ChevronDown, ChevronUp, Search,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import CourseSearchInput from '@/components/ui/CourseSearchInput'
 
 // ── 골프장 폼 기본값 ──────────────────────────────────────────────────────
 const EMPTY_COURSE = {
@@ -390,12 +391,34 @@ export default function SettingsPage() {
 
             {/* 스크롤 폼 */}
             <div className="overflow-y-auto flex-1 px-5 py-4 space-y-3">
-              {/* 이름 */}
+              {/* 이름 — 자동완성 */}
               <div>
                 <label className="text-xs text-gray-400 block mb-1">{ko ? '골프장명 (영문) *' : 'Course Name *'}</label>
-                <input value={courseForm.name} onChange={e => setCourseForm(f => ({ ...f, name: e.target.value }))}
-                  placeholder="Long Thanh Golf Club"
-                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-green-500" />
+                <CourseSearchInput
+                  value={courseForm.name}
+                  onChange={v => setCourseForm(f => ({ ...f, name: v }))}
+                  onSelect={c => {
+                    // 기존 DB 골프장 선택 시 모든 필드 자동 완성
+                    setCourseForm(f => ({
+                      ...f,
+                      name:     c.name,
+                      name_vn:  c.name_vn ?? f.name_vn,
+                      province: c.province ?? f.province,
+                      holes:    c.holes ?? f.holes,
+                      par:      c.par ?? f.par,
+                      distance_km:          c.distance_km != null          ? String(c.distance_km)          : f.distance_km,
+                      green_fee_weekday_vnd: c.green_fee_weekday_vnd != null ? String(c.green_fee_weekday_vnd) : f.green_fee_weekday_vnd,
+                      green_fee_weekend_vnd: c.green_fee_weekend_vnd != null ? String(c.green_fee_weekend_vnd) : f.green_fee_weekend_vnd,
+                      address:     c.address     ?? f.address,
+                      phone:       c.phone       ?? f.phone,
+                      website:     c.website     ?? f.website,
+                      designer:    c.designer    ?? f.designer,
+                      description: c.description ?? f.description,
+                    }))
+                  }}
+                  placeholder={ko ? '골프장명 입력 (1자부터 자동검색)' : 'Type course name to search...'}
+                  className="text-sm"
+                />
               </div>
               <div>
                 <label className="text-xs text-gray-400 block mb-1">{ko ? '골프장명 (베트남어)' : 'Course Name (Vietnamese)'}</label>
