@@ -266,27 +266,38 @@ export default function ChampionshipPage() {
         </div>
       ) : (
         /* 목록 헤더 */
-        <div className="px-4 pt-5 pb-3 flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg,rgba(22,163,74,0.2),rgba(22,163,74,0.08))', border: '1px solid rgba(34,197,94,0.2)' }}>
+        <div className="px-4 pt-5 pb-3">
+          <div className="flex items-center justify-between gap-3">
+            {/* 아이콘 + 타이틀 한 줄 */}
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-xl flex-shrink-0 flex items-center justify-center"
+                style={{ background: 'linear-gradient(135deg,rgba(22,163,74,0.18),rgba(22,163,74,0.06))', border: '1px solid rgba(34,197,94,0.18)' }}>
                 <Swords size={15} style={{ color: '#22c55e' }} />
               </div>
-              <h1 className="text-base font-bold text-white">{ko ? '클럽 대회' : 'Club Championship'}</h1>
+              <div className="min-w-0">
+                <h1 className="text-base font-bold text-white leading-tight">{ko ? '클럽 대회' : 'Club Championship'}</h1>
+                {/* 4가지 유형을 컬러 닷으로 표현 — 텍스트 줄바꿈 없음 */}
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  {EVENT_TYPES.map(et => (
+                    <span key={et.value} className="flex items-center gap-1 text-[10px] font-medium whitespace-nowrap"
+                      style={{ color: `rgba(${et.rgb},0.7)` }}>
+                      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: et.color }} />
+                      {ko ? et.ko : et.en}
+                    </span>
+                  ))}
+                </div>
+              </div>
             </div>
-            <p className="text-[11px] mt-1 ml-10" style={{ color: '#3a5a3a' }}>
-              {ko ? '상반기 · 하반기 · 연말 · 특별 대회' : '1st Half · 2nd Half · Year-End · Special'}
-            </p>
+            {/* 생성 버튼 */}
+            {canManage && view === 'list' && tab === 'list' && (
+              <button onClick={() => setShowCreate(true)}
+                className="flex-shrink-0 flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl whitespace-nowrap"
+                style={{ background: 'linear-gradient(135deg,#16a34a,#14532d)', color: '#fff', boxShadow: '0 4px 14px rgba(22,163,74,0.3)', border: '1px solid rgba(34,197,94,0.25)' }}>
+                <Plus size={13} strokeWidth={2.5} />
+                {ko ? '대회 생성' : 'New Event'}
+              </button>
+            )}
           </div>
-          {canManage && view === 'list' && tab === 'list' && (
-            <button onClick={() => setShowCreate(true)}
-              className="flex items-center gap-1.5 text-sm font-semibold px-3.5 py-2 rounded-xl whitespace-nowrap"
-              style={{ background: 'linear-gradient(135deg,#16a34a,#14532d)', color: '#fff', boxShadow: '0 4px 14px rgba(22,163,74,0.35)', border: '1px solid rgba(34,197,94,0.3)' }}>
-              <Plus size={14} strokeWidth={2.5} />
-              {ko ? '대회 생성' : 'New Event'}
-            </button>
-          )}
         </div>
       )}
 
