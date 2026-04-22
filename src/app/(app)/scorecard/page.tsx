@@ -375,9 +375,11 @@ export default function ScorecardPage() {
     }
   }
 
-  return (
-    <div style={{ padding: 20, maxWidth: 900, margin: '0 auto' }}>
-      <h1>🏌️ Scorecard</h1>
+ return (
+  <div style={{ padding: 20, maxWidth: 900, margin: '0 auto' }}>
+    <h1>🏌️ Scorecard</h1>
+
+    <GoogleMapView />
 
       <div
         style={{
