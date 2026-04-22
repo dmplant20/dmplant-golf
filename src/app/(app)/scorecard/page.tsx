@@ -1,699 +1,536 @@
 'use client'
-import { useEffect, useState, useRef } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { useAuthStore } from '@/stores/authStore'
-import {
-  ChevronLeft, Plus, Trash2, Save, X,
-  Flag, BarChart2, Calendar, MapPin, ChevronRight,
-} from 'lucide-react'
-import { useRouter } from 'next/navigation'
-import CourseSearchInput from '@/components/ui/CourseSearchInput'
 
-// ── 기본 파 배열 ──────────────────────────────────────────────────────────
-// 72파 기준: OUT 36, IN 36
-const DEFAULT_PARS_18 = [4,4,3,5,4,3,4,5,4, 4,3,5,4,4,3,5,4,4]
-const DEFAULT_PARS_9  = [4,4,3,5,4,3,4,5,4]
+import { useEffect, useMemo, useState } from 'react'
+import { createClient } from '@supabase/supabase-js'
 
-function computePars(totalPar: number, holes: number): number[] {
-  const base = holes === 9 ? [...DEFAULT_PARS_9] : [...DEFAULT_PARS_18]
-  const baseSum = base.reduce((a, b) => a + b, 0)
-  const diff = totalPar - baseSum
-  // diff 만큼 파 5 → 4 또는 파 4 → 5 조정
-  const result = [...base]
-  if (diff > 0) {
-    let d = diff
-    for (let i = 0; i < result.length && d > 0; i++) {
-      if (result[i] < 5) { result[i]++; d-- }
-    }
-  } else if (diff < 0) {
-    let d = -diff
-    for (let i = result.length - 1; i >= 0 && d > 0; i--) {
-      if (result[i] > 3) { result[i]--; d-- }
-    }
-  }
-  return result
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
+
+type Course = {
+  id: string
+  name: string
+  region: string
 }
 
-// ── 스코어 색상 ───────────────────────────────────────────────────────────
-function scoreColor(score: number | null, par: number): string {
-  if (score === null) return 'text-gray-500 bg-gray-800'
-  const d = score - par
-  if (d <= -2) return 'text-yellow-200 bg-indigo-700'  // eagle+
-  if (d === -1) return 'text-white bg-blue-600'          // birdie
-  if (d === 0)  return 'text-white bg-green-700'         // par
-  if (d === 1)  return 'text-white bg-yellow-600'        // bogey
-  if (d === 2)  return 'text-white bg-orange-600'        // double
-  return 'text-white bg-red-700'                         // triple+
+type Layout = {
+  id: string
+  golf_course_id: string
+  layout_name: string
+  tee_name: string | null
+  total_holes: number | null
+  total_par: number | null
+  total_yards: number | null
 }
 
-function scoreLabel(score: number | null, par: number, ko: boolean): string {
-  if (score === null) return ''
-  const d = score - par
-  if (d <= -2) return ko ? '이글+' : 'Eagle+'
-  if (d === -1) return ko ? '버디' : 'Birdie'
-  if (d === 0)  return ko ? '파' : 'Par'
-  if (d === 1)  return ko ? '보기' : 'Bogey'
-  if (d === 2)  return ko ? '더블' : 'Dbl'
-  return ko ? '트리플+' : 'Tri+'
+type Hole = {
+  id: string
+  layout_id: string
+  hole_number: number
+  par: number
+  yards: number | null
+  handicap_index: number | null
+  hole_name: string | null
 }
 
-// ── 통계 계산 ─────────────────────────────────────────────────────────────
-function calcStats(rounds: any[]) {
-  if (!rounds.length) return null
-  const completed = rounds.filter(r => r.total_score)
-  if (!completed.length) return null
-  const scores = completed.map(r => r.total_score)
-  return {
-    count: rounds.length,
-    best:  Math.min(...scores),
-    avg:   Math.round(scores.reduce((a, b) => a + b, 0) / scores.length),
-    latest: completed[0]?.total_score,
-    latestPar: completed[0]?.course_par,
-  }
-}
+type HoleScoreMap = Record<string, number>
 
-// ─────────────────────────────────────────────────────────────────────────
 export default function ScorecardPage() {
-  const router = useRouter()
-  const { user, lang } = useAuthStore()
-  const ko = lang === 'ko'
+  const [user, setUser] = useState<any>(null)
+  const [email, setEmail] = useState('')
+  const [authMessage, setAuthMessage] = useState('')
 
-  // ── views: 'list' | 'card' ────────────────────────────────────────────
-  const [view,           setView]           = useState<'list'|'card'>('list')
-  const [rounds,         setRounds]         = useState<any[]>([])
-  const [selectedRound,  setSelectedRound]  = useState<any>(null)
-  const [holeRows,       setHoleRows]       = useState<any[]>([]) // loaded hole data
-  const [loading,        setLoading]        = useState(true)
+  const [courses, setCourses] = useState<Course[]>([])
+  const [layouts, setLayouts] = useState<Layout[]>([])
+  const [holes, setHoles] = useState<Hole[]>([])
 
-  // ── new round sheet ───────────────────────────────────────────────────
-  const [showNew,      setShowNew]      = useState(false)
-  const [courses,      setCourses]      = useState<any[]>([])
-  const [courseSearch, setCourseSearch] = useState('')
-  const [newForm,      setNewForm]      = useState({
-    courseName: '', courseId: '', coursePar: 72, holes: 18,
-    playedAt: new Date().toISOString().split('T')[0], notes: '',
-  })
-  const [pars, setPars] = useState<number[]>(DEFAULT_PARS_18)
-  const [creating,     setCreating]     = useState(false)
+  const [message, setMessage] = useState('loading courses...')
+  const [layoutMessage, setLayoutMessage] = useState('')
+  const [holeMessage, setHoleMessage] = useState('')
+  const [saveMessage, setSaveMessage] = useState('')
 
-  // ── hole editing ──────────────────────────────────────────────────────
-  const [editHole,   setEditHole]   = useState<number | null>(null)  // 1-18
-  const [localHoles, setLocalHoles] = useState<Record<number, { score: number|null; par: number; putts: number|null }>>({})
-  const [saving,     setSaving]     = useState(false)
-  const [showParEdit, setShowParEdit] = useState(false)
+  const [selectedCourseId, setSelectedCourseId] = useState('')
+  const [selectedCourseName, setSelectedCourseName] = useState('')
 
-  // ── load rounds ───────────────────────────────────────────────────────
-  async function loadRounds() {
-    if (!user) return
-    setLoading(true)
-    const supabase = createClient()
-    const { data } = await supabase
-      .from('personal_rounds')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('played_at', { ascending: false })
-    setRounds(data ?? [])
-    setLoading(false)
+  const [selectedLayoutId, setSelectedLayoutId] = useState('')
+  const [selectedLayoutName, setSelectedLayoutName] = useState('')
+
+  const [roundStarted, setRoundStarted] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [scores, setScores] = useState<HoleScoreMap>({})
+
+  useEffect(() => {
+    checkUser()
+    loadCourses()
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null)
+    })
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [])
+
+  async function checkUser() {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    setUser(user ?? null)
   }
 
-  async function loadHoles(roundId: string) {
-    const supabase = createClient()
-    const { data } = await supabase
-      .from('personal_round_holes')
-      .select('*')
-      .eq('round_id', roundId)
-      .order('hole_number')
-    setHoleRows(data ?? [])
-    // 로컬 상태로 변환
-    const local: Record<number, { score: number|null; par: number; putts: number|null }> = {}
-    data?.forEach(h => { local[h.hole_number] = { score: h.score, par: h.par, putts: h.putts } })
-    setLocalHoles(local)
+  async function handleLogin() {
+    if (!email) {
+      setAuthMessage('이메일을 입력하세요.')
+      return
+    }
+
+    setAuthMessage('로그인 링크 전송중...')
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: window.location.origin + '/scorecard',
+      },
+    })
+
+    if (error) {
+      console.error(error)
+      setAuthMessage(`ERROR: ${error.message}`)
+      return
+    }
+
+    setAuthMessage('이메일로 로그인 링크를 보냈습니다. 메일함을 확인하세요.')
+  }
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    setUser(null)
+    setAuthMessage('로그아웃되었습니다.')
   }
 
   async function loadCourses() {
-    if (courses.length > 0) return
-    const supabase = createClient()
-    const { data } = await supabase.from('golf_courses')
-      .select('id, name, name_vn, province, par, holes, distance_km')
-      .eq('is_active', true).order('distance_km')
-    setCourses(data ?? [])
+    const { data, error } = await supabase
+      .from('golf_courses')
+      .select('id, name, region')
+      .order('name')
+
+    if (error) {
+      console.error(error)
+      setMessage(`ERROR: ${error.message}`)
+      return
+    }
+
+    setCourses(data || [])
+    setMessage(`Loaded ${data?.length || 0} courses`)
   }
 
-  useEffect(() => { loadRounds() }, [user])
+  async function handleCourseClick(courseId: string, courseName: string) {
+    setSelectedCourseId(courseId)
+    setSelectedCourseName(courseName)
 
-  // ── open round ────────────────────────────────────────────────────────
-  async function openRound(round: any) {
-    setSelectedRound(round)
-    await loadHoles(round.id)
-    // init local holes for all holes in round
-    const totalHoles = round.total_holes
-    const computedPars = computePars(round.course_par, totalHoles)
-    setLocalHoles(prev => {
-      const next = { ...prev }
-      for (let i = 1; i <= totalHoles; i++) {
-        if (!next[i]) next[i] = { score: null, par: computedPars[i-1], putts: null }
-      }
-      return next
+    setSelectedLayoutId('')
+    setSelectedLayoutName('')
+    setLayouts([])
+    setHoles([])
+    setScores({})
+    setRoundStarted(false)
+    setSaveMessage('')
+    setHoleMessage('')
+
+    setLayoutMessage('Loading layouts...')
+
+    const { data, error } = await supabase
+      .from('golf_course_layouts')
+      .select('id, golf_course_id, layout_name, tee_name, total_holes, total_par, total_yards')
+      .eq('golf_course_id', courseId)
+      .order('layout_name')
+
+    if (error) {
+      console.error(error)
+      setLayoutMessage(`ERROR: ${error.message}`)
+      return
+    }
+
+    setLayouts(data || [])
+    setLayoutMessage(`Loaded ${data?.length || 0} layouts`)
+  }
+
+  async function handleLayoutClick(layoutId: string, layoutName: string) {
+    setSelectedLayoutId(layoutId)
+    setSelectedLayoutName(layoutName)
+    setHoles([])
+    setScores({})
+    setRoundStarted(false)
+    setSaveMessage('')
+    setHoleMessage('Loading holes...')
+
+    const { data, error } = await supabase
+      .from('golf_course_holes')
+      .select('id, layout_id, hole_number, par, yards, handicap_index, hole_name')
+      .eq('layout_id', layoutId)
+      .order('hole_number')
+
+    if (error) {
+      console.error(error)
+      setHoleMessage(`ERROR: ${error.message}`)
+      return
+    }
+
+    setHoles(data || [])
+    setHoleMessage(`Loaded ${data?.length || 0} holes`)
+  }
+
+  function startRound() {
+    if (!selectedLayoutId || holes.length === 0) {
+      alert('먼저 코스를 선택하세요.')
+      return
+    }
+
+    const initialScores: HoleScoreMap = {}
+    holes.forEach((hole) => {
+      initialScores[hole.id] = hole.par
     })
-    setView('card')
+
+    setScores(initialScores)
+    setRoundStarted(true)
+    setSaveMessage('')
   }
 
-  // ── create round ──────────────────────────────────────────────────────
-  async function createRound() {
-    if (!user || !newForm.courseName) return
-    setCreating(true)
-    const supabase = createClient()
-    const { data: round, error } = await supabase.from('personal_rounds').insert({
-      user_id:    user.id,
-      course_id:  newForm.courseId  || null,
-      course_name: newForm.courseName,
-      course_par: newForm.coursePar,
-      total_holes: newForm.holes,
-      played_at:  newForm.playedAt,
-      notes:      newForm.notes || null,
-    }).select().single()
-    if (!error && round) {
-      // pre-create hole rows
-      const computedPars = computePars(newForm.coursePar, newForm.holes)
-      await supabase.from('personal_round_holes').insert(
-        Array.from({ length: newForm.holes }, (_, i) => ({
-          round_id: round.id,
-          hole_number: i + 1,
-          par: computedPars[i],
-          score: null,
-        }))
-      )
-      setShowNew(false)
-      resetNewForm()
-      await loadRounds()
-      await openRound(round)
+  function resetRound() {
+    const initialScores: HoleScoreMap = {}
+    holes.forEach((hole) => {
+      initialScores[hole.id] = hole.par
+    })
+    setScores(initialScores)
+    setSaveMessage('')
+  }
+
+  function changeScore(holeId: string, delta: number) {
+    setScores((prev) => {
+      const current = prev[holeId] ?? 0
+      const next = Math.max(1, current + delta)
+      return {
+        ...prev,
+        [holeId]: next,
+      }
+    })
+  }
+
+  const totalScore = useMemo(() => {
+    return holes.reduce((sum, hole) => sum + (scores[hole.id] ?? 0), 0)
+  }, [holes, scores])
+
+  const totalPar = useMemo(() => {
+    return holes.reduce((sum, hole) => sum + hole.par, 0)
+  }, [holes])
+
+  const overUnder = totalScore - totalPar
+
+  async function saveRound() {
+    if (!roundStarted) {
+      alert('먼저 라운드를 시작하세요.')
+      return
     }
-    setCreating(false)
-  }
 
-  function resetNewForm() {
-    setNewForm({ courseName: '', courseId: '', coursePar: 72, holes: 18, playedAt: new Date().toISOString().split('T')[0], notes: '' })
-    setPars(DEFAULT_PARS_18)
-    setCourseSearch('')
-  }
+    if (!selectedCourseId || !selectedLayoutId) {
+      alert('골프장과 코스를 먼저 선택하세요.')
+      return
+    }
 
-  // ── save holes ────────────────────────────────────────────────────────
-  async function saveCard() {
-    if (!selectedRound) return
+    if (!user) {
+      setSaveMessage('ERROR: 먼저 로그인하세요.')
+      return
+    }
+
     setSaving(true)
-    const supabase = createClient()
-    const entries = Object.entries(localHoles)
-    for (const [holeStr, hd] of entries) {
-      const hole = parseInt(holeStr)
-      await supabase.from('personal_round_holes').upsert({
-        round_id: selectedRound.id, hole_number: hole,
-        par: hd.par, score: hd.score, putts: hd.putts,
-      }, { onConflict: 'round_id,hole_number' })
+    setSaveMessage('Saving round...')
+
+    try {
+      const { data: roundData, error: roundError } = await supabase
+        .from('rounds')
+        .insert({
+          user_id: user.id,
+          golf_course_id: selectedCourseId,
+          layout_id: selectedLayoutId,
+          tee_name: 'White',
+          scorecard_orientation: 'portrait',
+          total_score: totalScore,
+        })
+        .select('id')
+        .single()
+
+      if (roundError) {
+        console.error(roundError)
+        setSaveMessage(`ERROR: ${roundError.message}`)
+        setSaving(false)
+        return
+      }
+
+      const roundId = roundData.id
+
+      const holeRows = holes.map((hole) => ({
+        round_id: roundId,
+        hole_id: hole.id,
+        hole_number: hole.hole_number,
+        par: hole.par,
+        strokes: scores[hole.id] ?? hole.par,
+      }))
+
+      const { error: scoreError } = await supabase
+        .from('round_hole_scores')
+        .insert(holeRows)
+
+      if (scoreError) {
+        console.error(scoreError)
+        setSaveMessage(`ERROR: ${scoreError.message}`)
+        setSaving(false)
+        return
+      }
+
+      setSaveMessage(`Saved successfully. Round ID: ${roundId}`)
+    } catch (err) {
+      console.error(err)
+      setSaveMessage('ERROR: unexpected error')
+    } finally {
+      setSaving(false)
     }
-    // 합계 업데이트
-    const filled = entries.filter(([, hd]) => hd.score !== null)
-    const total  = filled.length === selectedRound.total_holes
-      ? filled.reduce((s, [, hd]) => s + (hd.score ?? 0), 0)
-      : null
-    await supabase.from('personal_rounds').update({ total_score: total }).eq('id', selectedRound.id)
-    setSaving(false)
-    await loadRounds()
-    // refresh selected round
-    const { data } = await supabase.from('personal_rounds').select('*').eq('id', selectedRound.id).single()
-    if (data) setSelectedRound(data)
-  }
-
-  // ── delete round ──────────────────────────────────────────────────────
-  async function deleteRound(roundId: string) {
-    if (!confirm(ko ? '이 라운드를 삭제하시겠습니까?' : 'Delete this round?')) return
-    const supabase = createClient()
-    await supabase.from('personal_rounds').delete().eq('id', roundId)
-    if (view === 'card') { setView('list'); setSelectedRound(null) }
-    loadRounds()
-  }
-
-  // ── computed ──────────────────────────────────────────────────────────
-  const totalHoles = selectedRound?.total_holes ?? 18
-  const outHoles   = Array.from({ length: 9 }, (_, i) => i + 1)
-  const inHoles    = totalHoles === 18 ? Array.from({ length: 9 }, (_, i) => i + 10) : []
-
-  function holeData(n: number) {
-    return localHoles[n] ?? { score: null, par: 4, putts: null }
-  }
-  function sumScores(hs: number[]) {
-    return hs.reduce((s, h) => s + (localHoles[h]?.score ?? 0), 0)
-  }
-  function sumPars(hs: number[]) {
-    return hs.reduce((s, h) => s + (localHoles[h]?.par ?? 4), 0)
-  }
-  const outScore  = sumScores(outHoles)
-  const inScore   = sumScores(inHoles)
-  const total     = outScore + inScore
-  const outPar    = sumPars(outHoles)
-  const inPar     = sumPars(inHoles)
-  const totalPar  = outPar + inPar
-  const filledOut = outHoles.filter(h => localHoles[h]?.score !== null).length
-  const filledIn  = inHoles.filter(h => localHoles[h]?.score !== null).length
-  const filled    = filledOut + filledIn
-
-  const stats = calcStats(rounds)
-
-  // ─────────────────────────────────────────────────────────────────────
-  if (view === 'card' && selectedRound) return (
-    <ScorecardView
-      round={selectedRound} localHoles={localHoles} setLocalHoles={setLocalHoles}
-      editHole={editHole} setEditHole={setEditHole}
-      outHoles={outHoles} inHoles={inHoles} totalHoles={totalHoles}
-      holeData={holeData} sumScores={sumScores} sumPars={sumPars}
-      outScore={outScore} inScore={inScore} total={total}
-      outPar={outPar} inPar={inPar} totalPar={totalPar}
-      filled={filled} saving={saving}
-      ko={ko} lang={lang}
-      onBack={() => { setView('list'); setSelectedRound(null); setLocalHoles({}) }}
-      onSave={saveCard}
-      onDelete={() => deleteRound(selectedRound.id)}
-      showParEdit={showParEdit} setShowParEdit={setShowParEdit}
-    />
-  )
-
-  // ── LIST VIEW ─────────────────────────────────────────────────────────
-  return (
-    <div className="px-4 py-5 pb-28 min-h-screen">
-      {/* Header */}
-      <div className="flex items-center gap-2 mb-5">
-        <button onClick={() => router.back()} className="text-gray-400 p-1"><ChevronLeft size={22} /></button>
-        <Flag size={18} className="text-green-400" />
-        <h1 className="text-base font-bold text-white flex-1">{ko ? '개인 스코어카드' : 'My Scorecard'}</h1>
-        <button
-          onClick={() => { loadCourses(); setShowNew(true) }}
-          className="flex items-center gap-1.5 bg-green-700 hover:bg-green-600 text-white text-xs font-semibold px-3 py-2 rounded-xl transition"
-        >
-          <Plus size={14} />{ko ? '새 라운드' : 'New Round'}
-        </button>
-      </div>
-
-      {/* Stats strip */}
-      {stats && (
-        <div className="glass-card rounded-2xl p-4 mb-4">
-          <p className="text-xs text-green-400 font-semibold mb-3 flex items-center gap-1.5">
-            <BarChart2 size={13} />{ko ? '내 통계' : 'My Stats'}
-          </p>
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <div><p className="text-xs text-gray-500">{ko ? '라운드' : 'Rounds'}</p><p className="text-lg font-bold text-white">{stats.count}</p></div>
-            <div><p className="text-xs text-gray-500">{ko ? '최저' : 'Best'}</p><p className="text-lg font-bold text-green-300">{stats.best}</p></div>
-            <div><p className="text-xs text-gray-500">{ko ? '평균' : 'Avg'}</p><p className="text-lg font-bold text-yellow-300">{stats.avg}</p></div>
-          </div>
-        </div>
-      )}
-
-      {/* Round list */}
-      {loading ? (
-        <p className="text-center text-gray-500 py-12">{ko ? '로딩 중...' : 'Loading...'}</p>
-      ) : rounds.length === 0 ? (
-        <div className="flex flex-col items-center gap-4 py-16 text-center">
-          <Flag size={40} className="text-gray-700" />
-          <p className="text-gray-500 text-sm">{ko ? '라운드 기록이 없습니다.\n첫 라운드를 추가해보세요!' : 'No rounds yet.\nAdd your first round!'}</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {rounds.map(r => {
-            const diff = r.total_score ? r.total_score - r.course_par : null
-            return (
-              <button key={r.id} onClick={() => openRound(r)}
-                className="glass-card rounded-xl px-4 py-3.5 flex items-center gap-3 w-full text-left active:scale-[0.98] transition-transform">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-sm font-semibold text-white truncate">{r.course_name}</p>
-                    <span className="text-xs text-gray-500">{r.total_holes}H</span>
-                  </div>
-                  <div className="flex items-center gap-3 mt-0.5">
-                    <span className="text-xs text-gray-400 flex items-center gap-1">
-                      <Calendar size={11} />{r.played_at}
-                    </span>
-                    {r.total_score ? (
-                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${diff! <= 0 ? 'bg-green-900/60 text-green-300' : diff! <= 5 ? 'bg-yellow-900/60 text-yellow-300' : 'bg-red-900/40 text-red-300'}`}>
-                        {r.total_score}타 {diff! >= 0 ? '+' : ''}{diff}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-gray-600">{ko ? '미완성' : 'In progress'}</span>
-                    )}
-                  </div>
-                </div>
-                <ChevronRight size={16} className="text-gray-600 flex-shrink-0" />
-              </button>
-            )
-          })}
-        </div>
-      )}
-
-      {/* ── New Round Sheet ── */}
-      {showNew && (
-        <div className="fixed inset-0 z-[200]" onClick={() => setShowNew(false)}>
-          <div className="absolute inset-0 bg-black/70" />
-          <div className="absolute bottom-0 left-0 right-0 bg-gray-900 rounded-t-2xl flex flex-col" style={{ maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
-            <div className="flex justify-center pt-3 pb-1 flex-shrink-0"><div className="w-10 h-1 bg-gray-700 rounded-full" /></div>
-            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-800 flex-shrink-0">
-              <h3 className="text-base font-bold text-white">{ko ? '새 라운드 추가' : 'New Round'}</h3>
-              <button onClick={() => { setShowNew(false); resetNewForm() }} className="text-gray-400"><X size={18} /></button>
-            </div>
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-              {/* 날짜 */}
-              <div>
-                <label className="text-xs text-gray-400 block mb-1.5"><Calendar size={11} className="inline mr-1" />{ko ? '라운드 날짜' : 'Date Played'}</label>
-                <input type="date" value={newForm.playedAt} onChange={e => setNewForm(f => ({ ...f, playedAt: e.target.value }))}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm" />
-              </div>
-
-              {/* 홀 수 */}
-              <div>
-                <label className="text-xs text-gray-400 block mb-1.5">{ko ? '홀 수' : 'Holes'}</label>
-                <div className="flex gap-2">
-                  {[18, 9].map(h => (
-                    <button key={h} onClick={() => { setNewForm(f => ({ ...f, holes: h })); setPars(computePars(newForm.coursePar, h)) }}
-                      className={`flex-1 py-3 rounded-xl text-sm font-bold transition ${newForm.holes === h ? 'bg-green-700 text-white' : 'bg-gray-800 text-gray-400'}`}>
-                      {h}{ko ? '홀' : ' Holes'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* 골프장 자동완성 검색 */}
-              <div>
-                <label className="text-xs text-gray-400 block mb-1.5">
-                  <MapPin size={11} className="inline mr-1" />{ko ? '골프장' : 'Golf Course'}
-                </label>
-                <CourseSearchInput
-                  value={newForm.courseName}
-                  onChange={v => setNewForm(f => ({ ...f, courseName: v, courseId: '' }))}
-                  onSelect={c => {
-                    setNewForm(f => ({ ...f, courseName: c.name, courseId: c.id, coursePar: c.par ?? 72 }))
-                    setPars(computePars(c.par ?? 72, newForm.holes))
-                  }}
-                  placeholder={ko ? '2글자 이상 입력하면 자동검색...' : 'Type 2+ chars to search...'}
-                />
-                {newForm.courseName && (
-                  <div className="mt-1.5 flex items-center gap-2 rounded-xl px-3 py-2"
-                    style={{ background: 'rgba(22,163,74,0.12)', border: '1px solid rgba(34,197,94,0.2)' }}>
-                    <MapPin size={12} className="text-green-400 flex-shrink-0" />
-                    <p className="text-sm text-green-300 flex-1 truncate">{newForm.courseName}</p>
-                    <span className="text-xs" style={{ color: '#5a7a5a' }}>Par {newForm.coursePar}</span>
-                    <button onClick={() => setNewForm(f => ({ ...f, courseName: '', courseId: '' }))} style={{ color: '#5a7a5a' }}>
-                      <X size={14} />
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* 코스 파 */}
-              <div>
-                <label className="text-xs text-gray-400 block mb-1.5">{ko ? `코스 파 (${newForm.holes === 9 ? '9홀' : '18홀'})` : `Course Par (${newForm.holes} holes)`}</label>
-                <div className="flex items-center gap-3">
-                  <button onClick={() => { const p = Math.max(60, newForm.coursePar - 1); setNewForm(f => ({ ...f, coursePar: p })); setPars(computePars(p, newForm.holes)) }}
-                    className="w-10 h-10 rounded-xl bg-gray-800 text-white font-bold hover:bg-gray-700">−</button>
-                  <span className="flex-1 text-center text-xl font-bold text-white">{newForm.coursePar}</span>
-                  <button onClick={() => { const p = Math.min(80, newForm.coursePar + 1); setNewForm(f => ({ ...f, coursePar: p })); setPars(computePars(p, newForm.holes)) }}
-                    className="w-10 h-10 rounded-xl bg-gray-800 text-white font-bold hover:bg-gray-700">+</button>
-                </div>
-              </div>
-
-              {/* 메모 */}
-              <div>
-                <label className="text-xs text-gray-400 block mb-1.5">{ko ? '메모 (선택)' : 'Notes (optional)'}</label>
-                <input value={newForm.notes} onChange={e => setNewForm(f => ({ ...f, notes: e.target.value }))}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm"
-                  placeholder={ko ? '동반자, 날씨 등...' : 'Playing partners, weather...'}  />
-              </div>
-            </div>
-            {/* sticky footer */}
-            <div className="flex-shrink-0 px-5 py-4 border-t border-gray-800 flex gap-3">
-              <button onClick={() => { setShowNew(false); resetNewForm() }} className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 text-sm font-medium">{ko ? '취소' : 'Cancel'}</button>
-              <button onClick={createRound} disabled={creating || !newForm.courseName}
-                className="flex-1 py-3 rounded-xl bg-green-700 disabled:opacity-40 text-white font-bold text-sm">
-                {creating ? '...' : (ko ? '시작하기' : 'Start')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── Scorecard View Component ──────────────────────────────────────────────
-function ScorecardView({
-  round, localHoles, setLocalHoles,
-  editHole, setEditHole,
-  outHoles, inHoles, totalHoles,
-  holeData, sumScores, sumPars,
-  outScore, inScore, total, outPar, inPar, totalPar,
-  filled, saving, ko, lang,
-  onBack, onSave, onDelete,
-  showParEdit, setShowParEdit,
-}: any) {
-
-  const diff = filled === totalHoles ? total - totalPar : null
-
-  function ScoreTable({ holes, label }: { holes: number[]; label: string }) {
-    const sTotal = sumScores(holes)
-    const pTotal = sumPars(holes)
-    const filledHoles = holes.filter(h => localHoles[h]?.score !== null).length
-    return (
-      <div className="overflow-x-auto rounded-xl border border-gray-800">
-        <table className="min-w-max w-full text-xs border-collapse">
-          <thead>
-            <tr className="bg-gray-800/80">
-              <th className="sticky left-0 bg-gray-800 px-2 py-2 text-gray-400 font-semibold text-left w-12 border-r border-gray-700">
-                {ko ? '홀' : 'Hole'}
-              </th>
-              {holes.map(h => (
-                <th key={h} className="px-1.5 py-2 text-gray-400 font-semibold text-center w-9">{h}</th>
-              ))}
-              <th className="px-2 py-2 text-green-400 font-bold text-center w-12 border-l border-gray-700">{label}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {/* Par row */}
-            <tr className="bg-gray-900/60">
-              <td className="sticky left-0 bg-gray-900 px-2 py-2 text-gray-400 font-semibold border-r border-gray-700 text-left">
-                {ko ? '파' : 'Par'}
-              </td>
-              {holes.map(h => {
-                const { par } = holeData(h)
-                return (
-                  <td key={h} className="px-1.5 py-2 text-center text-gray-300 font-medium"
-                    onClick={() => showParEdit && setEditHole(-h)}> {/* negative = par edit */}
-                    {par}
-                  </td>
-                )
-              })}
-              <td className="px-2 py-2 text-center text-green-400 font-bold border-l border-gray-700">{pTotal}</td>
-            </tr>
-            {/* Score row */}
-            <tr>
-              <td className="sticky left-0 bg-gray-950 px-2 py-2 text-gray-400 font-semibold border-r border-gray-700 text-left">
-                {ko ? '타수' : 'Score'}
-              </td>
-              {holes.map(h => {
-                const { score, par } = holeData(h)
-                return (
-                  <td key={h} className="px-1 py-1.5 text-center" onClick={() => setEditHole(h)}>
-                    <span className={`inline-flex items-center justify-center w-8 h-8 rounded-lg text-xs font-bold cursor-pointer transition active:scale-95 ${scoreColor(score, par)}`}>
-                      {score ?? '—'}
-                    </span>
-                  </td>
-                )
-              })}
-              <td className="px-2 py-2 text-center border-l border-gray-700">
-                {filledHoles === holes.length ? (
-                  <span className={`text-sm font-bold ${sTotal - pTotal > 0 ? 'text-red-300' : sTotal - pTotal < 0 ? 'text-green-300' : 'text-yellow-300'}`}>
-                    {sTotal}
-                  </span>
-                ) : (
-                  <span className="text-gray-600 text-xs">{filledHoles}/{holes.length}</span>
-                )}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    )
   }
 
   return (
-    <div className="min-h-screen pb-28">
-      {/* Header */}
-      <div className="flex items-center gap-2 px-4 pt-5 pb-3">
-        <button onClick={onBack} className="text-gray-400 p-1"><ChevronLeft size={22} /></button>
-        <div className="flex-1 min-w-0">
-          <p className="text-base font-bold text-white truncate">{round.course_name}</p>
-          <p className="text-xs text-gray-400">{round.played_at} · Par {round.course_par} · {round.total_holes}H</p>
-        </div>
-        <button onClick={onDelete} className="text-gray-600 hover:text-red-400 p-1 transition"><Trash2 size={16} /></button>
+    <div style={{ padding: 20, maxWidth: 900, margin: '0 auto' }}>
+      <h1>🏌️ Scorecard</h1>
+
+      <div
+        style={{
+          border: '1px solid #444',
+          padding: 16,
+          marginBottom: 24,
+          borderRadius: 8,
+        }}
+      >
+        <h2>🔐 로그인</h2>
+
+        {user ? (
+          <div>
+            <p>로그인됨: {user.email}</p>
+            <button
+              onClick={handleLogout}
+              style={{
+                padding: '10px 16px',
+                cursor: 'pointer',
+                border: '1px solid #666',
+                background: '#111',
+                color: '#fff',
+              }}
+            >
+              로그아웃
+            </button>
+          </div>
+        ) : (
+          <div>
+            <input
+              type="email"
+              placeholder="이메일 입력"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              style={{
+                padding: 10,
+                width: '100%',
+                maxWidth: 320,
+                marginRight: 12,
+                marginBottom: 12,
+                border: '1px solid #666',
+              }}
+            />
+            <br />
+            <button
+              onClick={handleLogin}
+              style={{
+                padding: '10px 16px',
+                cursor: 'pointer',
+                border: '1px solid #666',
+                background: '#111',
+                color: '#fff',
+              }}
+            >
+              로그인 링크 보내기
+            </button>
+          </div>
+        )}
+
+        {authMessage && <p style={{ marginTop: 12 }}>{authMessage}</p>}
       </div>
 
-      <div className="px-4 space-y-4">
-        {/* OUT (1-9) */}
-        <ScoreTable holes={outHoles} label="OUT" />
+      <p>{message}</p>
 
-        {/* IN (10-18) */}
-        {inHoles.length > 0 && <ScoreTable holes={inHoles} label="IN" />}
-
-        {/* Totals */}
-        <div className={`rounded-2xl p-4 ${diff !== null ? 'bg-gradient-to-r from-green-900/30 to-blue-900/20 border border-green-800/40' : 'glass-card'}`}>
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              {inHoles.length > 0 && (
-                <div className="flex gap-4 text-xs text-gray-400">
-                  <span>OUT <span className="text-white font-semibold">{outScore || '—'}</span></span>
-                  <span>IN <span className="text-white font-semibold">{inScore || '—'}</span></span>
-                </div>
-              )}
-              <div className="flex items-center gap-3">
-                <p className="text-2xl font-black text-white">{filled === totalHoles ? total : `${filled}/${totalHoles}`}</p>
-                {diff !== null && (
-                  <span className={`text-lg font-bold ${diff > 0 ? 'text-red-300' : diff < 0 ? 'text-green-300' : 'text-yellow-300'}`}>
-                    {diff > 0 ? '+' : ''}{diff}
-                  </span>
-                )}
-              </div>
-              {diff !== null && (
-                <p className="text-xs text-gray-400">
-                  {ko ? scoreLabel(total, totalPar, ko) : scoreLabel(total, totalPar, ko)}
-                </p>
-              )}
-            </div>
-            <div className="text-right text-xs text-gray-500 space-y-0.5">
-              <p>Par {totalPar}</p>
-              <p>{filled}/{totalHoles} {ko ? '홀 완료' : 'holes done'}</p>
-            </div>
+      <div style={{ marginBottom: 30 }}>
+        {courses.map((course) => (
+          <div
+            key={course.id}
+            onClick={() => handleCourseClick(course.id, course.name)}
+            style={{
+              cursor: 'pointer',
+              marginBottom: 10,
+              padding: '10px 0',
+              borderBottom: '1px solid #333',
+              fontWeight: selectedCourseId === course.id ? 'bold' : 'normal',
+            }}
+          >
+            {course.name} ({course.region})
           </div>
-        </div>
+        ))}
+      </div>
 
-        {/* Legend */}
-        <div className="flex flex-wrap gap-1.5 justify-center">
-          {[
-            { label: ko ? '이글+' : 'Eagle+', cls: 'bg-indigo-700 text-yellow-200' },
-            { label: ko ? '버디'  : 'Birdie', cls: 'bg-blue-600 text-white' },
-            { label: ko ? '파'    : 'Par',    cls: 'bg-green-700 text-white' },
-            { label: ko ? '보기'  : 'Bogey',  cls: 'bg-yellow-600 text-white' },
-            { label: ko ? '더블'  : 'Double', cls: 'bg-orange-600 text-white' },
-            { label: ko ? '트리플+' : 'Triple+', cls: 'bg-red-700 text-white' },
-          ].map(({ label, cls }) => (
-            <span key={label} className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${cls}`}>{label}</span>
+      {selectedCourseId && (
+        <div style={{ marginTop: 30, marginBottom: 30 }}>
+          <h2>📍 Layouts for {selectedCourseName}</h2>
+          <p>{layoutMessage}</p>
+
+          {layouts.map((layout) => (
+            <div
+              key={layout.id}
+              onClick={() => handleLayoutClick(layout.id, layout.layout_name)}
+              style={{
+                cursor: 'pointer',
+                marginBottom: 10,
+                padding: '10px 0',
+                borderBottom: '1px solid #444',
+                fontWeight: selectedLayoutId === layout.id ? 'bold' : 'normal',
+              }}
+            >
+              <div>{layout.layout_name}</div>
+              <div style={{ fontSize: 14, opacity: 0.8 }}>
+                Tee: {layout.tee_name || '-'} / Holes: {layout.total_holes || '-'} / Par: {layout.total_par || '-'}
+              </div>
+            </div>
           ))}
         </div>
-
-        {/* Save button */}
-        <button onClick={onSave} disabled={saving}
-          className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-green-700 hover:bg-green-600 disabled:opacity-50 text-white font-bold transition">
-          <Save size={16} />
-          {saving ? (ko ? '저장 중...' : 'Saving...') : (ko ? '스코어카드 저장' : 'Save Scorecard')}
-        </button>
-      </div>
-
-      {/* Hole edit modal */}
-      {editHole !== null && editHole > 0 && (
-        <HoleEditModal
-          hole={editHole}
-          data={localHoles[editHole] ?? { score: null, par: 4, putts: null }}
-          ko={ko}
-          onClose={() => setEditHole(null)}
-          onChange={(score: number|null, putts: number|null, par: number) => {
-            setLocalHoles((prev: any) => ({ ...prev, [editHole]: { score, par, putts } }))
-            setEditHole(null)
-          }}
-        />
       )}
-    </div>
-  )
-}
 
-// ── Hole Edit Modal ───────────────────────────────────────────────────────
-function HoleEditModal({ hole, data, ko, onClose, onChange }: {
-  hole: number; data: { score: number|null; par: number; putts: number|null }
-  ko: boolean; onClose: () => void
-  onChange: (score: number|null, putts: number|null, par: number) => void
-}) {
-  const [score, setScore] = useState<number|null>(data.score)
-  const [putts, setPutts] = useState<number|null>(data.putts)
-  const [par,   setPar]   = useState(data.par)
-  const diff = score !== null ? score - par : null
+      {selectedLayoutId && (
+        <div style={{ marginTop: 30 }}>
+          <h2>⛳ Holes for {selectedLayoutName}</h2>
+          <p>{holeMessage}</p>
 
-  return (
-    <div className="fixed inset-0 z-[200] flex items-end" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/70" />
-      <div className="relative w-full bg-gray-900 rounded-t-2xl px-5 pt-4 pb-10" onClick={e => e.stopPropagation()}>
-        <div className="flex justify-center mb-3"><div className="w-10 h-1 bg-gray-700 rounded-full" /></div>
+          <div style={{ marginBottom: 20 }}>
+            {!roundStarted ? (
+              <button
+                onClick={startRound}
+                style={{
+                  padding: '10px 16px',
+                  cursor: 'pointer',
+                  border: '1px solid #666',
+                  background: '#111',
+                  color: '#fff',
+                  marginRight: 12,
+                }}
+              >
+                라운드 시작
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={resetRound}
+                  style={{
+                    padding: '10px 16px',
+                    cursor: 'pointer',
+                    border: '1px solid #666',
+                    background: '#111',
+                    color: '#fff',
+                    marginRight: 12,
+                  }}
+                >
+                  점수 초기화
+                </button>
 
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <p className="text-lg font-black text-white">{ko ? `${hole}번 홀` : `Hole ${hole}`}</p>
-            <p className="text-xs text-gray-400">Par {par}</p>
+                <button
+                  onClick={saveRound}
+                  disabled={saving}
+                  style={{
+                    padding: '10px 16px',
+                    cursor: saving ? 'not-allowed' : 'pointer',
+                    border: '1px solid #666',
+                    background: saving ? '#666' : '#0a7',
+                    color: '#fff',
+                    marginRight: 12,
+                  }}
+                >
+                  {saving ? '저장중...' : '라운드 저장'}
+                </button>
+
+                <span style={{ fontSize: 18, fontWeight: 'bold' }}>
+                  Total: {totalScore} / Par: {totalPar} / {overUnder === 0 ? 'E' : overUnder > 0 ? `+${overUnder}` : overUnder}
+                </span>
+              </>
+            )}
           </div>
-          {diff !== null && (
-            <span className={`text-sm font-bold px-3 py-1 rounded-full ${scoreColor(score, par)}`}>
-              {diff === 0 ? 'Par' : diff > 0 ? `+${diff}` : diff} · {scoreLabel(score, par, ko)}
-            </span>
+
+          {saveMessage && (
+            <p style={{ marginBottom: 20, fontWeight: 'bold' }}>{saveMessage}</p>
           )}
-        </div>
 
-        {/* Par selector */}
-        <div className="mb-4">
-          <p className="text-xs text-gray-500 mb-2">{ko ? '파' : 'Par'}</p>
-          <div className="flex gap-2">
-            {[3,4,5].map(p => (
-              <button key={p} onClick={() => setPar(p)}
-                className={`flex-1 py-2 rounded-xl text-sm font-bold transition ${par === p ? 'bg-green-700 text-white' : 'bg-gray-800 text-gray-400'}`}>
-                {p}
-              </button>
-            ))}
-          </div>
-        </div>
+          {holes.map((hole) => (
+            <div
+              key={hole.id}
+              style={{
+                marginBottom: 10,
+                padding: '12px 0',
+                borderBottom: '1px solid #555',
+              }}
+            >
+              <div style={{ marginBottom: 6 }}>
+                Hole {hole.hole_number}
+                {hole.hole_name ? ` - ${hole.hole_name}` : ''}
+              </div>
 
-        {/* Score */}
-        <div className="mb-4">
-          <p className="text-xs text-gray-500 mb-2">{ko ? '타수' : 'Score'}</p>
-          <div className="flex items-center gap-3">
-            <button onClick={() => setScore(s => s !== null ? Math.max(1, s - 1) : par - 1)}
-              className="w-12 h-12 rounded-xl bg-gray-800 text-white text-xl font-bold hover:bg-gray-700 transition">−</button>
-            <span className={`flex-1 text-center text-3xl font-black rounded-xl py-2 ${score !== null ? scoreColor(score, par) : 'text-gray-600 bg-gray-800'}`}>
-              {score ?? '—'}
-            </span>
-            <button onClick={() => setScore(s => s !== null ? s + 1 : par + 1)}
-              className="w-12 h-12 rounded-xl bg-gray-800 text-white text-xl font-bold hover:bg-gray-700 transition">+</button>
-          </div>
-          {/* Quick score buttons */}
-          <div className="flex gap-1.5 mt-2 flex-wrap justify-center">
-            {[par-2, par-1, par, par+1, par+2, par+3].filter(v => v >= 1).map(v => (
-              <button key={v} onClick={() => setScore(v)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${score === v ? scoreColor(v, par) : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
-                {v - par === 0 ? 'P' : v - par > 0 ? `+${v-par}` : v - par}
-              </button>
-            ))}
-          </div>
-        </div>
+              <div style={{ fontSize: 14, opacity: 0.8, marginBottom: 10 }}>
+                Par: {hole.par} / Yards: {hole.yards || '-'} / HCP: {hole.handicap_index || '-'}
+              </div>
 
-        {/* Putts */}
-        <div className="mb-5">
-          <p className="text-xs text-gray-500 mb-2">{ko ? '퍼트 수 (선택)' : 'Putts (optional)'}</p>
-          <div className="flex gap-1.5">
-            {[null, 1, 2, 3, 4].map(p => (
-              <button key={String(p)} onClick={() => setPutts(p)}
-                className={`flex-1 py-2 rounded-xl text-sm font-bold transition ${putts === p ? 'bg-blue-700 text-white' : 'bg-gray-800 text-gray-400'}`}>
-                {p === null ? '—' : p}
-              </button>
-            ))}
-          </div>
-        </div>
+              {roundStarted && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <button
+                    onClick={() => changeScore(hole.id, -1)}
+                    style={{
+                      width: 36,
+                      height: 36,
+                      cursor: 'pointer',
+                      border: '1px solid #666',
+                      background: '#111',
+                      color: '#fff',
+                    }}
+                  >
+                    -
+                  </button>
 
-        <div className="flex gap-3">
-          <button onClick={onClose} className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 font-medium text-sm">{ko ? '취소' : 'Cancel'}</button>
-          <button onClick={() => onChange(score, putts, par)}
-            className="flex-1 py-3 rounded-xl bg-green-700 text-white font-bold text-sm">
-            {ko ? '확인' : 'OK'}
-          </button>
+                  <div style={{ minWidth: 40, textAlign: 'center', fontSize: 18, fontWeight: 'bold' }}>
+                    {scores[hole.id]}
+                  </div>
+
+                  <button
+                    onClick={() => changeScore(hole.id, 1)}
+                    style={{
+                      width: 36,
+                      height: 36,
+                      cursor: 'pointer',
+                      border: '1px solid #666',
+                      background: '#111',
+                      color: '#fff',
+                    }}
+                  >
+                    +
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
-      </div>
+      )}
     </div>
   )
 }
