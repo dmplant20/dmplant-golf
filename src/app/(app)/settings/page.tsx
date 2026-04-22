@@ -418,6 +418,7 @@ export default function SettingsPage() {
                   }}
                   placeholder={ko ? '골프장명 입력 (1자부터 자동검색)' : 'Type course name to search...'}
                   className="text-sm"
+                  useFixed
                 />
               </div>
               <div>

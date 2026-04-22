@@ -783,7 +783,7 @@ export default function ChampionshipPage() {
                   <label className="text-[10px] font-bold tracking-widest uppercase block mb-2" style={{ color: '#3a5a3a' }}>
                     {ko ? '골프장' : 'VENUE'}
                   </label>
-                  <CourseSearchInput value={form.venue} onChange={v => setForm(f => ({ ...f, venue: v }))} onSelect={c => setForm(f => ({ ...f, venue: c.name }))} placeholder={ko ? '골프장' : 'Course'} className="text-sm" />
+                  <CourseSearchInput value={form.venue} onChange={v => setForm(f => ({ ...f, venue: v }))} onSelect={c => setForm(f => ({ ...f, venue: c.name }))} placeholder={ko ? '골프장' : 'Course'} className="text-sm" useFixed />
                 </div>
               </div>
 

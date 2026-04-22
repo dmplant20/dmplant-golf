@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Search, MapPin, X, Loader2 } from 'lucide-react'
 
@@ -27,23 +27,40 @@ interface Props {
   placeholder?: string
   className?: string
   minChars?: number
+  /** overflow:auto 컨테이너 안에 있을 때 true — position:fixed 드롭다운 사용 */
+  useFixed?: boolean
 }
 
-export default function CourseSearchInput({ value, onChange, onSelect, placeholder = '골프장 검색...', className = '', minChars = 1 }: Props) {
-  const [results, setResults] = useState<Course[]>([])
-  const [loading, setLoading] = useState(false)
-  const [open, setOpen] = useState(false)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const wrapRef = useRef<HTMLDivElement>(null)
+export default function CourseSearchInput({
+  value, onChange, onSelect,
+  placeholder = '골프장 검색...', className = '',
+  minChars = 1, useFixed = false,
+}: Props) {
+  const [results,    setResults]    = useState<Course[]>([])
+  const [loading,    setLoading]    = useState(false)
+  const [open,       setOpen]       = useState(false)
+  const [dropStyle,  setDropStyle]  = useState<React.CSSProperties>({})
+  const debounceRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const wrapRef      = useRef<HTMLDivElement>(null)
+  const inputRef     = useRef<HTMLInputElement>(null)
 
-  // minChars 이상 입력 시 자동 검색
+  // fixed 위치 계산
+  const calcFixed = useCallback(() => {
+    if (!useFixed || !inputRef.current) return
+    const r = inputRef.current.getBoundingClientRect()
+    setDropStyle({
+      position: 'fixed',
+      top:   r.bottom + 6,
+      left:  r.left,
+      width: r.width,
+      zIndex: 9999,
+    })
+  }, [useFixed])
+
+  // 검색
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    if (value.trim().length < minChars) {
-      setResults([])
-      setOpen(false)
-      return
-    }
+    if (value.trim().length < minChars) { setResults([]); setOpen(false); return }
     debounceRef.current = setTimeout(async () => {
       setLoading(true)
       const supabase = createClient()
@@ -56,35 +73,68 @@ export default function CourseSearchInput({ value, onChange, onSelect, placehold
         .order('distance_km', { nullsFirst: false })
         .limit(8)
       setResults(data ?? [])
+      calcFixed()
       setOpen(true)
       setLoading(false)
     }, 250)
-  }, [value, minChars])
+  }, [value, minChars, calcFixed])
 
-  // 외부 클릭 시 닫기
+  // 외부 클릭 → 닫기
   useEffect(() => {
-    function handleClick(e: MouseEvent) {
+    function onDown(e: MouseEvent) {
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
     }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
   }, [])
 
+  // 스크롤/리사이즈 시 fixed 위치 재계산 또는 닫기
+  useEffect(() => {
+    if (!open || !useFixed) return
+    function onScroll() { calcFixed() }
+    function onResize() { calcFixed() }
+    window.addEventListener('scroll', onScroll, true)   // capture: 모달 내 스크롤도 잡음
+    window.addEventListener('resize', onResize)
+    return () => {
+      window.removeEventListener('scroll', onScroll, true)
+      window.removeEventListener('resize', onResize)
+    }
+  }, [open, useFixed, calcFixed])
+
   function handleSelect(course: Course) {
-    onSelect(course)
-    onChange(course.name)
-    setOpen(false)
-    setResults([])
+    onSelect(course); onChange(course.name); setOpen(false); setResults([])
   }
+
+  // 드롭다운 스타일: fixed 모드면 계산된 inline style, 아니면 css class
+  const dropdownClass = useFixed ? '' : 'course-dropdown'
+  const dropdownStyle: React.CSSProperties = useFixed
+    ? {
+        ...dropStyle,
+        background: '#0c160c',
+        border: '1px solid rgba(34,197,94,0.22)',
+        borderRadius: 14,
+        overflow: 'hidden',
+        boxShadow: '0 12px 40px rgba(0,0,0,0.7)',
+        maxHeight: 240,
+        overflowY: 'auto',
+      }
+    : {}
+
+  const emptyDropStyle: React.CSSProperties = useFixed
+    ? { ...dropdownStyle }
+    : {}
 
   return (
     <div ref={wrapRef} className={`relative ${className}`}>
       <div className="relative">
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#5a7a5a' }} />
         <input
+          ref={inputRef}
           value={value}
           onChange={e => onChange(e.target.value)}
-          onFocus={() => value.length >= minChars && results.length > 0 && setOpen(true)}
+          onFocus={() => {
+            if (value.length >= minChars && results.length > 0) { calcFixed(); setOpen(true) }
+          }}
           placeholder={placeholder}
           className="input-field pl-9 pr-9"
           autoComplete="off"
@@ -93,16 +143,16 @@ export default function CourseSearchInput({ value, onChange, onSelect, placehold
           ? <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin" style={{ color: '#22c55e' }} />
           : value && (
             <button type="button" onClick={() => { onChange(''); setOpen(false); setResults([]) }}
-              className="absolute right-3 top-1/2 -translate-y-1/2 transition-opacity hover:opacity-70" style={{ color: '#5a7a5a' }}>
+              className="absolute right-3 top-1/2 -translate-y-1/2 hover:opacity-70 transition-opacity" style={{ color: '#5a7a5a' }}>
               <X size={14} />
             </button>
           )
         }
       </div>
 
-      {/* 드롭다운 */}
+      {/* 결과 드롭다운 */}
       {open && results.length > 0 && (
-        <div className="course-dropdown animate-fade-in">
+        <div className={`${dropdownClass} animate-fade-in`} style={dropdownStyle}>
           {results.map(course => (
             <button key={course.id} type="button" onClick={() => handleSelect(course)}
               className="course-item w-full text-left">
@@ -122,7 +172,7 @@ export default function CourseSearchInput({ value, onChange, onSelect, placehold
               </div>
             </button>
           ))}
-          {/* 직접 입력 옵션 */}
+          {/* 직접 입력 */}
           {value.trim() && (
             <button type="button"
               onClick={() => { onSelect({ id: '', name: value.trim(), name_vn: null, province: '', holes: 18, par: 72, distance_km: null }); setOpen(false) }}
@@ -132,9 +182,7 @@ export default function CourseSearchInput({ value, onChange, onSelect, placehold
                   style={{ background: 'rgba(107,114,128,0.2)' }}>
                   <Search size={12} style={{ color: '#9ca3af' }} />
                 </div>
-                <p className="text-sm" style={{ color: '#9ca3af' }}>
-                  "{value.trim()}" 직접 입력
-                </p>
+                <p className="text-sm" style={{ color: '#9ca3af' }}>"{value.trim()}" 직접 입력</p>
               </div>
             </button>
           )}
@@ -143,7 +191,7 @@ export default function CourseSearchInput({ value, onChange, onSelect, placehold
 
       {/* 결과 없음 */}
       {open && !loading && results.length === 0 && value.trim().length >= minChars && (
-        <div className="course-dropdown">
+        <div className={dropdownClass} style={emptyDropStyle}>
           <div className="px-4 py-3 text-center">
             <p className="text-sm" style={{ color: '#5a7a5a' }}>검색 결과가 없습니다</p>
             <button type="button"

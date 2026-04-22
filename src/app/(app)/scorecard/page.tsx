@@ -389,7 +389,8 @@ export default function ScorecardPage() {
                     setNewForm(f => ({ ...f, courseName: c.name, courseId: c.id, coursePar: c.par ?? 72 }))
                     setPars(computePars(c.par ?? 72, newForm.holes))
                   }}
-                  placeholder={ko ? '2글자 이상 입력하면 자동검색...' : 'Type 2+ chars to search...'}
+                  placeholder={ko ? '골프장명 입력하면 자동검색...' : 'Type to search courses...'}
+                  useFixed
                 />
                 {newForm.courseName && (
                   <div className="mt-1.5 flex items-center gap-2 rounded-xl px-3 py-2"
