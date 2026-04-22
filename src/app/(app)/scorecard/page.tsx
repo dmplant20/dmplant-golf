@@ -656,7 +656,7 @@ export default function ScorecardPage() {
             >
               <div>Round ID: {round.id}</div>
               <div>Score: {round.total_score ?? '-'}</div>
-              <div>Date: {formatDate(round.played_at || round.created_at)}</div>
+             <div>Date: {formatDate(round.created_at)}</div>
               <div>Tee: {round.tee_name || '-'}</div>
             </div>
           ))
