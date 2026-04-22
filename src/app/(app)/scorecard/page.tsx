@@ -12,6 +12,36 @@ import { useRouter } from 'next/navigation'
 // ── 국가 감지 ─────────────────────────────────────────────────────────────
 type CountryKey = 'Vietnam' | 'Korea' | 'Indonesia' | 'Other'
 
+// ── 하드코딩된 골프장 목록 (DB 없이도 항상 작동) ──────────────────────────
+// Supabase migration_golf_courses.sql 와 동기화 유지
+const BUILTIN_COURSES: {
+  id: string; name: string; name_vn: string | null; province: string;
+  holes: number; par: number; distance_km: number | null
+}[] = [
+  // ── 호치민시 ──────────────────────────────────────────────────────────
+  { id: '_tsn',  name: 'Tan Son Nhat Golf Course',      name_vn: 'Sân Golf Tân Sơn Nhất',              province: 'Ho Chi Minh City', holes: 36, par: 72,  distance_km: 6   },
+  { id: '_ssg',  name: 'Saigon South Golf Club',        name_vn: 'Sân Golf Nam Sài Gòn',               province: 'Ho Chi Minh City', holes: 9,  par: 27,  distance_km: 8   },
+  { id: '_vgcc', name: 'Vietnam Golf & Country Club',   name_vn: 'Sân Golf & Country Club Việt Nam',   province: 'Ho Chi Minh City', holes: 36, par: 72,  distance_km: 20  },
+  { id: '_vpl',  name: 'Vinpearl Golf Léman Cu Chi',    name_vn: 'Sân Golf Vinpearl Golf Léman Củ Chi', province: 'Ho Chi Minh City', holes: 36, par: 72,  distance_km: 35  },
+  // ── 빈증성 ────────────────────────────────────────────────────────────
+  { id: '_sbg',  name: 'Song Be Golf Resort',           name_vn: 'Sân Golf Song Bé',                   province: 'Binh Duong',       holes: 27, par: 72,  distance_km: 15  },
+  { id: '_tdg',  name: 'Twin Doves Golf Club',          name_vn: 'Sân Golf Twin Doves',                province: 'Binh Duong',       holes: 27, par: 108, distance_km: 35  },
+  { id: '_hmg',  name: 'Harmonie Golf Park',            name_vn: 'Sân Golf Harmonie',                  province: 'Binh Duong',       holes: 18, par: 72,  distance_km: 35  },
+  // ── 동나이성 ──────────────────────────────────────────────────────────
+  { id: '_ltg',  name: 'Long Thanh Golf Club',          name_vn: 'Sân Golf Long Thành',                province: 'Dong Nai',         holes: 36, par: 72,  distance_km: 36  },
+  { id: '_dng',  name: 'Dong Nai Golf Resort (Bo Chang)', name_vn: 'Sân Golf Đồng Nai (Bò Chang)',    province: 'Dong Nai',         holes: 27, par: 72,  distance_km: 50  },
+  { id: '_ecc',  name: 'Emerald Country Club',          name_vn: 'Sân Golf Emerald Country Club',      province: 'Dong Nai',         holes: 18, par: 72,  distance_km: 40  },
+  // ── 롱안성 ────────────────────────────────────────────────────────────
+  { id: '_rla',  name: 'Royal Long An Golf & Country Club', name_vn: 'Sân Golf Royal Long An',         province: 'Long An',          holes: 27, par: 72,  distance_km: 50  },
+  { id: '_wlg',  name: 'West Lakes Golf & Villas',      name_vn: 'Sân Golf West Lakes',                province: 'Long An',          holes: 18, par: 72,  distance_km: 52  },
+  // ── 바리아붕따우성 ────────────────────────────────────────────────────
+  { id: '_vtg',  name: 'Vung Tau Paradise Golf Resort', name_vn: 'Sân Golf Vũng Tàu Paradise',         province: 'Ba Ria-Vung Tau',  holes: 27, par: 108, distance_km: 125 },
+  { id: '_scg',  name: 'Sonadezi Chau Duc Golf Course', name_vn: 'Sân Golf Sonadezi Châu Đức',         province: 'Ba Ria-Vung Tau',  holes: 36, par: 72,  distance_km: 90  },
+  { id: '_blf',  name: 'The Bluffs Grand Ho Tram Strip', name_vn: 'Sân Golf The Bluffs Hồ Tràm',      province: 'Ba Ria-Vung Tau',  holes: 18, par: 71,  distance_km: 130 },
+  // ── 빈투언성 ──────────────────────────────────────────────────────────
+  { id: '_pga',  name: 'PGA NovaWorld Phan Thiet',      name_vn: 'Sân Golf PGA NovaWorld Phan Thiết',  province: 'Binh Thuan',       holes: 36, par: 72,  distance_km: 200 },
+]
+
 function detectCountry(province: string): CountryKey {
   if (/Ho Chi Minh|Binh Duong|Dong Nai|Long An|Ba Ria|Binh Thuan|Da Nang|Ha Noi|Hanoi|Quang Nam|Khanh Hoa|Vung Tau|Hue|Nha Trang/i.test(province)) return 'Vietnam'
   if (/Korea|Seoul|Incheon|Jeju|Gyeong|Busan|Cheju|경기|서울|인천|제주|경상|부산/i.test(province)) return 'Korea'
@@ -90,7 +120,8 @@ export default function ScorecardPage() {
 
   // new round
   const [showNew,       setShowNew]       = useState(false)
-  const [courses,       setCourses]       = useState<any[]>([])
+  // BUILTIN_COURSES 를 초기값으로 설정 — DB 없이도 즉시 표시
+  const [courses,       setCourses]       = useState<any[]>(BUILTIN_COURSES)
   const [newForm,       setNewForm]       = useState({
     courseName: '', courseId: '', coursePar: 72, holes: 18,
     playedAt: new Date().toISOString().split('T')[0], notes: '',
@@ -161,12 +192,19 @@ export default function ScorecardPage() {
   }
 
   async function loadCourses() {
-    if (courses.length > 0) return
+    // 이미 DB에서 한 번이라도 로드했으면 스킵 (builtin ID는 '_'로 시작)
+    if (courses.some(c => !String(c.id).startsWith('_'))) return
     const supabase = createClient()
     const { data } = await supabase.from('golf_courses')
       .select('id, name, name_vn, province, par, holes, distance_km')
       .eq('is_active', true).order('name')
-    setCourses(data ?? [])
+    if (data && data.length > 0) {
+      // DB 골프장 우선, BUILTIN 중 DB에 없는 것만 보충
+      const dbNames = new Set(data.map((c: any) => c.name.toLowerCase()))
+      const extras = BUILTIN_COURSES.filter(b => !dbNames.has(b.name.toLowerCase()))
+      setCourses([...data, ...extras])
+    }
+    // DB 비어 있으면 BUILTIN_COURSES 그대로 유지 (초기값)
   }
 
   useEffect(() => { loadRounds() }, [user])
