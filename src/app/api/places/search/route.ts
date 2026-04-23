@@ -3,27 +3,22 @@ import { NextRequest, NextResponse } from 'next/server'
 // Google Places Text Search API (서버사이드 — API 키 보호)
 export async function GET(req: NextRequest) {
   const q    = req.nextUrl.searchParams.get('q')?.trim()
-  const near = req.nextUrl.searchParams.get('near') ?? 'Ho Chi Minh City'
+  const near = req.nextUrl.searchParams.get('near') ?? 'Ho Chi Minh City Vietnam'
 
   if (!q || q.length < 1) {
     return NextResponse.json({ results: [] })
   }
 
   const apiKey = process.env.GOOGLE_PLACES_API_KEY
-  if (!apiKey || apiKey === 'YOUR_GOOGLE_MAPS_API_KEY_HERE') {
-    // API 키 미설정 — 더미 데이터 반환 (개발용)
-    return NextResponse.json({
-      results: [
-        { place_id: 'demo_1', name: `${q} (검색결과)`, address: near, lat: 10.7769, lng: 106.7009, rating: null },
-      ],
-      demo: true,
-    })
+  if (!apiKey) {
+    return NextResponse.json({ results: [], error: 'API key not configured' })
   }
 
   try {
-    const searchQuery = encodeURIComponent(`${q} restaurant ${near}`)
-    const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${searchQuery}&type=restaurant&language=ko&key=${apiKey}`
-    const res  = await fetch(url, { next: { revalidate: 60 } })
+    // 골프장 검색: type 제한 없이 장소명+지역으로 검색
+    const searchQuery = encodeURIComponent(`${q} ${near}`)
+    const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${searchQuery}&language=ko&key=${apiKey}`
+    const res  = await fetch(url, { cache: 'no-store' })
     const data = await res.json()
 
     if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {

@@ -405,8 +405,8 @@ export default function SettingsPage() {
                 <CourseSearchInput
                   value={courseForm.name}
                   onChange={v => setCourseForm(f => ({ ...f, name: v }))}
-                  onSelect={c => {
-                    // 기존 DB 골프장 선택 시 모든 필드 자동 완성
+                  onSelect={async c => {
+                    // 1. 선택한 골프장의 모든 필드 즉시 채우기
                     setCourseForm(f => ({
                       ...f,
                       name:     c.name,
@@ -423,6 +423,20 @@ export default function SettingsPage() {
                       designer:    c.designer    ?? f.designer,
                       description: c.description ?? f.description,
                     }))
+                    // 2. 주소가 없으면 Google Places 에서 자동 조회
+                    if (!c.address) {
+                      try {
+                        const res  = await fetch(`/api/places/search?q=${encodeURIComponent(c.name)}&near=Vietnam`)
+                        const json = await res.json()
+                        const hit  = (json.results ?? []).find((r: any) =>
+                          r.name.toLowerCase().includes(c.name.toLowerCase().split(' ')[0]) ||
+                          c.name.toLowerCase().includes(r.name.toLowerCase().split(' ')[0])
+                        ) ?? json.results?.[0]
+                        if (hit?.address) {
+                          setCourseForm(f => ({ ...f, address: hit.address }))
+                        }
+                      } catch { /* 무시 */ }
+                    }
                   }}
                   placeholder={ko ? '골프장명 입력 (1자부터 자동검색)' : 'Type course name to search...'}
                   className="text-sm"
