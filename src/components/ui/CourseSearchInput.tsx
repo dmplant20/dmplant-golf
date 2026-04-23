@@ -3,6 +3,26 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Search, MapPin, X, Loader2 } from 'lucide-react'
 
+// ── 기본 내장 골프장 (DB가 비어있을 때 즉시 검색 가능) ─────────────────────
+const BUILTIN_COURSES = [
+  { id: '_tsn', name: 'Tan Son Nhat Golf Course',   name_vn: 'Sân Golf Tân Sơn Nhất',    province: 'Ho Chi Minh City', holes: 36, par: 144, distance_km: 6,  green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
+  { id: '_tdg', name: 'Twin Doves Golf Club',        name_vn: 'Sân Golf Twin Doves',       province: 'Binh Duong',       holes: 27, par: 108, distance_km: 35, green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
+  { id: '_lth', name: 'Long Thanh Golf Club',        name_vn: 'Sân Golf Long Thành',       province: 'Dong Nai',         holes: 54, par: 216, distance_km: 40, green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
+  { id: '_rsg', name: 'Rach Chiec Golf Course',      name_vn: 'Sân Golf Rạch Chiếc',      province: 'Ho Chi Minh City', holes: 18, par: 72,  distance_km: 10, green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
+  { id: '_thg', name: 'Thu Duc Golf Course',         name_vn: 'Sân Golf Thủ Đức',         province: 'Ho Chi Minh City', holes: 27, par: 108, distance_km: 15, green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
+  { id: '_sbg', name: 'Song Be Golf Resort',         name_vn: 'Sân Golf Sông Bé',         province: 'Binh Duong',       holes: 36, par: 144, distance_km: 25, green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
+  { id: '_vng', name: 'Vietnam Golf & Country Club', name_vn: 'Sân Golf Vietnam',          province: 'Ho Chi Minh City', holes: 36, par: 144, distance_km: 20, green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
+  { id: '_bsg', name: 'Bishopsgate Golf Club',       name_vn: 'Sân Golf Bishopsgate',      province: 'Binh Duong',       holes: 18, par: 72,  distance_km: 45, green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
+  { id: '_tng', name: 'Thana City Golf & Country',   name_vn: null,                        province: 'Ho Chi Minh City', holes: 18, par: 72,  distance_km: 30, green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
+  { id: '_dlg', name: 'Dalat Palace Golf Club',      name_vn: 'Sân Golf Đà Lạt Palace',   province: 'Other',            holes: 18, par: 72,  distance_km: 300, green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
+  { id: '_png', name: 'Phan Thiet Golf Resort',      name_vn: 'Sân Golf Phan Thiết',      province: 'Binh Thuan',       holes: 27, par: 108, distance_km: 180, green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
+  { id: '_vug', name: 'Vung Tau Paradise Golf',      name_vn: 'Sân Golf Vũng Tàu',        province: 'Ba Ria-Vung Tau',  holes: 27, par: 108, distance_km: 130, green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
+  { id: '_hcg', name: 'Ho Chi Minh City Golf Club',  name_vn: 'CLB Golf Hồ Chí Minh',     province: 'Ho Chi Minh City', holes: 18, par: 72,  distance_km: 8,  green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
+  { id: '_dmg', name: 'Duc Hoa Golf Course',         name_vn: 'Sân Golf Đức Hòa',         province: 'Long An',          holes: 18, par: 72,  distance_km: 55, green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
+  { id: '_hig', name: 'Hiep Phuoc Golf',             name_vn: 'Sân Golf Hiệp Phước',      province: 'Ho Chi Minh City', holes: 18, par: 72,  distance_km: 22, green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
+  { id: '_rvg', name: 'River Villas Golf',           name_vn: 'Sân Golf River Villas',     province: 'Dong Nai',         holes: 18, par: 72,  distance_km: 60, green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
+]
+
 interface Course {
   id: string
   name: string
@@ -72,7 +92,18 @@ export default function CourseSearchInput({
         .or(`name.ilike.%${q}%,name_vn.ilike.%${q}%,province.ilike.%${q}%`)
         .order('distance_km', { nullsFirst: false })
         .limit(8)
-      setResults(data ?? [])
+
+      // DB가 비어있으면 내장 골프장으로 폴백
+      let found: Course[] = data ?? []
+      if (found.length === 0) {
+        found = BUILTIN_COURSES.filter(c =>
+          c.name.toLowerCase().includes(q) ||
+          (c.name_vn ?? '').toLowerCase().includes(q) ||
+          c.province.toLowerCase().includes(q)
+        ).slice(0, 8) as Course[]
+      }
+
+      setResults(found)
       calcFixed()
       setOpen(true)
       setLoading(false)

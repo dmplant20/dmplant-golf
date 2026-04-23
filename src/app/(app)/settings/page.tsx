@@ -47,6 +47,12 @@ export default function SettingsPage() {
   const [courseForm, setCourseForm] = useState({ ...EMPTY_COURSE })
   const [courseSaving, setCourseSaving] = useState(false)
 
+  // ── 주소 구글 장소 검색 ────────────────────────────────────────────────
+  const [addrOpen,    setAddrOpen]    = useState(false)
+  const [addrQ,       setAddrQ]       = useState('')
+  const [addrResults, setAddrResults] = useState<any[]>([])
+  const [addrLoading, setAddrLoading] = useState(false)
+
   useEffect(() => {
     if (!currentClubId) return
     async function load() {
@@ -96,6 +102,7 @@ export default function SettingsPage() {
   function openNewCourse() {
     setCourseForm({ ...EMPTY_COURSE })
     setEditCourse({})  // empty object = new
+    setAddrOpen(false); setAddrQ(''); setAddrResults([])
   }
 
   function openEditCourse(course: any) {
@@ -116,6 +123,7 @@ export default function SettingsPage() {
       description: course.description ?? '',
     })
     setEditCourse(course)
+    setAddrOpen(false); setAddrQ(''); setAddrResults([])
   }
 
   async function saveCourse() {
@@ -469,11 +477,75 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              {/* 주소 */}
+              {/* 주소 — 구글 장소 검색 */}
               <div>
                 <label className="text-xs text-gray-400 block mb-1">{ko ? '주소' : 'Address'}</label>
-                <input value={courseForm.address} onChange={e => setCourseForm(f => ({ ...f, address: e.target.value }))}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-green-500" />
+                <div className="relative">
+                  <input
+                    value={courseForm.address}
+                    onChange={e => setCourseForm(f => ({ ...f, address: e.target.value }))}
+                    placeholder={ko ? '주소 직접 입력 또는 🗺️ 검색' : 'Type address or tap 🗺️ to search'}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 pr-12 text-sm text-white focus:outline-none focus:border-green-500"
+                  />
+                  <button
+                    type="button"
+                    title={ko ? '구글 지도에서 주소 검색' : 'Search address on Google Maps'}
+                    onClick={() => { setAddrQ(courseForm.name); setAddrOpen(true); setAddrResults([]) }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-green-400 hover:text-green-300 transition text-base"
+                  >🗺️</button>
+                </div>
+
+                {/* 장소 검색 패널 */}
+                {addrOpen && (
+                  <div className="mt-2 bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
+                    <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-700">
+                      <Search size={13} className="text-gray-500 flex-shrink-0" />
+                      <input
+                        autoFocus
+                        value={addrQ}
+                        onChange={async e => {
+                          const v = e.target.value
+                          setAddrQ(v)
+                          if (v.trim().length < 2) { setAddrResults([]); return }
+                          setAddrLoading(true)
+                          try {
+                            const res = await fetch(`/api/places/search?q=${encodeURIComponent(v)}&near=Ho+Chi+Minh+City`)
+                            const json = await res.json()
+                            setAddrResults(json.results ?? [])
+                          } catch { setAddrResults([]) }
+                          setAddrLoading(false)
+                        }}
+                        placeholder={ko ? '장소명 또는 주소 입력...' : 'Search place name or address...'}
+                        className="flex-1 bg-transparent text-sm text-white outline-none placeholder-gray-600"
+                      />
+                      {addrLoading
+                        ? <span className="text-green-400 text-xs animate-pulse">⏳</span>
+                        : <button type="button" onClick={() => setAddrOpen(false)} className="text-gray-600 hover:text-gray-400"><X size={14} /></button>
+                      }
+                    </div>
+                    <div className="max-h-48 overflow-y-auto">
+                      {addrResults.length > 0 ? addrResults.map((r: any) => (
+                        <button
+                          key={r.place_id}
+                          type="button"
+                          onClick={() => {
+                            setCourseForm(f => ({ ...f, address: r.address ?? r.name }))
+                            setAddrOpen(false)
+                            setAddrQ('')
+                          }}
+                          className="w-full text-left px-3 py-2.5 hover:bg-gray-700 transition border-b border-gray-700/50 last:border-0"
+                        >
+                          <p className="text-sm text-white font-medium truncate">{r.name}</p>
+                          {r.address && <p className="text-xs text-gray-500 truncate mt-0.5">{r.address}</p>}
+                        </button>
+                      )) : addrQ.trim().length >= 2 && !addrLoading ? (
+                        <p className="text-center text-gray-600 text-xs py-3">{ko ? '검색 결과 없음' : 'No results'}</p>
+                      ) : (
+                        <p className="text-center text-gray-600 text-xs py-3">{ko ? '2자 이상 입력하세요' : 'Type 2+ characters to search'}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* 그린피 */}
