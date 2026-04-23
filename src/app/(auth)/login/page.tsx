@@ -64,7 +64,7 @@ export default function LoginPage() {
             <span className="text-green-400"> GOLF</span>
           </h1>
           <p className="text-gray-400 text-sm mt-1.5">
-            {ko ? '호치민 한인 골프 클럽 관리' : 'HCMC Korean Golf Club Management'}
+            {ko ? '골프 모임 관리' : 'Golf Club Management'}
           </p>
         </div>
 
