@@ -1,12 +1,169 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores/authStore'
 import {
   Bell, Plus, X, ChevronDown, ChevronUp,
   MapPin, Phone, FileText, Lock, Trash2, Calendar,
+  Sparkles, ClipboardPaste, CheckCircle2,
 } from 'lucide-react'
 import { OFFICER_ROLES } from '../members/page'
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 📋 자동 분석 파서 — 청첩장 · 부고장 · 기타 경조사 텍스트를 읽고 필드 추출
+// ═══════════════════════════════════════════════════════════════════════════
+interface ParsedEvent {
+  type: string; title: string; person_name: string
+  date: string; time: string; location_name: string; contact: string
+  raw_text: string; filled: string[]   // 자동 채워진 필드 목록
+}
+
+function parseEventText(raw: string): ParsedEvent {
+  const text  = raw.trim()
+  const result: ParsedEvent = { type: '', title: '', person_name: '', date: '', time: '', location_name: '', contact: '', raw_text: text, filled: [] }
+
+  // ── 1. 유형 감지 ────────────────────────────────────────────────────────
+  if (/결혼|청첩|신랑|신부|웨딩|혼인|婚|marriage|wedding/i.test(text)) {
+    result.type = 'wedding'
+  } else if (/부고|별세|타계|영면|永眠|빈소|발인|장례|유족|상주|소천|永逝/i.test(text)) {
+    result.type = 'condolence'
+  } else if (/출산|득남|득녀|태어났|출생|아기|baby|탄생/i.test(text)) {
+    result.type = 'birth'
+  } else if (/환갑|칠순|팔순|회갑|구순|생신|수연/i.test(text)) {
+    result.type = 'birthday'
+  } else if (/승진|취임|부임|발령|임명|대표이사|이사|전무|상무|부장|과장/i.test(text)) {
+    result.type = 'promotion'
+  } else {
+    result.type = 'other'
+  }
+
+  // ── 2. 이름 추출 ─────────────────────────────────────────────────────────
+  if (result.type === 'wedding') {
+    // "신랑 홍 길 동" 또는 "신랑 홍길동" (스페이스 무시)
+    const grm = text.match(/신\s*랑\s*[:：]?\s*([가-힣][가-힣\s]{1,6})/i)
+    const brd = text.match(/신\s*부\s*[:：]?\s*([가-힣][가-힣\s]{1,6})/i)
+    const groomName = grm ? grm[1].replace(/\s+/g,'').trim() : ''
+    const brideName = brd ? brd[1].replace(/\s+/g,'').trim() : ''
+    if (groomName && brideName) {
+      result.person_name = `신랑 ${groomName} ♥ 신부 ${brideName}`
+      result.title = `${groomName} · ${brideName} 결혼식`
+      result.filled.push('person_name', 'title')
+    } else if (groomName) {
+      result.person_name = `신랑 ${groomName}`
+      result.title = `${groomName} 결혼식`
+      result.filled.push('person_name', 'title')
+    }
+  } else if (result.type === 'condolence') {
+    // "故 홍길동" or "홍길동 님이 별세"
+    const dec = text.match(/(?:故|고)\s*([가-힣]{2,5})\s*(?:님|선생|씨|회장|회원)?/)
+             ?? text.match(/([가-힣]{2,5})\s*(?:님|선생|씨|회장|회원|여사)?\s*(?:께서\s*)?(?:별세|타계|영면|소천|永逝)/)
+    if (dec) {
+      const nm = dec[1].trim()
+      result.person_name = `故 ${nm}`
+      result.title = `故 ${nm} 부고`
+      result.filled.push('person_name', 'title')
+    }
+  } else if (result.type === 'birth') {
+    const par = text.match(/([가-힣]{2,5})[,·\s]*([가-힣]{2,5})\s*(?:부부|내외)/)
+    if (par) {
+      result.person_name = `${par[1]} · ${par[2]} 부부`
+      result.title = `${par[1]} 회원 득${/딸|녀|女/.test(text) ? '녀' : '남'} 소식`
+      result.filled.push('person_name', 'title')
+    }
+  } else if (result.type === 'birthday') {
+    const nm = text.match(/([가-힣]{2,5})\s*(?:님|회장|회원|선생|씨)?\s*(?:환갑|칠순|팔순|회갑|구순)/)
+    if (nm) {
+      result.person_name = nm[1].trim()
+      result.title = `${nm[1].trim()} 회원 ${/팔순/.test(text) ? '팔순' : /칠순/.test(text) ? '칠순' : /구순/.test(text) ? '구순' : '환갑'} 잔치`
+      result.filled.push('person_name', 'title')
+    }
+  } else if (result.type === 'promotion') {
+    const nm = text.match(/([가-힣]{2,5})\s*(?:이사|부장|과장|팀장|대표|사장|전무|상무|본부장|임원)/)
+    if (nm) {
+      result.person_name = nm[1].trim()
+      result.title = `${nm[1].trim()} 회원 승진 축하`
+      result.filled.push('person_name', 'title')
+    }
+  }
+
+  // ── 3. 날짜 추출 ─────────────────────────────────────────────────────────
+  // 부고는 발인 날짜 우선
+  let dateStr = ''
+  if (result.type === 'condolence') {
+    const f1 = text.match(/발\s*인\s*[:：]?\s*(?:\d{4}년\s*)?(\d{1,2})월\s*(\d{1,2})일/)
+    if (f1) {
+      const yMatch = text.match(/(\d{4})년/)
+      const y = yMatch ? yMatch[1] : new Date().getFullYear().toString()
+      dateStr = `${y}-${f1[1].padStart(2,'0')}-${f1[2].padStart(2,'0')}`
+    }
+  }
+  if (!dateStr) {
+    // "2025년 3월 15일" or "25년 3월 15일"
+    const dm = text.match(/(\d{2,4})년\s*(\d{1,2})월\s*(\d{1,2})일/)
+    if (dm) {
+      const y = dm[1].length === 2 ? `20${dm[1]}` : dm[1]
+      dateStr = `${y}-${dm[2].padStart(2,'0')}-${dm[3].padStart(2,'0')}`
+    }
+    // "3/15", "03-15" 형태 (current year fallback)
+    if (!dateStr) {
+      const dm2 = text.match(/(\d{1,2})[\/\-](\d{1,2})/)
+      if (dm2) {
+        const y = new Date().getFullYear()
+        dateStr = `${y}-${dm2[1].padStart(2,'0')}-${dm2[2].padStart(2,'0')}`
+      }
+    }
+  }
+  if (dateStr) { result.date = dateStr; result.filled.push('date') }
+
+  // ── 4. 시간 추출 ─────────────────────────────────────────────────────────
+  const tm = text.match(/(오\s*전|오\s*후|AM|PM)?\s*(\d{1,2})\s*시\s*(?:(\d{1,2})\s*분)?/)
+          ?? text.match(/(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)?/)
+  if (tm) {
+    let hour: number, min: number
+    if (tm[0].includes(':')) {
+      hour = parseInt(tm[1]); min = parseInt(tm[2])
+      if (/pm/i.test(tm[3] ?? '') && hour < 12) hour += 12
+    } else {
+      hour = parseInt(tm[2]); min = parseInt(tm[3] ?? '0')
+      const ampm = (tm[1] ?? '').replace(/\s/g,'')
+      if (/오후|PM/i.test(ampm) && hour < 12) hour += 12
+      if (/오전|AM/i.test(ampm) && hour === 12) hour = 0
+    }
+    if (hour >= 0 && hour <= 23) {
+      result.time = `${hour.toString().padStart(2,'0')}:${min.toString().padStart(2,'0')}`
+      result.filled.push('time')
+    }
+  }
+
+  // ── 5. 장소 추출 ─────────────────────────────────────────────────────────
+  const locPatterns: RegExp[] = [
+    /빈\s*소\s*[:：]\s*(.+?)(?:\n|$)/,          // 부고 빈소
+    /발\s*인\s*장\s*소\s*[:：]\s*(.+?)(?:\n|$)/, // 부고 발인 장소
+    /예\s*식\s*장\s*[:：]?\s*(.+?)(?:\n|$)/,     // 결혼 예식장
+    /장\s*소\s*[:：]\s*(.+?)(?:\n|$)/,           // 일반 장소
+    /([가-힣a-zA-Z0-9]+웨딩[가-힣a-zA-Z0-9\s]*(?:\d+층)?(?:[가-힣a-zA-Z]+홀)?)/,  // OO웨딩홀
+    /([가-힣a-zA-Z0-9]+병원\s*장례식장[가-힣\s\d]*)/,                               // 병원 장례식장
+    /([가-힣a-zA-Z0-9]+(?:컨벤션|호텔|채플|성당|교회)[가-힣\s\d]*(?:\d+층)?)/,     // 컨벤션/호텔 등
+  ]
+  for (const p of locPatterns) {
+    const m = text.match(p)
+    if (m && m[1]?.trim()) { result.location_name = m[1].trim(); result.filled.push('location_name'); break }
+  }
+
+  // ── 6. 연락처 추출 ────────────────────────────────────────────────────────
+  // 전화번호 (첫 번째 발견)
+  const phones = text.match(/\d{3}[-.\s]?\d{3,4}[-.\s]?\d{4}/g)
+  if (phones) {
+    // 유족 연락처가 있으면 우선 (부고)
+    const yuMatch = text.match(/유\s*족.*?(\d{3}[-.\s]?\d{3,4}[-.\s]?\d{4})/)
+               ?? text.match(/문\s*의.*?(\d{3}[-.\s]?\d{3,4}[-.\s]?\d{4})/)
+               ?? text.match(/연\s*락.*?(\d{3}[-.\s]?\d{3,4}[-.\s]?\d{4})/)
+    result.contact = (yuMatch ? yuMatch[1] : phones[0]).replace(/\s/g,'')
+    result.filled.push('contact')
+  }
+
+  return result
+}
 
 // ── 경조사 유형 ──────────────────────────────────────────────────
 const EVENT_TYPES = [
@@ -107,6 +264,40 @@ export default function AnnouncementPage() {
   const [nForm, setNForm] = useState(emptyNForm)
   const [eForm, setEForm] = useState(emptyEForm)
 
+  // ── 자동 분석 상태 ──────────────────────────────────────────────
+  const [pasteText,    setPasteText]    = useState('')
+  const [parsing,      setParsing]      = useState(false)
+  const [autoFilled,   setAutoFilled]   = useState<string[]>([])
+  const [parseMsg,     setParseMsg]     = useState<string | null>(null)
+  const pasteRef = useRef<HTMLTextAreaElement>(null)
+
+  function isAutoFilled(field: string) { return autoFilled.includes(field) }
+
+  function runParse(txt: string) {
+    if (!txt.trim()) return
+    setParsing(true); setParseMsg(null)
+    setTimeout(() => {
+      const r = parseEventText(txt)
+      setEForm({
+        type:          r.type          || 'wedding',
+        title:         r.title         || '',
+        date:          r.date          || '',
+        time:          r.time          || '',
+        person_name:   r.person_name   || '',
+        location_name: r.location_name || '',
+        contact:       r.contact       || '',
+        raw_text:      txt,
+      })
+      setAutoFilled(r.filled)
+      setParseMsg(
+        r.filled.length > 0
+          ? `✅ ${r.filled.length}개 항목 자동 입력 완료! 내용을 확인해주세요.`
+          : '⚠️ 항목을 찾지 못했습니다. 직접 입력해주세요.'
+      )
+      setParsing(false)
+    }, 400)
+  }
+
   // ── 데이터 로드 ─────────────────────────────────────────────────
   async function load() {
     if (!currentClubId) return
@@ -142,7 +333,7 @@ export default function AnnouncementPage() {
     if (!eForm.title.trim() || !eForm.date || !currentClubId) return
     const supabase = createClient()
     const eventDate = eForm.time ? `${eForm.date}T${eForm.time}:00` : eForm.date
-    const raw = eForm.raw_text.trim() || null
+    const raw = pasteText.trim() || eForm.raw_text.trim() || null
     await supabase.from('events').insert({
       club_id: currentClubId,
       type: eForm.type,
@@ -155,7 +346,7 @@ export default function AnnouncementPage() {
       description: raw,          // fallback for older columns
       created_by: user!.id,
     })
-    setShowAdd(false); setEForm(emptyEForm); load()
+    setShowAdd(false); setEForm(emptyEForm); setPasteText(''); setAutoFilled([]); setParseMsg(null); load()
   }
 
   // ── 삭제 ─────────────────────────────────────────────────────────
@@ -471,6 +662,104 @@ export default function AnnouncementPage() {
             ) : (
               /* ── 경조사 폼 ────────────────────────────────────── */
               <>
+                {/* ━━━ 자동 분석 섹션 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+                <div className="rounded-2xl overflow-hidden"
+                  style={{ background: 'linear-gradient(135deg,rgba(139,92,246,0.1),rgba(6,13,6,0.95))', border: '1px solid rgba(139,92,246,0.25)' }}>
+                  {/* 헤더 */}
+                  <div className="flex items-center gap-2 px-4 pt-4 pb-2">
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{ background: 'rgba(139,92,246,0.2)' }}>
+                      <Sparkles size={14} style={{ color: '#a78bfa' }} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-white">
+                        {ko ? '📋 자동 분석 입력' : '📋 Auto-fill from Message'}
+                      </p>
+                      <p className="text-[11px]" style={{ color: '#7c6faa' }}>
+                        {ko ? '청첩장·부고장을 붙여넣으면 모든 항목을 자동으로 채워드립니다'
+                            : 'Paste your invitation or notice — all fields will be filled automatically'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 붙여넣기 영역 */}
+                  <div className="px-4 pb-3">
+                    <div className="relative">
+                      <textarea
+                        ref={pasteRef}
+                        rows={5}
+                        value={pasteText}
+                        onChange={e => { setPasteText(e.target.value); setParseMsg(null); setAutoFilled([]) }}
+                        onPaste={e => {
+                          // paste 이벤트 후 텍스트가 반영된 뒤 자동 분석 실행
+                          setTimeout(() => {
+                            const val = pasteRef.current?.value ?? ''
+                            if (val.trim()) runParse(val)
+                          }, 50)
+                        }}
+                        placeholder={ko
+                          ? `카카오톡·문자에서 받은 청첩장이나 부고장을 여기에 붙여넣으세요.\n──────────────────────\n결혼합니다\n신랑 홍 길 동 / 신부 김 영 희\n2026년 5월 1일 토요일 오전 11시\nOO웨딩홀 2층 다이아몬드홀\n문의: 010-1234-5678`
+                          : `Paste your wedding invitation or funeral notice here...\n──────────\nWe are getting married\nGildong & Younghee\nMay 1, 2026 at 11:00 AM`}
+                        className="w-full rounded-xl px-3.5 py-3 text-xs leading-relaxed resize-none"
+                        style={{
+                          background: 'rgba(0,0,0,0.3)',
+                          border: pasteText ? '1px solid rgba(139,92,246,0.4)' : '1px solid rgba(139,92,246,0.15)',
+                          color: '#d1c4e9',
+                          fontFamily: '"Noto Sans KR","Apple SD Gothic Neo",monospace',
+                          outline: 'none',
+                        }}
+                      />
+                      {pasteText && !parsing && (
+                        <button onClick={() => { setPasteText(''); setAutoFilled([]); setParseMsg(null) }}
+                          className="absolute right-2 top-2 w-5 h-5 rounded-full flex items-center justify-center"
+                          style={{ background: 'rgba(139,92,246,0.3)', color: '#a78bfa' }}>
+                          <X size={10} />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* 분석 버튼 */}
+                    <button
+                      onClick={() => runParse(pasteText)}
+                      disabled={!pasteText.trim() || parsing}
+                      className="w-full mt-2 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition disabled:opacity-40"
+                      style={{ background: pasteText.trim() ? 'linear-gradient(135deg,#7c3aed,#4c1d95)' : 'rgba(139,92,246,0.1)', color: '#e9d5ff' }}>
+                      {parsing ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-purple-300 border-t-transparent rounded-full animate-spin" />
+                          {ko ? '분석 중...' : 'Analyzing...'}
+                        </>
+                      ) : (
+                        <>
+                          <ClipboardPaste size={15} />
+                          {ko ? '🔍 자동 분석하기' : '🔍 Auto-fill Fields'}
+                        </>
+                      )}
+                    </button>
+
+                    {/* 결과 메시지 */}
+                    {parseMsg && (
+                      <div className="mt-2 px-3 py-2 rounded-xl text-xs font-medium flex items-center gap-2"
+                        style={{
+                          background: parseMsg.startsWith('✅') ? 'rgba(34,197,94,0.1)' : 'rgba(251,191,36,0.1)',
+                          border: parseMsg.startsWith('✅') ? '1px solid rgba(34,197,94,0.2)' : '1px solid rgba(251,191,36,0.2)',
+                          color: parseMsg.startsWith('✅') ? '#86efac' : '#fde68a',
+                        }}>
+                        {parseMsg}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 자동입력 안내 */}
+                {autoFilled.length > 0 && (
+                  <p className="text-[11px] flex items-center gap-1" style={{ color: '#7c6faa' }}>
+                    <CheckCircle2 size={11} />
+                    {ko ? '초록 테두리 항목이 자동으로 입력되었습니다. 수정 가능합니다.'
+                        : 'Highlighted fields were auto-filled. You can edit them.'}
+                  </p>
+                )}
+
                 {/* 유형 선택 */}
                 <div>
                   <label className="text-xs font-semibold mb-2 block" style={{ color: '#5a7a5a' }}>
@@ -492,8 +781,9 @@ export default function AnnouncementPage() {
 
                 {/* 제목 */}
                 <div>
-                  <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#5a7a5a' }}>
+                  <label className="text-xs font-semibold mb-1.5 block flex items-center gap-1" style={{ color: '#5a7a5a' }}>
                     {ko ? '제목 *' : 'Title *'}
+                    {isAutoFilled('title') && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: 'rgba(139,92,246,0.2)', color: '#a78bfa' }}>자동입력</span>}
                   </label>
                   <input value={eForm.title} onChange={e => setEForm(f => ({ ...f, title: e.target.value }))}
                     placeholder={
@@ -504,18 +794,20 @@ export default function AnnouncementPage() {
                       eForm.type === 'promotion'  ? (ko ? '예: 홍길동 이사 승진 축하'     : 'e.g. Congratulations on Promotion') :
                       ko ? '제목을 입력하세요' : 'Enter title'
                     }
-                    className="input-field" />
+                    className="input-field"
+                    style={isAutoFilled('title') ? { borderColor: 'rgba(139,92,246,0.5)', boxShadow: '0 0 0 1px rgba(139,92,246,0.2)' } : {}} />
                 </div>
 
                 {/* 당사자 이름 */}
                 <div>
-                  <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#5a7a5a' }}>
+                  <label className="text-xs font-semibold mb-1.5 block flex items-center gap-1" style={{ color: '#5a7a5a' }}>
                     {eForm.type === 'wedding'    ? (ko ? '신랑 · 신부 이름'  : 'Bride & Groom') :
                      eForm.type === 'condolence' ? (ko ? '고인 성함'         : 'Deceased name') :
                      eForm.type === 'birth'      ? (ko ? '부모 이름'         : 'Parent name(s)') :
                      eForm.type === 'birthday'   ? (ko ? '주인공 이름'       : 'Honoree name') :
                      eForm.type === 'promotion'  ? (ko ? '당사자 이름 · 직위' : 'Name & Title') :
                      ko ? '당사자 이름' : 'Person name'}
+                    {isAutoFilled('person_name') && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: 'rgba(139,92,246,0.2)', color: '#a78bfa' }}>자동입력</span>}
                   </label>
                   <input value={eForm.person_name}
                     onChange={e => setEForm(f => ({ ...f, person_name: e.target.value }))}
@@ -525,36 +817,42 @@ export default function AnnouncementPage() {
                       eForm.type === 'birthday'   ? (ko ? '예: 홍길동 회장 칠순'          : 'e.g. Chairman Hong — 70th') :
                       ko ? '이름' : 'Name'
                     }
-                    className="input-field" />
+                    className="input-field"
+                    style={isAutoFilled('person_name') ? { borderColor: 'rgba(139,92,246,0.5)', boxShadow: '0 0 0 1px rgba(139,92,246,0.2)' } : {}} />
                 </div>
 
                 {/* 날짜 + 시간 */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#5a7a5a' }}>
+                    <label className="text-xs font-semibold mb-1.5 block flex items-center gap-1" style={{ color: '#5a7a5a' }}>
                       {eForm.type === 'condolence' ? (ko ? '발인 날짜 *' : 'Funeral Date *') : (ko ? '날짜 *' : 'Date *')}
+                      {isAutoFilled('date') && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: 'rgba(139,92,246,0.2)', color: '#a78bfa' }}>자동</span>}
                     </label>
                     <input type="date" value={eForm.date}
                       onChange={e => setEForm(f => ({ ...f, date: e.target.value }))}
-                      className="input-field" />
+                      className="input-field"
+                      style={isAutoFilled('date') ? { borderColor: 'rgba(139,92,246,0.5)', boxShadow: '0 0 0 1px rgba(139,92,246,0.2)' } : {}} />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#5a7a5a' }}>
+                    <label className="text-xs font-semibold mb-1.5 block flex items-center gap-1" style={{ color: '#5a7a5a' }}>
                       {ko ? '시간' : 'Time'}
+                      {isAutoFilled('time') && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: 'rgba(139,92,246,0.2)', color: '#a78bfa' }}>자동</span>}
                     </label>
                     <input type="time" value={eForm.time}
                       onChange={e => setEForm(f => ({ ...f, time: e.target.value }))}
-                      className="input-field" />
+                      className="input-field"
+                      style={isAutoFilled('time') ? { borderColor: 'rgba(139,92,246,0.5)', boxShadow: '0 0 0 1px rgba(139,92,246,0.2)' } : {}} />
                   </div>
                 </div>
 
                 {/* 장소 */}
                 <div>
-                  <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#5a7a5a' }}>
-                    <MapPin size={11} className="inline mr-1" />
+                  <label className="text-xs font-semibold mb-1.5 block flex items-center gap-1" style={{ color: '#5a7a5a' }}>
+                    <MapPin size={11} className="inline" />
                     {eForm.type === 'condolence' ? (ko ? '빈소 위치' : 'Funeral Hall') :
                      eForm.type === 'wedding'    ? (ko ? '예식장'    : 'Venue')        :
                      ko ? '장소' : 'Location'}
+                    {isAutoFilled('location_name') && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: 'rgba(139,92,246,0.2)', color: '#a78bfa' }}>자동입력</span>}
                   </label>
                   <input value={eForm.location_name}
                     onChange={e => setEForm(f => ({ ...f, location_name: e.target.value }))}
@@ -563,40 +861,47 @@ export default function AnnouncementPage() {
                       eForm.type === 'condolence' ? (ko ? '예: OO병원 장례식장 1호실'          : 'e.g. St. Mary Hospital Funeral Hall') :
                       ko ? '장소명 및 주소' : 'Venue name / address'
                     }
-                    className="input-field" />
+                    className="input-field"
+                    style={isAutoFilled('location_name') ? { borderColor: 'rgba(139,92,246,0.5)', boxShadow: '0 0 0 1px rgba(139,92,246,0.2)' } : {}} />
                 </div>
 
                 {/* 연락처 */}
                 <div>
-                  <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#5a7a5a' }}>
-                    <Phone size={11} className="inline mr-1" />
+                  <label className="text-xs font-semibold mb-1.5 block flex items-center gap-1" style={{ color: '#5a7a5a' }}>
+                    <Phone size={11} className="inline" />
                     {eForm.type === 'condolence' ? (ko ? '유족 연락처' : 'Family contact') : ko ? '연락처' : 'Contact'}
+                    {isAutoFilled('contact') && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: 'rgba(139,92,246,0.2)', color: '#a78bfa' }}>자동입력</span>}
                   </label>
                   <input value={eForm.contact}
                     onChange={e => setEForm(f => ({ ...f, contact: e.target.value }))}
                     placeholder={ko ? '예: 010-1234-5678' : 'e.g. 010-1234-5678'}
-                    className="input-field" />
+                    className="input-field"
+                    style={isAutoFilled('contact') ? { borderColor: 'rgba(139,92,246,0.5)', boxShadow: '0 0 0 1px rgba(139,92,246,0.2)' } : {}} />
                 </div>
 
-                {/* ── 원문 붙여넣기 (청첩장/부고장) ── */}
-                <div>
-                  <label className="text-xs font-semibold mb-1 block" style={{ color: '#5a7a5a' }}>
-                    <FileText size={11} className="inline mr-1" />
-                    {eForm.type === 'wedding'    ? (ko ? '청첩장 원문 붙여넣기 (선택)' : 'Paste invitation text (optional)') :
-                     eForm.type === 'condolence' ? (ko ? '부고장 원문 붙여넣기 (선택)' : 'Paste funeral notice (optional)') :
-                     ko ? '원문 내용 붙여넣기 (선택)' : 'Paste original message (optional)'}
-                  </label>
-                  <p className="text-xs mb-2" style={{ color: '#3a5a3a' }}>
-                    {ko
-                      ? '카카오톡, 문자 등에서 복사한 내용을 그대로 붙여넣으세요. 카드에서 "원문 전체보기"로 표시됩니다.'
-                      : 'Paste text copied from KakaoTalk, SMS etc. Shown as "View full message" on the card.'}
+                {/* 원문 (자동분석에서 입력된 경우 자동 보관, 미입력 시에만 표시) */}
+                {!pasteText && (
+                  <div>
+                    <label className="text-xs font-semibold mb-1 block" style={{ color: '#5a7a5a' }}>
+                      <FileText size={11} className="inline mr-1" />
+                      {ko ? '원문 직접 붙여넣기 (선택)' : 'Paste original text (optional)'}
+                    </label>
+                    <p className="text-xs mb-2" style={{ color: '#3a5a3a' }}>
+                      {ko ? '위 자동 분석을 이용하거나, 여기에 직접 붙여넣을 수 있습니다.' : 'Or paste the original message here directly.'}
+                    </p>
+                    <textarea rows={5} value={eForm.raw_text}
+                      onChange={e => setEForm(f => ({ ...f, raw_text: e.target.value }))}
+                      placeholder={rawPlaceholder(eForm.type, ko)}
+                      className="input-field resize-none text-xs leading-relaxed"
+                      style={{ fontFamily: '"Noto Sans KR","Apple SD Gothic Neo",monospace' }} />
+                  </div>
+                )}
+                {pasteText && (
+                  <p className="text-[11px] flex items-center gap-1" style={{ color: '#5a7a5a' }}>
+                    <FileText size={11} />
+                    {ko ? '원문이 자동 분석 텍스트로 저장됩니다.' : 'Original text will be saved from the analysis input.'}
                   </p>
-                  <textarea rows={7} value={eForm.raw_text}
-                    onChange={e => setEForm(f => ({ ...f, raw_text: e.target.value }))}
-                    placeholder={rawPlaceholder(eForm.type, ko)}
-                    className="input-field resize-none text-xs leading-relaxed"
-                    style={{ fontFamily: '"Noto Sans KR", "Apple SD Gothic Neo", monospace' }} />
-                </div>
+                )}
 
                 <div className="flex gap-3 pb-2">
                   <button onClick={() => setShowAdd(false)}
