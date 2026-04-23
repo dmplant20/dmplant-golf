@@ -47,11 +47,25 @@ export default function SettingsPage() {
   const [courseForm, setCourseForm] = useState({ ...EMPTY_COURSE })
   const [courseSaving, setCourseSaving] = useState(false)
 
-  // ── 주소 구글 장소 검색 ────────────────────────────────────────────────
+  // ── 주소 장소 검색 ────────────────────────────────────────────────────
   const [addrOpen,    setAddrOpen]    = useState(false)
   const [addrQ,       setAddrQ]       = useState('')
   const [addrResults, setAddrResults] = useState<any[]>([])
   const [addrLoading, setAddrLoading] = useState(false)
+
+  // 패널 열릴 때 pre-fill된 검색어로 자동 검색
+  useEffect(() => {
+    if (!addrOpen || addrQ.trim().length < 2) return
+    let cancelled = false
+    setAddrLoading(true)
+    setAddrResults([])
+    fetch(`/api/places/search?q=${encodeURIComponent(addrQ)}&near=Vietnam`)
+      .then(r => r.json())
+      .then(json => { if (!cancelled) setAddrResults(json.results ?? []) })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setAddrLoading(false) })
+    return () => { cancelled = true }
+  }, [addrOpen])
 
   useEffect(() => {
     if (!currentClubId) return
@@ -512,6 +526,7 @@ export default function SettingsPage() {
                 {/* 장소 검색 패널 */}
                 {addrOpen && (
                   <div className="mt-2 bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
+                    {/* 검색 입력 */}
                     <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-700">
                       <Search size={13} className="text-gray-500 flex-shrink-0" />
                       <input
@@ -523,20 +538,33 @@ export default function SettingsPage() {
                           if (v.trim().length < 2) { setAddrResults([]); return }
                           setAddrLoading(true)
                           try {
-                            const res = await fetch(`/api/places/search?q=${encodeURIComponent(v)}&near=Ho+Chi+Minh+City`)
+                            const res = await fetch(`/api/places/search?q=${encodeURIComponent(v)}&near=Vietnam`)
                             const json = await res.json()
                             setAddrResults(json.results ?? [])
                           } catch { setAddrResults([]) }
                           setAddrLoading(false)
                         }}
-                        placeholder={ko ? '장소명 또는 주소 입력...' : 'Search place name or address...'}
+                        placeholder={ko ? '골프장명 또는 주소 검색...' : 'Search golf course or address...'}
                         className="flex-1 bg-transparent text-sm text-white outline-none placeholder-gray-600"
                       />
                       {addrLoading
-                        ? <span className="text-green-400 text-xs animate-pulse">⏳</span>
+                        ? <span className="text-green-400 text-xs animate-pulse">검색중...</span>
                         : <button type="button" onClick={() => setAddrOpen(false)} className="text-gray-600 hover:text-gray-400"><X size={14} /></button>
                       }
                     </div>
+
+                    {/* 구글 지도 직접 열기 버튼 */}
+                    <a
+                      href={`https://maps.google.com/maps/search/${encodeURIComponent(addrQ || courseForm.name)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 px-3 py-2 border-b border-gray-700/50 hover:bg-gray-700/50 transition"
+                    >
+                      <span className="text-sm">🗺️</span>
+                      <span className="text-xs text-blue-400">{ko ? '구글 지도에서 직접 검색 →' : 'Open in Google Maps →'}</span>
+                    </a>
+
+                    {/* 검색 결과 */}
                     <div className="max-h-48 overflow-y-auto">
                       {addrResults.length > 0 ? addrResults.map((r: any) => (
                         <button
@@ -553,9 +581,9 @@ export default function SettingsPage() {
                           {r.address && <p className="text-xs text-gray-500 truncate mt-0.5">{r.address}</p>}
                         </button>
                       )) : addrQ.trim().length >= 2 && !addrLoading ? (
-                        <p className="text-center text-gray-600 text-xs py-3">{ko ? '검색 결과 없음' : 'No results'}</p>
-                      ) : (
-                        <p className="text-center text-gray-600 text-xs py-3">{ko ? '2자 이상 입력하세요' : 'Type 2+ characters to search'}</p>
+                        <p className="text-center text-gray-600 text-xs py-3">{ko ? '결과 없음 — 위 구글 지도 링크를 이용하세요' : 'No results — try Google Maps link above'}</p>
+                      ) : addrLoading ? null : (
+                        <p className="text-center text-gray-600 text-xs py-3">{ko ? '검색어를 입력하세요' : 'Enter search term'}</p>
                       )}
                     </div>
                   </div>
