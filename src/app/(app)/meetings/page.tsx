@@ -7,7 +7,7 @@ import {
   CheckCircle, XCircle, Clock, MapPin, Users, Shuffle,
   ListOrdered, Check, Ban, HelpCircle, Edit2, BarChart2,
   TrendingDown, TrendingUp, Minus, UtensilsCrossed, Bell,
-  BellOff, Navigation, Plus, Trash2,
+  BellOff, Navigation, Plus, Trash2, FileDown,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import CourseSearchInput from '@/components/ui/CourseSearchInput'
@@ -358,6 +358,44 @@ export default function MeetingsPage() {
     setSaving(false)
     setShowGroupModal(false)
     await loadRsvp(meeting.year, meeting.month)
+  }
+
+  // ── export groups to CSV / Excel ─────────────────────────────────────────
+  function exportGroupsCSV() {
+    if (!groups.length || !meeting) return
+    const BOM = '\uFEFF'
+    const headers = ko
+      ? ['조번호', '티오프시간', '회원명', '핸디캡']
+      : ['Group', 'Tee Time', 'Member', 'Handicap']
+    const rows: string[][] = []
+    groups.forEach((g: any) => {
+      ;(g.meeting_group_members ?? []).forEach((m: any) => {
+        const name = lang === 'ko'
+          ? (m.users?.full_name ?? '')
+          : (m.users?.full_name_en || (m.users?.full_name ?? ''))
+        const hc = clubMembers.find(cm => cm.user_id === m.user_id)?.club_handicap
+        rows.push([
+          String(g.group_number),
+          g.tee_time ?? '',
+          name,
+          hc != null ? String(hc) : '',
+        ])
+      })
+    })
+    const csv = BOM + [headers, ...rows]
+      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = ko
+      ? `조편성_${meeting.year}년${meeting.month}월.csv`
+      : `groups_${meeting.year}_${String(meeting.month).padStart(2, '0')}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
   }
 
   // ── save pattern ───────────────────────────────────────────────────────
@@ -760,11 +798,20 @@ export default function MeetingsPage() {
                 <p className="text-sm font-semibold text-white flex items-center gap-2">
                   <Users size={15} className="text-green-400" />{ko ? '조 편성' : 'Groups'}
                 </p>
-                {canManage && (
-                  <button onClick={() => setShowGroupModal(true)} className="text-xs text-green-400 border border-green-800 rounded-full px-3 py-1">
-                    <Edit2 size={11} className="inline mr-1" />{ko ? '편집' : 'Edit'}
-                  </button>
-                )}
+                <div className="flex items-center gap-2">
+                  {groups.length > 0 && (
+                    <button onClick={exportGroupsCSV}
+                      className="text-xs text-blue-400 border border-blue-800/60 rounded-full px-3 py-1 flex items-center gap-1 hover:bg-blue-900/20 transition"
+                      title={ko ? 'CSV(엑셀)로 내보내기' : 'Export to CSV/Excel'}>
+                      <FileDown size={11} />{ko ? '엑셀' : 'Export'}
+                    </button>
+                  )}
+                  {canManage && (
+                    <button onClick={() => setShowGroupModal(true)} className="text-xs text-green-400 border border-green-800 rounded-full px-3 py-1">
+                      <Edit2 size={11} className="inline mr-1" />{ko ? '편집' : 'Edit'}
+                    </button>
+                  )}
+                </div>
               </div>
               {groups.length === 0 ? (
                 <p className="text-xs text-gray-500">{ko ? '아직 조 편성이 없습니다.' : 'No groups yet.'}</p>
