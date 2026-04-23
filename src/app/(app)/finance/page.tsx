@@ -50,10 +50,40 @@ export default function FinancePage() {
   const [viewQr,          setViewQr]           = useState(false)
   const qrInputRef = useRef<HTMLInputElement>(null)
 
+  // ── fee payment status ────────────────────────────────────────────────
+  const [showFeeStatus,   setShowFeeStatus]    = useState(false)
+  const [clubFees,        setClubFees]         = useState<{annual: number; monthly: number}>({ annual: 0, monthly: 0 })
+
+  // ── 납부확인 모달 ──────────────────────────────────────────────────────
+  const [payingMember,    setPayingMember]     = useState<any>(null)  // null = closed
+  const [payingAmount,    setPayingAmount]     = useState('')
+  const [payingDate,      setPayingDate]       = useState(new Date().toISOString().split('T')[0])
+  const [payingSaving,    setPayingSaving]     = useState(false)
+
+  // ── fine rules edit ───────────────────────────────────────────────────
+  const [showFineEdit,    setShowFineEdit]     = useState(false)
+  const [fineForm,        setFineForm]         = useState({ perStroke: '', max: '', notes: '' })
+  const [fineSaving,      setFineSaving]       = useState(false)
+
+  // ── member name text (free text) ──────────────────────────────────────
+  const [memberInputTab,  setMemberInputTab]   = useState<'select'|'text'>('select')
+
   const [form, setForm] = useState({
     type: 'fee', amount: '', description: '',
     date: new Date().toISOString().split('T')[0], memberId: '',
+    memberNameText: '',
   })
+
+  // ── sync fineForm when fineRules loads ────────────────────────────────
+  useEffect(() => {
+    if (fineRules) {
+      setFineForm({
+        perStroke: fineRules.fine_handicap_per_stroke ? String(fineRules.fine_handicap_per_stroke) : '',
+        max:       fineRules.fine_handicap_max        ? String(fineRules.fine_handicap_max)        : '',
+        notes:     fineRules.fine_notes               ?? '',
+      })
+    }
+  }, [fineRules])
 
   // ── load ──────────────────────────────────────────────────────────────
   async function load() {
@@ -65,7 +95,7 @@ export default function FinancePage() {
       : supabase.from('finance_transactions').select('*, users!member_id(full_name, full_name_en)')
     const [{ data: transactions }, { data: club }, { data: mems }, { data: pi }, { data: sponsors }] = await Promise.all([
       query.eq('club_id', currentClubId).order('transaction_date', { ascending: false }),
-      supabase.from('clubs').select('currency,fine_handicap_per_stroke,fine_handicap_max,fine_notes').eq('id', currentClubId).single(),
+      supabase.from('clubs').select('currency,fine_handicap_per_stroke,fine_handicap_max,fine_notes,annual_fee,monthly_fee').eq('id', currentClubId).single(),
       supabase.from('club_memberships').select('user_id, users(full_name, full_name_en)').eq('club_id', currentClubId).eq('status', 'approved'),
       supabase.from('club_payment_info').select('*').eq('club_id', currentClubId).maybeSingle(),
       supabase.from('sponsorships').select('*').eq('club_id', currentClubId).order('sponsor_date', { ascending: false }),
@@ -74,6 +104,8 @@ export default function FinancePage() {
     setSponsorships(sponsors ?? [])
     if (club?.currency) setCurrency(club.currency)
     if (club?.fine_handicap_per_stroke || club?.fine_notes) setFineRules(club)
+    else setFineRules(null)
+    setClubFees({ annual: club?.annual_fee ?? 0, monthly: club?.monthly_fee ?? 0 })
     setMembers(mems ?? [])
     setPayInfo(pi ?? null)
     if (pi) setPayForm({ bankName: pi.bank_name ?? '', bankAccount: pi.bank_account ?? '', bankHolder: pi.bank_holder ?? '', memo: pi.memo ?? '' })
@@ -92,18 +124,46 @@ export default function FinancePage() {
     return acc
   }, {} as Record<string, number>)
 
+  // ── fee payment status (computed) ─────────────────────────────────────
+  const currentYear = new Date().getFullYear()
+  const feeTxnsThisYear = txns.filter(
+    (t) => t.type === 'fee' && t.transaction_date?.startsWith(String(currentYear))
+  )
+  const paidMemberIds = new Set(feeTxnsThisYear.filter((t) => t.member_id).map((t) => t.member_id))
+  const paidMembers = canManage
+    ? members.filter((m) => paidMemberIds.has(m.user_id)).map((m) => {
+        const txn = feeTxnsThisYear.find((t) => t.member_id === m.user_id)
+        return { ...m, amount: txn?.amount, date: txn?.transaction_date }
+      })
+    : []
+  const unpaidMembers = canManage
+    ? members.filter((m) => !paidMemberIds.has(m.user_id))
+    : []
+  const paidCount   = canManage ? paidMembers.length   : 0
+  const unpaidCount = canManage ? unpaidMembers.length : 0
+
   // ── add transaction ────────────────────────────────────────────────────
   async function addTransaction() {
     if (!form.amount || !form.description) return
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
+    let desc = form.description
+    let memberId: string | null = form.memberId || null
+
+    // free-text member name: prepend to description, no member_id
+    if (!memberId && form.memberNameText.trim()) {
+      desc = `[${form.memberNameText.trim()}] ${desc}`
+      memberId = null
+    }
+
     await supabase.from('finance_transactions').insert({
       club_id: currentClubId, type: form.type, amount: parseInt(form.amount),
-      currency, description: form.description, transaction_date: form.date,
-      recorded_by: user!.id, member_id: form.memberId || null,
+      currency, description: desc, transaction_date: form.date,
+      recorded_by: user!.id, member_id: memberId,
     })
     setShowAdd(false)
-    setForm({ type: 'fee', amount: '', description: '', date: new Date().toISOString().split('T')[0], memberId: '' })
+    setForm({ type: 'fee', amount: '', description: '', date: new Date().toISOString().split('T')[0], memberId: '', memberNameText: '' })
+    setMemberInputTab('select')
     load()
   }
 
@@ -152,7 +212,6 @@ export default function FinancePage() {
 
     let qrImageUrl = payInfo?.qr_image_url ?? null
 
-    // QR 이미지 업로드
     if (qrFile) {
       const ext = qrFile.name.split('.').pop()
       const path = `payment/${currentClubId}/qr.${ext}`
@@ -188,6 +247,54 @@ export default function FinancePage() {
     setTimeout(() => setCopied(false), 2000)
   }
 
+  // ── save fine rules ────────────────────────────────────────────────────
+  async function saveFineRules() {
+    if (!currentClubId) return
+    setFineSaving(true)
+    const supabase = createClient()
+    await supabase.from('clubs').update({
+      fine_handicap_per_stroke: fineForm.perStroke ? parseInt(fineForm.perStroke) : null,
+      fine_handicap_max:        fineForm.max       ? parseInt(fineForm.max)       : null,
+      fine_notes:               fineForm.notes     || null,
+    }).eq('id', currentClubId)
+    setFineSaving(false)
+    setShowFineEdit(false)
+    load()
+  }
+
+  // ── 납부확인 저장 ──────────────────────────────────────────────────────
+  async function confirmPayment() {
+    if (!payingMember || !payingAmount) return
+    setPayingSaving(true)
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    const memberName = lang === 'ko'
+      ? payingMember.users?.full_name
+      : (payingMember.users?.full_name_en || payingMember.users?.full_name)
+    await supabase.from('finance_transactions').insert({
+      club_id:          currentClubId,
+      type:             'fee',
+      amount:           parseInt(payingAmount),
+      currency,
+      description:      ko ? `${memberName} 회비 납부` : `${memberName} fee payment`,
+      transaction_date: payingDate,
+      recorded_by:      user!.id,
+      member_id:        payingMember.user_id,
+    })
+    setPayingSaving(false)
+    setPayingMember(null)
+    setPayingAmount('')
+    setPayingDate(new Date().toISOString().split('T')[0])
+    load()
+  }
+
+  // ── helper: extract free-text member name from description ────────────
+  function extractMemberName(t: any): string | null {
+    if (t.users?.full_name) return null // has real FK join — handled elsewhere
+    const match = t.description?.match(/^\[(.+?)\]/)
+    return match ? match[1] : null
+  }
+
   // ── render ─────────────────────────────────────────────────────────────
   return (
     <div className="px-4 py-5 space-y-4">
@@ -209,6 +316,90 @@ export default function FinancePage() {
             <span className="text-xs text-gray-400">{ko ? '지출' : 'Expense'}: <span className="text-red-400">{sym}{expense.toLocaleString()}</span></span>
           </div>
         </div>
+      </div>
+
+      {/* ━━ 회비 납부 현황 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      <div className="glass-card rounded-2xl overflow-hidden">
+        <button
+          className="w-full px-4 py-3.5 flex items-center gap-3"
+          onClick={() => setShowFeeStatus(v => !v)}
+        >
+          <span className="text-sm font-semibold text-white flex-1 text-left">
+            {ko ? `회비 납부 현황 (${currentYear}년)` : `Fee Status (${currentYear})`}
+          </span>
+          <span className="text-xs mr-1" style={{ color: '#5a7a5a' }}>
+            {ko
+              ? `납부 ${paidCount}명 / 미납 ${unpaidCount}명`
+              : `Paid ${paidCount} / Unpaid ${unpaidCount}`}
+          </span>
+          {showFeeStatus ? <ChevronUp size={14} style={{ color: '#5a7a5a' }} /> : <ChevronDown size={14} style={{ color: '#5a7a5a' }} />}
+        </button>
+        {showFeeStatus && (
+          <div className="px-4 pb-4 space-y-3" style={{ borderTop: '1px solid rgba(34,197,94,0.1)' }}>
+            {canManage ? (
+              <>
+                {/* 납부 완료 */}
+                {paidMembers.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-xs font-semibold mb-2" style={{ color: '#4ade80' }}>
+                      ✅ {ko ? `납부 완료 (${paidMembers.length}명)` : `Paid (${paidMembers.length})`}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {paidMembers.map((m: any) => (
+                        <span key={m.user_id}
+                          className="inline-flex flex-col items-start px-2.5 py-1.5 rounded-xl text-xs font-medium"
+                          style={{ background: 'rgba(22,163,74,0.15)', border: '1px solid rgba(34,197,94,0.3)', color: '#4ade80' }}>
+                          <span>{lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}</span>
+                          {m.amount ? (
+                            <span className="text-[10px] mt-0.5" style={{ color: '#86efac' }}>
+                              {sym}{Number(m.amount).toLocaleString()}{m.date ? ` · ${m.date.slice(5)}` : ''}
+                            </span>
+                          ) : null}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {/* 미납 — 납부확인 버튼 포함 */}
+                {unpaidMembers.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-xs font-semibold mb-2" style={{ color: '#f87171' }}>
+                      ❌ {ko ? `미납 (${unpaidMembers.length}명)` : `Unpaid (${unpaidMembers.length})`}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {unpaidMembers.map((m: any) => (
+                        <button
+                          key={m.user_id}
+                          type="button"
+                          onClick={() => {
+                            setPayingMember(m)
+                            const defaultAmt = clubFees.annual || clubFees.monthly || 0
+                            setPayingAmount(defaultAmt ? String(defaultAmt) : '')
+                            setPayingDate(new Date().toISOString().split('T')[0])
+                          }}
+                          className="inline-flex flex-col items-start px-2.5 py-1.5 rounded-xl text-xs font-medium transition hover:opacity-80 active:scale-95"
+                          style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}
+                        >
+                          <span>{lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}</span>
+                          <span className="text-[10px] mt-0.5" style={{ color: '#fca5a5' }}>
+                            {ko ? '탭하여 납부확인' : 'Tap to confirm'}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {paidMembers.length === 0 && unpaidMembers.length === 0 && (
+                  <p className="text-xs text-gray-600 mt-3 text-center">{ko ? '회원 데이터가 없습니다' : 'No member data'}</p>
+                )}
+              </>
+            ) : (
+              <p className="text-xs text-gray-600 mt-3 text-center">
+                {ko ? `납부 0명 / 미납 0명` : `Paid 0 / Unpaid 0`}
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── 송금 정보 카드 ── */}
@@ -327,6 +518,7 @@ export default function FinancePage() {
           txns.map((t) => {
             const isIncome  = INCOME_TYPES.includes(t.type)
             const isExpanded = expandedId === t.id
+            const freeTextName = extractMemberName(t)
             return (
               <div key={t.id} className="glass-card rounded-xl overflow-hidden">
                 <div className="px-4 py-3 flex items-center gap-3">
@@ -337,7 +529,12 @@ export default function FinancePage() {
                     <p className="text-white text-sm truncate">{t.description}</p>
                     <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                       <span className="text-xs text-gray-500">{TYPE_LABELS[t.type]?.[ko ? 0 : 1]}</span>
-                      {t.users?.full_name && <span className="text-xs text-gray-500">· {lang === 'ko' ? t.users.full_name : (t.users.full_name_en || t.users.full_name)}</span>}
+                      {t.users?.full_name && (
+                        <span className="text-xs text-gray-500">· {lang === 'ko' ? t.users.full_name : (t.users.full_name_en || t.users.full_name)}</span>
+                      )}
+                      {!t.users?.full_name && freeTextName && (
+                        <span className="text-xs text-gray-500">· {freeTextName}</span>
+                      )}
                       <span className="text-xs text-gray-600">· {t.transaction_date}</span>
                     </div>
                   </div>
@@ -389,16 +586,40 @@ export default function FinancePage() {
                 {Object.entries(TYPE_LABELS).map(([v, [k, e]]) => <option key={v} value={v}>{ko ? k : e}</option>)}
               </select>
             </div>
-            {['fee', 'fine'].includes(form.type) && (
-              <div>
-                <label className="text-sm text-gray-400 block mb-1">{ko ? '회원' : 'Member'}</label>
-                <select value={form.memberId} onChange={(e) => setForm((f) => ({ ...f, memberId: e.target.value }))}
+
+            {/* 회원 선택 (전 유형) */}
+            <div>
+              <label className="text-sm text-gray-400 block mb-1">{ko ? '관련 회원 (선택)' : 'Member (optional)'}</label>
+              {/* tab switcher */}
+              <div className="flex gap-1 mb-2">
+                <button
+                  onClick={() => setMemberInputTab('select')}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition ${memberInputTab === 'select' ? 'bg-green-700 text-white' : 'bg-gray-800 text-gray-400'}`}>
+                  {ko ? '회원 선택' : 'Select Member'}
+                </button>
+                <button
+                  onClick={() => setMemberInputTab('text')}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition ${memberInputTab === 'text' ? 'bg-green-700 text-white' : 'bg-gray-800 text-gray-400'}`}>
+                  {ko ? '직접 입력' : 'Free Text'}
+                </button>
+              </div>
+              {memberInputTab === 'select' ? (
+                <select value={form.memberId} onChange={(e) => setForm((f) => ({ ...f, memberId: e.target.value, memberNameText: '' }))}
                   className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white">
                   <option value="">{ko ? '선택 안함' : 'None'}</option>
                   {members.map((m: any) => <option key={m.user_id} value={m.user_id}>{lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}</option>)}
                 </select>
-              </div>
-            )}
+              ) : (
+                <input
+                  type="text"
+                  value={form.memberNameText}
+                  onChange={(e) => setForm((f) => ({ ...f, memberNameText: e.target.value, memberId: '' }))}
+                  placeholder={ko ? '이름 직접 입력...' : 'Enter name...'}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white"
+                />
+              )}
+            </div>
+
             <div>
               <label className="text-sm text-gray-400 block mb-1">{ko ? `금액 (${sym})` : `Amount (${sym})`}</label>
               <input type="number" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
@@ -415,7 +636,7 @@ export default function FinancePage() {
                 className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white" />
             </div>
             <div className="flex gap-3 pt-1">
-              <button onClick={() => setShowAdd(false)} className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300">{ko ? '취소' : 'Cancel'}</button>
+              <button onClick={() => { setShowAdd(false); setMemberInputTab('select') }} className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300">{ko ? '취소' : 'Cancel'}</button>
               <button onClick={addTransaction} className="flex-1 py-3 rounded-xl bg-green-700 text-white font-semibold">{ko ? '저장' : 'Save'}</button>
             </div>
           </div>
@@ -433,7 +654,6 @@ export default function FinancePage() {
               <button onClick={() => setShowPayEdit(false)} className="text-gray-500"><X size={18} /></button>
             </div>
 
-            {/* 은행/앱 이름 */}
             <div>
               <label className="text-xs text-gray-400 block mb-1.5">{ko ? '은행 / 앱 이름' : 'Bank / App Name'}</label>
               <input
@@ -444,7 +664,6 @@ export default function FinancePage() {
               />
             </div>
 
-            {/* 계좌번호 */}
             <div>
               <label className="text-xs text-gray-400 block mb-1.5">{ko ? '계좌번호 / 전화번호' : 'Account No. / Phone'}</label>
               <input
@@ -455,7 +674,6 @@ export default function FinancePage() {
               />
             </div>
 
-            {/* 예금주 */}
             <div>
               <label className="text-xs text-gray-400 block mb-1.5">{ko ? '예금주 / 수신자' : 'Account Holder'}</label>
               <input
@@ -466,7 +684,6 @@ export default function FinancePage() {
               />
             </div>
 
-            {/* 안내 메모 */}
             <div>
               <label className="text-xs text-gray-400 block mb-1.5">{ko ? '안내 메모 (선택)' : 'Memo (optional)'}</label>
               <textarea
@@ -478,7 +695,6 @@ export default function FinancePage() {
               />
             </div>
 
-            {/* QR / 통장 이미지 업로드 */}
             <div>
               <label className="text-xs text-gray-400 block mb-1.5">{ko ? 'QR코드 / 통장 사본 이미지' : 'QR Code / Passbook Image'}</label>
               {(qrPreview || payInfo?.qr_image_url) ? (
@@ -530,8 +746,8 @@ export default function FinancePage() {
         </div>
       )}
 
-      {/* ━━ 벌금 규정 (전 회원 열람) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-      {fineRules && (
+      {/* ━━ 벌금 규정 (전 회원 열람, canManage 항상 표시) ━━━━━━━━━━━━━━━━━━ */}
+      {(fineRules || canManage) && (
         <div className="glass-card rounded-2xl overflow-hidden">
           <button className="w-full px-4 py-3.5 flex items-center gap-3"
             onClick={() => setShowFineRules(v => !v)}>
@@ -539,16 +755,25 @@ export default function FinancePage() {
             <span className="text-sm font-semibold text-white flex-1 text-left">
               {ko ? '🏌️ 벌금 규정' : '🏌️ Fine Rules'}
             </span>
-            {fineRules.fine_handicap_per_stroke && (
+            {fineRules?.fine_handicap_per_stroke && (
               <span className="text-xs mr-1" style={{ color: '#5a7a5a' }}>
                 {sym}{Number(fineRules.fine_handicap_per_stroke).toLocaleString()}{ko ? '/타' : '/stroke'}
               </span>
+            )}
+            {canManage && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowFineEdit(true) }}
+                className="flex items-center gap-1 text-xs text-gray-400 hover:text-yellow-400 transition border border-gray-700 hover:border-yellow-700 rounded-full px-2 py-0.5 mr-1"
+                title={ko ? '벌금 규정 편집' : 'Edit fine rules'}
+              >
+                <Edit2 size={11} />
+              </button>
             )}
             {showFineRules ? <ChevronUp size={14} style={{ color: '#5a7a5a' }} /> : <ChevronDown size={14} style={{ color: '#5a7a5a' }} />}
           </button>
           {showFineRules && (
             <div className="px-4 pb-4 space-y-2.5" style={{ borderTop: '1px solid rgba(34,197,94,0.1)' }}>
-              {fineRules.fine_handicap_per_stroke && (
+              {fineRules?.fine_handicap_per_stroke ? (
                 <div className="mt-3 rounded-xl px-3.5 py-3"
                   style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.18)' }}>
                   <p className="text-xs font-semibold mb-1" style={{ color: '#fbbf24' }}>
@@ -566,8 +791,12 @@ export default function FinancePage() {
                     )}
                   </p>
                 </div>
+              ) : canManage && (
+                <p className="text-xs text-center mt-3" style={{ color: '#5a7a5a' }}>
+                  {ko ? '편집 버튼으로 벌금 규정을 설정하세요.' : 'Use the edit button to set fine rules.'}
+                </p>
               )}
-              {fineRules.fine_notes && (
+              {fineRules?.fine_notes && (
                 <div className="rounded-xl px-3.5 py-3"
                   style={{ background: 'rgba(251,191,36,0.05)', border: '1px solid rgba(251,191,36,0.1)' }}>
                   <p className="text-xs leading-relaxed whitespace-pre-wrap" style={{ color: '#c0b060' }}>
@@ -648,6 +877,135 @@ export default function FinancePage() {
           {payInfo.bank_holder && <p className="text-gray-400 text-sm">{payInfo.bank_holder}</p>}
           {payInfo.memo && <p className="text-xs text-yellow-400 text-center max-w-xs">{payInfo.memo}</p>}
           <p className="text-gray-600 text-xs mt-2">{ko ? '탭하여 닫기' : 'Tap to close'}</p>
+        </div>
+      )}
+
+      {/* ━━ 납부확인 모달 (canManage 전용) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      {payingMember && (
+        <div className="fixed inset-0 bg-black/70 flex items-end z-[200]" onClick={() => setPayingMember(null)}>
+          <div className="bg-gray-900 rounded-t-3xl p-6 w-full space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-center mb-1"><div className="w-10 h-1 bg-gray-700 rounded-full" /></div>
+            <div className="flex items-center gap-2">
+              <span className="text-lg">✅</span>
+              <h3 className="text-base font-bold text-white flex-1">
+                {lang === 'ko'
+                  ? `${payingMember.users?.full_name} 회비 납부 확인`
+                  : `Confirm Fee: ${payingMember.users?.full_name_en || payingMember.users?.full_name}`}
+              </h3>
+              <button onClick={() => setPayingMember(null)} className="text-gray-500"><X size={18} /></button>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 block mb-1.5">{ko ? `납부 금액 (${sym})` : `Amount (${sym})`}</label>
+              <input
+                type="number"
+                value={payingAmount}
+                onChange={e => setPayingAmount(e.target.value)}
+                placeholder="0"
+                autoFocus
+                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-lg font-bold focus:outline-none focus:border-green-500"
+              />
+              {(clubFees.annual > 0 || clubFees.monthly > 0) && (
+                <div className="flex gap-2 mt-2">
+                  {clubFees.annual > 0 && (
+                    <button type="button" onClick={() => setPayingAmount(String(clubFees.annual))}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-green-900/40 text-green-400 border border-green-800/50 hover:bg-green-900/60 transition">
+                      {ko ? '년회비' : 'Annual'} {sym}{clubFees.annual.toLocaleString()}
+                    </button>
+                  )}
+                  {clubFees.monthly > 0 && (
+                    <button type="button" onClick={() => setPayingAmount(String(clubFees.monthly))}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-blue-900/40 text-blue-400 border border-blue-800/50 hover:bg-blue-900/60 transition">
+                      {ko ? '월회비' : 'Monthly'} {sym}{clubFees.monthly.toLocaleString()}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 block mb-1.5">{ko ? '납부 날짜' : 'Payment Date'}</label>
+              <input
+                type="date"
+                value={payingDate}
+                onChange={e => setPayingDate(e.target.value)}
+                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-green-500"
+              />
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => setPayingMember(null)} className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 text-sm">
+                {ko ? '취소' : 'Cancel'}
+              </button>
+              <button
+                onClick={confirmPayment}
+                disabled={payingSaving || !payingAmount}
+                className="flex-1 py-3 rounded-xl bg-green-700 hover:bg-green-600 disabled:opacity-50 text-white font-semibold text-sm transition"
+              >
+                {payingSaving ? '...' : (ko ? '납부 확인' : 'Confirm Payment')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ━━ 벌금 규정 편집 모달 (canManage 전용) ━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      {showFineEdit && (
+        <div className="fixed inset-0 bg-black/70 flex items-end z-[200]" onClick={() => setShowFineEdit(false)}>
+          <div className="bg-gray-900 rounded-t-3xl p-6 w-full space-y-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-center mb-1"><div className="w-10 h-1 bg-gray-700 rounded-full" /></div>
+            <div className="flex items-center gap-2 mb-2">
+              <AlertTriangle size={18} style={{ color: '#fbbf24' }} />
+              <h3 className="text-base font-bold text-white flex-1">{ko ? '벌금 규정 편집' : 'Edit Fine Rules'}</h3>
+              <button onClick={() => setShowFineEdit(false)} className="text-gray-500"><X size={18} /></button>
+            </div>
+
+            <div>
+              <label className="text-xs text-gray-400 block mb-1.5">
+                {ko ? `타당 벌금 금액 (${sym})` : `Fine per stroke (${sym})`}
+              </label>
+              <input
+                type="number"
+                value={fineForm.perStroke}
+                onChange={e => setFineForm(f => ({ ...f, perStroke: e.target.value }))}
+                placeholder="0"
+                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs text-gray-400 block mb-1.5">
+                {ko ? `최대 벌금 한도 (${sym})` : `Maximum fine cap (${sym})`}
+              </label>
+              <input
+                type="number"
+                value={fineForm.max}
+                onChange={e => setFineForm(f => ({ ...f, max: e.target.value }))}
+                placeholder={ko ? '한도 없음' : 'No limit'}
+                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs text-gray-400 block mb-1.5">
+                {ko ? '기타 벌금 규정 (텍스트)' : 'Other fine rules (text)'}
+              </label>
+              <textarea
+                rows={4}
+                value={fineForm.notes}
+                onChange={e => setFineForm(f => ({ ...f, notes: e.target.value }))}
+                placeholder={ko ? '예: OB 1회당 ₩10,000, 지각 ₩5,000 ...' : 'e.g. OB penalty ₩10,000 each, late ₩5,000 ...'}
+                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm resize-none"
+              />
+            </div>
+
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => setShowFineEdit(false)} className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 text-sm">
+                {ko ? '취소' : 'Cancel'}
+              </button>
+              <button onClick={saveFineRules} disabled={fineSaving}
+                className="flex-1 py-3 rounded-xl bg-yellow-700 disabled:opacity-50 text-white font-semibold text-sm">
+                {fineSaving ? '...' : (ko ? '저장' : 'Save')}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
