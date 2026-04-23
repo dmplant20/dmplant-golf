@@ -19,10 +19,16 @@
   --radius:    16px;
 }
 
+/* ── 시스템 폰트 스택 (Google Fonts 의존성 없음) ────────────────────────
+   iOS:     Apple SD Gothic Neo → Helvetica Neue
+   Android: Noto Sans KR (기본 내장) → Roboto
+   Windows: Malgun Gothic → Segoe UI
+──────────────────────────────────────────────────────────────────────── */
 @theme inline {
   --color-background: var(--bg);
   --color-foreground: var(--text);
-  --font-sans: var(--font-noto), var(--font-inter), system-ui, sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
+    'Noto Sans KR', 'Malgun Gothic', Roboto, 'Helvetica Neue', sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -30,7 +36,8 @@
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font-noto), var(--font-inter), system-ui, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
+    'Noto Sans KR', 'Malgun Gothic', Roboto, 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overscroll-behavior: none;
