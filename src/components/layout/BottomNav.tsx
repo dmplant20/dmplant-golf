@@ -1,6 +1,5 @@
 'use client'
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { Home, Users, Wallet, CalendarDays, MessageCircle, MoreHorizontal } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 
@@ -15,7 +14,8 @@ const NAV = [
 
 export default function BottomNav() {
   const pathname = usePathname()
-  const lang = useAuthStore(s => s.lang)
+  const router   = useRouter()
+  const lang     = useAuthStore(s => s.lang)
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bottom-nav px-3 pb-2">
@@ -29,7 +29,7 @@ export default function BottomNav() {
         {NAV.map(({ href, icon: Icon, ko, en }) => {
           const active = pathname.startsWith(href)
           return (
-            <Link key={href} href={href}
+            <button key={href} onClick={() => router.push(href)}
               className="flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-xl transition-all duration-150"
               style={active ? { background: 'rgba(22,163,74,0.18)' } : {}}>
               <Icon
@@ -41,7 +41,7 @@ export default function BottomNav() {
                 style={{ color: active ? '#22c55e' : '#4a6a4a' }}>
                 {lang === 'ko' ? ko : en}
               </span>
-            </Link>
+            </button>
           )
         })}
       </div>
