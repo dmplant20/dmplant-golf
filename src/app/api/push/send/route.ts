@@ -4,12 +4,17 @@ import { createServerClient } from '@supabase/ssr'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 
-// VAPID 설정
-webpush.setVapidDetails(
-  process.env.VAPID_EMAIL ?? 'mailto:admin@example.com',
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? '',
-  process.env.VAPID_PRIVATE_KEY ?? ''
-)
+// VAPID 설정 — 키가 있을 때만 초기화 (빌드 시 크래시 방지)
+function initVapid() {
+  const pub  = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+  const priv = process.env.VAPID_PRIVATE_KEY
+  const mail = process.env.VAPID_EMAIL ?? 'mailto:admin@example.com'
+  if (pub && priv) {
+    webpush.setVapidDetails(mail, pub, priv)
+    return true
+  }
+  return false
+}
 
 async function makeAnonSupabase() {
   const cookieStore = await cookies()
@@ -36,6 +41,11 @@ function makeServiceSupabase() {
 }
 
 export async function POST(req: NextRequest) {
+  // VAPID 키 초기화 — 설정 안 됐으면 즉시 반환
+  if (!initVapid()) {
+    return NextResponse.json({ error: 'VAPID keys not configured in environment' }, { status: 500 })
+  }
+
   // 1. 인증 확인
   const anonSupa = await makeAnonSupabase()
   const { data: { user } } = await anonSupa.auth.getUser()
