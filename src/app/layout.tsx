@@ -82,11 +82,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         });
       });
     var refreshing = false;
+    // /install 페이지에서는 리로드 금지 — SW 리로드가 beforeinstallprompt 를 날려버림
+    var onInstallPage = window.location.pathname === '/install';
     navigator.serviceWorker.addEventListener('controllerchange', function() {
-      if (refreshing) return; refreshing = true; window.location.reload();
+      if (refreshing || onInstallPage) return; refreshing = true; window.location.reload();
     });
     navigator.serviceWorker.addEventListener('message', function(e) {
-      if (e.data && e.data.type === 'SW_ACTIVATED' && !refreshing) {
+      if (e.data && e.data.type === 'SW_ACTIVATED' && !refreshing && !onInstallPage) {
         refreshing = true; window.location.reload();
       }
     });

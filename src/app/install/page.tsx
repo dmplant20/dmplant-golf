@@ -69,20 +69,7 @@ export default function InstallPage() {
       localStorage.getItem('pwa-installed') === '1'
     if (standalone) { setPhase('installed'); return }
 
-    // ── beforeinstallprompt 캡처 여부 ──
-    if ((window as any).__pwaPrompt) {
-      setHasPrompt(true)
-    }
-
-    setPhase('ready')
-
-    // pwa:installable 이벤트 수신 (layout.tsx 에서 beforeinstallprompt 캡처 시 dispatch)
-    const onInstallable = () => { setHasPrompt(true); setShowGuide(false) }
-    const onInstalled   = () => setPhase('installed')
-    window.addEventListener('pwa:installable', onInstallable)
-    window.addEventListener('pwa:installed',   onInstalled)
-
-    // 직접 beforeinstallprompt 도 여기서 한번 더 수신 (혹시 layout 보다 늦게 바인딩돼도 잡기 위해)
+    // ── beforeinstallprompt 직접 수신 (layout.tsx 보다 먼저/나중에 와도 잡기 위해) ──
     const onPrompt = (e: Event) => {
       e.preventDefault()
       ;(window as any).__pwaPrompt = e
@@ -91,10 +78,28 @@ export default function InstallPage() {
     }
     window.addEventListener('beforeinstallprompt', onPrompt as EventListener)
 
+    const onInstallable = () => { setHasPrompt(true); setShowGuide(false) }
+    const onInstalled   = () => setPhase('installed')
+    window.addEventListener('pwa:installable', onInstallable)
+    window.addEventListener('pwa:installed',   onInstalled)
+
+    // 이미 캡처된 prompt 확인 (layout inline script 가 먼저 실행된 경우)
+    if ((window as any).__pwaPrompt) {
+      setHasPrompt(true)
+    }
+
+    setPhase('ready')
+
+    // 최대 2.5초 대기 — SW 등록 후 beforeinstallprompt 가 약간 늦게 오는 경우 대비
+    const timer = setTimeout(() => {
+      if ((window as any).__pwaPrompt) setHasPrompt(true)
+    }, 2500)
+
     return () => {
-      window.removeEventListener('pwa:installable',      onInstallable)
-      window.removeEventListener('pwa:installed',        onInstalled)
-      window.removeEventListener('beforeinstallprompt',  onPrompt as EventListener)
+      clearTimeout(timer)
+      window.removeEventListener('pwa:installable',     onInstallable)
+      window.removeEventListener('pwa:installed',       onInstalled)
+      window.removeEventListener('beforeinstallprompt', onPrompt as EventListener)
     }
   }, [])
 
