@@ -40,6 +40,11 @@ export default function MembersPage() {
   const [editMember, setEditMember] = useState<any>(null)
   const [quickHcMember, setQuickHcMember] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [myFeeStatus, setMyFeeStatus] = useState<{
+    feeType: string
+    paid: boolean
+    unpaidMonths: number[]
+  } | null>(null)
 
   async function load() {
     if (!currentClubId) return
@@ -57,6 +62,39 @@ export default function MembersPage() {
     setMembers(approved ?? [])
     setPending(pend ?? [])
     setLoading(false)
+
+    // ── 내 회비 납부 현황 (본인만 조회) ───────────────────────────────────
+    if (user?.id) {
+      const myMem = approved?.find((m: any) => m.user_id === user.id)
+      if (myMem?.fee_type) {
+        const currentYear  = new Date().getFullYear()
+        const currentMonth = new Date().getMonth() + 1
+        const { data: feeTxns } = await supabase
+          .from('finance_transactions')
+          .select('transaction_date')
+          .eq('club_id', currentClubId)
+          .eq('type', 'fee')
+          .eq('member_id', user.id)
+          .gte('transaction_date', `${currentYear}-01-01`)
+          .lte('transaction_date', `${currentYear}-12-31`)
+
+        if (myMem.fee_type === 'annual') {
+          setMyFeeStatus({ feeType: 'annual', paid: (feeTxns?.length ?? 0) > 0, unpaidMonths: [] })
+        } else {
+          // 월납: 이번달까지 납부 안 된 달 목록
+          const paidMonths = new Set(
+            (feeTxns ?? []).map((t: any) => new Date(t.transaction_date).getMonth() + 1)
+          )
+          const unpaidMonths: number[] = []
+          for (let m = 1; m <= currentMonth; m++) {
+            if (!paidMonths.has(m)) unpaidMonths.push(m)
+          }
+          setMyFeeStatus({ feeType: 'monthly', paid: unpaidMonths.length === 0, unpaidMonths })
+        }
+      } else {
+        setMyFeeStatus(null)
+      }
+    }
   }
 
   useEffect(() => { load() }, [currentClubId])
@@ -145,6 +183,24 @@ export default function MembersPage() {
                   {m.fee_type === 'monthly' && <span className="text-xs px-2 py-0.5 rounded-full bg-blue-900/50 text-blue-300">{ko ? '월회비' : 'Monthly'}</span>}
                   {m.club_handicap != null && <span className="text-xs text-green-400">{ko ? '클럽핸디' : 'Club HC'}: {m.club_handicap}</span>}
                   {m.personal_handicap != null && m.user_id === user?.id && <span className="text-xs text-blue-400">{ko ? '개인핸디' : 'Personal HC'}: {m.personal_handicap}</span>}
+                  {/* 회비 납부 현황 — 본인 카드에만 표시 */}
+                  {m.user_id === user?.id && myFeeStatus && (
+                    myFeeStatus.paid ? (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-green-900/60 text-green-300 font-semibold">
+                        ✓ {ko ? '납부완료' : 'Paid'}
+                      </span>
+                    ) : myFeeStatus.feeType === 'annual' ? (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-red-900/60 text-red-300 font-semibold">
+                        {ko ? '미납' : 'Unpaid'}
+                      </span>
+                    ) : (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-red-900/60 text-red-300 font-semibold">
+                        {myFeeStatus.unpaidMonths.length === 1
+                          ? `${myFeeStatus.unpaidMonths[0]}월 미납`
+                          : `${myFeeStatus.unpaidMonths.join(',')}월 미납`}
+                      </span>
+                    )
+                  )}
                 </div>
               </div>
               {canManage && (
