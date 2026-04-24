@@ -1,232 +1,236 @@
 'use client'
-import { useEffect, useState } from 'react'
-import { Download, Share, Check, Smartphone, Monitor, ExternalLink } from 'lucide-react'
+import { useEffect, useState, useCallback } from 'react'
 
-// ── 설치 안내 페이지 (/install) ───────────────────────────────────────────
-// • 인증 불필요 (공개 페이지)
-// • 디바이스 자동 감지 (Android / iOS / Desktop)
-// • Android: beforeinstallprompt 자동 트리거
-// • iOS: Safari 단계별 안내
-// • Desktop: 주소 공유 안내
+type Phase = 'loading' | 'android-ready' | 'android-waiting' | 'ios' | 'ios-nosafari' | 'installed' | 'desktop'
+
 export default function InstallPage() {
-  const [device,    setDevice]    = useState<'android' | 'ios' | 'desktop' | null>(null)
-  const [prompt,    setPrompt]    = useState<any>(null)
-  const [installed, setInstalled] = useState(false)
-  const [installing,setInstalling]= useState(false)
-  const [isChrome,  setIsChrome]  = useState(true)
-  const [appUrl,    setAppUrl]    = useState('')
+  const [phase,      setPhase]      = useState<Phase>('loading')
+  const [installing, setInstalling] = useState(false)
+  const [appUrl,     setAppUrl]     = useState('')
 
-  useEffect(() => {
-    const ua = navigator.userAgent
-    const standalone =
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (navigator as any).standalone === true
-
-    if (standalone) { setInstalled(true); return }
-
-    // 디바이스 감지
-    const isIOS     = /iPhone|iPad|iPod/i.test(ua) && !(window as any).MSStream
-    const isAndroid = /Android/i.test(ua)
-    setDevice(isIOS ? 'ios' : isAndroid ? 'android' : 'desktop')
-
-    // Chrome 여부 (iOS에서는 Safari 필요)
-    const isSafariBrowser = /Safari/i.test(ua) && !/Chrome|CriOS/i.test(ua)
-    if (isIOS) setIsChrome(isSafariBrowser)
-
-    setAppUrl(window.location.origin)
-
-    // Android: beforeinstallprompt 대기
-    if (isAndroid) {
-      const handler = (e: any) => {
-        e.preventDefault()
-        setPrompt(e)
+  // 설치 실행
+  const doInstall = useCallback(async () => {
+    const p = (window as any).__pwaPrompt
+    if (!p) return
+    setInstalling(true)
+    try {
+      p.prompt()
+      const { outcome } = await p.userChoice
+      if (outcome === 'accepted') {
+        ;(window as any).__pwaPrompt = null
+        setPhase('installed')
       }
-      window.addEventListener('beforeinstallprompt', handler)
-      window.addEventListener('appinstalled', () => setInstalled(true))
-      return () => window.removeEventListener('beforeinstallprompt', handler)
+    } finally {
+      setInstalling(false)
     }
   }, [])
 
-  async function handleInstall() {
-    if (!prompt) return
-    setInstalling(true)
-    prompt.prompt()
-    const { outcome } = await prompt.userChoice
-    setInstalling(false)
-    if (outcome === 'accepted') setInstalled(true)
-  }
+  useEffect(() => {
+    setAppUrl(window.location.origin)
+    const ua = navigator.userAgent
 
-  // ── 이미 설치됨 ──────────────────────────────────────────────────────────
-  if (installed) {
-    return (
-      <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center px-6 text-center">
-        <div className="w-20 h-20 bg-green-700 rounded-3xl flex items-center justify-center mb-6 shadow-xl shadow-green-900/50">
-          <Check size={40} className="text-white" />
+    // 이미 설치됨
+    const standalone =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (navigator as any).standalone === true ||
+      localStorage.getItem('pwa-installed') === '1'
+    if (standalone) { setPhase('installed'); return }
+
+    const isIOS     = /iPhone|iPad|iPod/i.test(ua) && !(window as any).MSStream
+    const isAndroid = /Android/i.test(ua)
+
+    if (isIOS) {
+      // Safari 여부 (Chrome/CriOS는 iOS에서 설치 불가)
+      const isSafari = /Safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/i.test(ua)
+      setPhase(isSafari ? 'ios' : 'ios-nosafari')
+      return
+    }
+
+    if (!isAndroid) {
+      setPhase('desktop')
+      return
+    }
+
+    // Android: 이미 캡처된 prompt 확인
+    if ((window as any).__pwaPrompt) {
+      setPhase('android-ready')
+      return
+    }
+
+    // 아직 이벤트가 안 왔으면 대기
+    setPhase('android-waiting')
+    const onInstallable = () => setPhase('android-ready')
+    const onInstalled   = () => setPhase('installed')
+    window.addEventListener('pwa:installable', onInstallable)
+    window.addEventListener('pwa:installed',   onInstalled)
+    return () => {
+      window.removeEventListener('pwa:installable', onInstallable)
+      window.removeEventListener('pwa:installed',   onInstalled)
+    }
+  }, [])
+
+  // ── 공통 헤더 ──────────────────────────────────────────────────────────
+  const Header = () => (
+    <div className="text-center mb-8">
+      <div className="relative mx-auto w-24 h-24 mb-5">
+        <div className="absolute inset-0 bg-green-500/20 rounded-[28px] blur-xl" />
+        <div className="relative w-24 h-24 bg-gradient-to-br from-green-500 to-green-800 rounded-[28px] flex items-center justify-center shadow-2xl shadow-green-900/60">
+          <span className="text-5xl">⛳</span>
         </div>
-        <h1 className="text-2xl font-extrabold text-white mb-2">설치 완료!</h1>
-        <p className="text-gray-400 text-sm mb-8">홈 화면에서 Inter Stellar GOLF를 실행하세요.</p>
-        <a href="/login"
-          className="bg-green-600 hover:bg-green-500 text-white font-bold px-8 py-3.5 rounded-2xl text-sm transition">
-          앱 시작하기 →
-        </a>
       </div>
-    )
-  }
-
-  const logo = (
-    <div className="w-20 h-20 bg-gradient-to-br from-green-600 to-green-800 rounded-3xl flex items-center justify-center mb-5 shadow-xl shadow-green-900/50 mx-auto">
-      <span className="text-4xl">⛳</span>
-    </div>
-  )
-
-  const title = (
-    <div className="text-center mb-6">
-      {logo}
-      <h1 className="text-2xl font-extrabold text-white">Inter Stellar GOLF</h1>
+      <h1 className="text-2xl font-extrabold text-white tracking-tight">Inter Stellar GOLF</h1>
       <p className="text-sm text-gray-500 mt-1">골프 모임 관리 앱</p>
     </div>
   )
 
-  // ── Android ──────────────────────────────────────────────────────────────
-  if (device === 'android') {
-    return (
-      <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center px-5 py-10">
-        {title}
-
-        {prompt ? (
-          /* beforeinstallprompt 준비됨 — 바로 설치 가능 */
-          <div className="w-full max-w-sm space-y-4">
-            <div className="glass-card rounded-2xl p-5 text-center space-y-3">
-              <Smartphone size={28} className="text-green-400 mx-auto" />
-              <p className="text-white font-semibold">홈 화면에 앱 추가</p>
-              <p className="text-gray-400 text-sm">한 번의 탭으로 앱이 홈 화면에 설치됩니다.</p>
-              <button onClick={handleInstall} disabled={installing}
-                className="w-full bg-green-600 hover:bg-green-500 active:bg-green-700 disabled:opacity-50 text-white font-bold py-4 rounded-2xl text-base transition flex items-center justify-center gap-2"
-                style={{ boxShadow: '0 4px 20px rgba(22,163,74,0.4)' }}>
-                <Download size={18} />
-                {installing ? '설치 중...' : '지금 설치하기'}
-              </button>
-            </div>
-            <p className="text-center text-xs text-gray-600">
-              설치 버튼이 보이지 않으면 주소창에서 직접 "홈 화면에 추가"를 선택하세요.
-            </p>
-          </div>
-        ) : (
-          /* Chrome에서 열기 유도 */
-          <div className="w-full max-w-sm space-y-4">
-            <div className="glass-card rounded-2xl p-5 space-y-4">
-              <p className="text-white font-semibold text-center">Chrome에서 설치하세요</p>
-              <Steps steps={[
-                { n: 1, text: 'Chrome 브라우저를 열어주세요' },
-                { n: 2, text: <>주소창에 입력: <code className="bg-gray-800 px-2 py-0.5 rounded text-green-400 text-xs">{appUrl}/install</code></> },
-                { n: 3, text: '"설치" 또는 "홈 화면에 추가" 버튼을 탭하세요' },
-              ]} />
-            </div>
-            <a href={`${appUrl}/install`}
-              className="flex items-center justify-center gap-2 w-full bg-green-600 text-white font-bold py-4 rounded-2xl text-sm"
-              style={{ boxShadow: '0 4px 20px rgba(22,163,74,0.4)' }}>
-              <ExternalLink size={16} />
-              Chrome으로 열기
-            </a>
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  // ── iOS ──────────────────────────────────────────────────────────────────
-  if (device === 'ios') {
-    if (!isChrome) {
-      /* Chrome/CriOS 등 — Safari에서 열도록 안내 */
-      return (
-        <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center px-5 py-10">
-          {title}
-          <div className="w-full max-w-sm glass-card rounded-2xl p-5 space-y-4 text-center">
-            <p className="text-white font-semibold">Safari에서 열어주세요</p>
-            <p className="text-gray-400 text-sm">iOS에서는 Safari 브라우저로만 홈 화면 설치가 가능합니다.</p>
-            <div className="bg-gray-800 rounded-xl px-4 py-3">
-              <p className="text-xs text-gray-400">주소를 복사해서 Safari에 붙여넣기</p>
-              <p className="text-green-400 text-sm font-mono mt-1">{appUrl}/install</p>
-            </div>
-          </div>
-        </div>
-      )
-    }
-
-    return (
-      <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center px-5 py-10 pb-24">
-        {title}
-        <div className="w-full max-w-sm space-y-4">
-          <div className="glass-card rounded-2xl p-5 space-y-4">
-            <p className="text-white font-semibold text-center">📱 홈 화면에 추가하기</p>
-            <Steps steps={[
-              { n: 1, text: <><strong className="text-white">하단 공유 버튼(□↑)</strong>을 탭하세요</> },
-              { n: 2, text: <>스크롤 후 <strong className="text-white">"홈 화면에 추가"</strong>를 탭하세요</> },
-              { n: 3, text: <>오른쪽 위 <strong className="text-white">"추가"</strong>를 탭하세요</> },
-            ]} />
-          </div>
-
-          {/* 하단 화살표 애니메이션 — 공유 버튼 위치 안내 */}
-          <div className="flex flex-col items-center gap-2 py-4">
-            <div className="w-10 h-10 rounded-full bg-blue-600/20 border border-blue-500/40 flex items-center justify-center animate-bounce">
-              <Share size={18} className="text-blue-400" />
-            </div>
-            <p className="text-xs text-gray-500">Safari 화면 하단 중앙의 공유 버튼</p>
-          </div>
+  // ── 설치 완료 ──────────────────────────────────────────────────────────
+  if (phase === 'installed') return (
+    <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center px-6 pb-16">
+      <div className="relative mx-auto w-24 h-24 mb-6">
+        <div className="absolute inset-0 bg-green-500/30 rounded-full blur-xl" />
+        <div className="relative w-24 h-24 bg-green-600 rounded-full flex items-center justify-center shadow-2xl">
+          <span className="text-5xl">✓</span>
         </div>
       </div>
-    )
-  }
+      <h1 className="text-2xl font-extrabold text-white mb-3">설치 완료!</h1>
+      <p className="text-gray-400 text-sm text-center mb-10">
+        홈 화면에 IS Golf 아이콘이 생성됐습니다.<br />아이콘을 탭해서 앱을 실행하세요.
+      </p>
+      <a href="/login"
+        className="w-full max-w-xs flex items-center justify-center py-4 rounded-2xl font-bold text-white text-base"
+        style={{ background: 'linear-gradient(135deg,#16a34a,#15803d)', boxShadow: '0 6px 24px rgba(22,163,74,0.45)' }}>
+        앱 시작하기 →
+      </a>
+    </div>
+  )
 
-  // ── Desktop ───────────────────────────────────────────────────────────────
-  if (device === 'desktop') {
-    return (
-      <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center px-5 py-10">
-        {title}
-        <div className="w-full max-w-sm glass-card rounded-2xl p-5 space-y-4 text-center">
-          <Monitor size={28} className="text-green-400 mx-auto" />
-          <p className="text-white font-semibold">모바일로 설치하세요</p>
-          <p className="text-gray-400 text-sm">스마트폰에서 아래 주소로 접속하거나 QR 코드를 스캔하세요.</p>
-          <div className="bg-gray-800 rounded-xl p-3">
-            <p className="text-green-400 text-sm font-mono break-all">{appUrl}/install</p>
-          </div>
-          {/* QR 코드 (api.qrserver.com 무료 서비스) */}
-          <img
-            src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&bgcolor=0c160c&color=22c55e&data=${encodeURIComponent(appUrl + '/install')}`}
-            alt="QR 코드"
-            className="w-40 h-40 mx-auto rounded-xl"
-          />
-          <p className="text-xs text-gray-500">QR 코드를 스캔하면 모바일 설치 화면으로 이동합니다</p>
-        </div>
+  // ── Android: 설치 준비됨 (원터치) ─────────────────────────────────────
+  if (phase === 'android-ready') return (
+    <div className="min-h-screen bg-gray-950 flex flex-col">
+      {/* 상단 여백 + 헤더 */}
+      <div className="flex-1 flex flex-col items-center justify-center px-6">
+        <Header />
+        <p className="text-gray-400 text-sm text-center leading-relaxed max-w-xs">
+          아래 버튼 하나만 누르면<br />
+          <span className="text-white font-semibold">홈 화면에 앱 아이콘이 생성</span>됩니다.
+        </p>
       </div>
-    )
-  }
 
-  // 로딩 중
-  return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-      <div className="text-center space-y-3">
-        <div className="w-16 h-16 bg-green-700 rounded-2xl flex items-center justify-center mx-auto">
-          <span className="text-3xl">⛳</span>
-        </div>
-        <p className="text-gray-500 text-sm">로딩 중...</p>
+      {/* 하단 — 설치 버튼 (전체 너비) */}
+      <div className="px-4 pb-12 pt-4 space-y-3">
+        <button
+          onClick={doInstall}
+          disabled={installing}
+          className="w-full flex items-center justify-center gap-3 text-white font-black text-xl py-5 rounded-2xl disabled:opacity-60 transition active:scale-[0.97]"
+          style={{
+            background: installing
+              ? 'rgba(22,163,74,0.5)'
+              : 'linear-gradient(135deg,#16a34a 0%,#22c55e 100%)',
+            boxShadow: installing ? 'none' : '0 8px 32px rgba(22,163,74,0.55)',
+          }}
+        >
+          {installing ? (
+            <><span className="animate-spin text-2xl">⏳</span> 설치 중...</>
+          ) : (
+            <><span className="text-2xl">📲</span> 지금 설치하기</>
+          )}
+        </button>
+        <p className="text-center text-xs text-gray-600">탭 한 번으로 홈 화면에 아이콘이 추가됩니다</p>
       </div>
     </div>
   )
-}
 
-// ── Steps 헬퍼 컴포넌트 ────────────────────────────────────────────────────
-function Steps({ steps }: { steps: { n: number; text: React.ReactNode }[] }) {
-  return (
-    <div className="space-y-3">
-      {steps.map(({ n, text }) => (
-        <div key={n} className="flex items-start gap-3">
-          <div className="w-7 h-7 rounded-full bg-green-700 flex items-center justify-center flex-shrink-0 text-white text-sm font-bold">
-            {n}
+  // ── Android: prompt 대기 중 ────────────────────────────────────────────
+  if (phase === 'android-waiting') return (
+    <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center px-6">
+      <Header />
+      <div className="w-full max-w-xs space-y-4">
+        <div className="glass-card rounded-2xl p-5 text-center space-y-3">
+          <p className="text-white font-semibold">Chrome 브라우저에서 열어주세요</p>
+          <p className="text-gray-400 text-sm">앱 설치는 Chrome에서만 가능합니다.</p>
+          <div className="bg-gray-800 rounded-xl px-4 py-3">
+            <p className="text-xs text-gray-500 mb-1">Chrome 주소창에 입력:</p>
+            <p className="text-green-400 text-sm font-mono break-all">{appUrl}/install</p>
           </div>
-          <p className="text-sm text-gray-300 leading-relaxed pt-0.5">{text}</p>
         </div>
-      ))}
+        <p className="text-center text-xs text-gray-600">
+          Chrome에서 이미 열려 있다면 잠시 기다려 주세요…
+        </p>
+      </div>
+    </div>
+  )
+
+  // ── iOS Safari: 3단계 안내 ─────────────────────────────────────────────
+  if (phase === 'ios') return (
+    <div className="min-h-screen bg-gray-950 flex flex-col">
+      <div className="flex-1 flex flex-col items-center justify-center px-6">
+        <Header />
+        <p className="text-gray-400 text-sm text-center mb-6">
+          아래 순서대로 3번만 탭하면<br />홈 화면에 앱이 설치됩니다.
+        </p>
+        <div className="w-full max-w-xs space-y-3">
+          {[
+            { icon: '⬆️', title: '공유 버튼 탭', desc: 'Safari 하단 중앙의 □↑ 버튼' },
+            { icon: '➕', title: '"홈 화면에 추가" 탭', desc: '목록을 아래로 스크롤하면 보입니다' },
+            { icon: '✅', title: '오른쪽 상단 "추가" 탭', desc: '완료! 홈 화면에 아이콘이 생깁니다' },
+          ].map((s, i) => (
+            <div key={i} className="flex items-center gap-3 rounded-2xl px-4 py-3.5"
+              style={{ background: 'rgba(22,163,74,0.08)', border: '1px solid rgba(34,197,94,0.2)' }}>
+              <span className="text-2xl flex-shrink-0">{s.icon}</span>
+              <div>
+                <p className="text-white text-sm font-bold">{s.title}</p>
+                <p className="text-gray-500 text-xs">{s.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      {/* 하단 공유 버튼 위치 안내 화살표 */}
+      <div className="flex flex-col items-center pb-8 pt-4 gap-1">
+        <div className="text-3xl animate-bounce">⬇️</div>
+        <p className="text-xs text-gray-600">Safari 하단 공유 버튼(□↑)</p>
+      </div>
+    </div>
+  )
+
+  // ── iOS but not Safari ─────────────────────────────────────────────────
+  if (phase === 'ios-nosafari') return (
+    <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center px-6">
+      <Header />
+      <div className="w-full max-w-xs glass-card rounded-2xl p-5 text-center space-y-3">
+        <p className="text-white font-semibold">Safari로 열어주세요</p>
+        <p className="text-gray-400 text-sm">iOS 앱 설치는 Safari 브라우저에서만 가능합니다.</p>
+        <div className="bg-gray-800 rounded-xl px-4 py-3">
+          <p className="text-xs text-gray-500 mb-1">Safari에서 이 주소로 이동:</p>
+          <p className="text-green-400 text-sm font-mono break-all">{appUrl}/install</p>
+        </div>
+      </div>
+    </div>
+  )
+
+  // ── Desktop ────────────────────────────────────────────────────────────
+  if (phase === 'desktop') return (
+    <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center px-6">
+      <Header />
+      <div className="w-full max-w-xs space-y-4 text-center">
+        <p className="text-gray-400 text-sm">스마트폰으로 QR 코드를 스캔하거나<br />아래 주소로 접속하세요.</p>
+        <img
+          src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&bgcolor=0c160c&color=22c55e&data=${encodeURIComponent(appUrl + '/install')}`}
+          alt="QR" className="w-44 h-44 mx-auto rounded-2xl"
+        />
+        <div className="bg-gray-800 rounded-xl px-4 py-3">
+          <p className="text-green-400 text-sm font-mono break-all">{appUrl}/install</p>
+        </div>
+      </div>
+    </div>
+  )
+
+  // 로딩
+  return (
+    <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+      <div className="w-16 h-16 bg-green-700 rounded-2xl flex items-center justify-center animate-pulse">
+        <span className="text-3xl">⛳</span>
+      </div>
     </div>
   )
 }
