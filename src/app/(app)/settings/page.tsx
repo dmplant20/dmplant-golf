@@ -13,8 +13,16 @@ import CourseSearchInput from '@/components/ui/CourseSearchInput'
 const EMPTY_COURSE = {
   name: '', name_vn: '', province: 'Ho Chi Minh City',
   district: '', address: '', holes: 18, par: 72,
-  designer: '', distance_km: '', green_fee_weekday_vnd: '',
+  distance_km: '', green_fee_weekday_vnd: '',
   green_fee_weekend_vnd: '', phone: '', website: '', description: '',
+  sub_courses: [] as string[],   // 27H/36H용 코스 이름 (예: ['루나','스텔라','솔래'])
+}
+
+// 홀 수에 따른 기본 서브코스 이름
+function defaultSubCourses(holes: number): string[] {
+  if (holes === 27) return ['A코스', 'B코스', 'C코스']
+  if (holes === 36) return ['A코스', 'B코스', 'C코스', 'D코스']
+  return []
 }
 
 const PROVINCES = [
@@ -122,21 +130,28 @@ export default function SettingsPage() {
   }
 
   function openEditCourse(course: any) {
+    const holes = course.holes ?? 18
+    // sub_courses: DB에 저장된 쉼표구분 문자열 → 배열로 변환
+    const storedSubs: string[] = course.sub_courses
+      ? String(course.sub_courses).split(',').map((s: string) => s.trim()).filter(Boolean)
+      : []
+    const subCourses = storedSubs.length > 0 ? storedSubs : (holes > 18 ? defaultSubCourses(holes) : [])
+
     setCourseForm({
       name: course.name ?? '',
       name_vn: course.name_vn ?? '',
       province: course.province ?? 'Ho Chi Minh City',
       district: course.district ?? '',
       address: course.address ?? '',
-      holes: course.holes ?? 18,
+      holes,
       par: course.par ?? 72,
-      designer: course.designer ?? '',
       distance_km: course.distance_km != null ? String(course.distance_km) : '',
       green_fee_weekday_vnd: course.green_fee_weekday_vnd != null ? String(course.green_fee_weekday_vnd) : '',
       green_fee_weekend_vnd: course.green_fee_weekend_vnd != null ? String(course.green_fee_weekend_vnd) : '',
       phone: course.phone ?? '',
       website: course.website ?? '',
       description: course.description ?? '',
+      sub_courses: subCourses,
     })
     setEditCourse(course)
     setCourseError('')
@@ -148,6 +163,9 @@ export default function SettingsPage() {
     setCourseError('')
     setCourseSaving(true)
     const supabase = createClient()
+    // sub_courses: 배열 → 쉼표구분 문자열로 저장
+    const subCoursesStr = courseForm.sub_courses.filter(s => s.trim()).join(',') || null
+
     const payload: any = {
       name: courseForm.name.trim(),
       name_vn: courseForm.name_vn.trim() || null,
@@ -156,52 +174,68 @@ export default function SettingsPage() {
       address: courseForm.address.trim() || null,
       holes: courseForm.holes,
       par: courseForm.par,
-      designer: courseForm.designer.trim() || null,
       distance_km: courseForm.distance_km ? parseInt(String(courseForm.distance_km)) : null,
       green_fee_weekday_vnd: courseForm.green_fee_weekday_vnd ? parseInt(String(courseForm.green_fee_weekday_vnd)) : null,
       green_fee_weekend_vnd: courseForm.green_fee_weekend_vnd ? parseInt(String(courseForm.green_fee_weekend_vnd)) : null,
       phone: courseForm.phone.trim() || null,
       website: courseForm.website.trim() || null,
       description: courseForm.description.trim() || null,
+      sub_courses: subCoursesStr,
       is_active: true,
-      club_id: currentClubId,   // ← RLS 정책에 필요한 club_id 포함
+      club_id: currentClubId,
     }
 
     if (editCourse?.id) {
-      // 수정
-      const { data, error } = await supabase
-        .from('golf_courses').update(payload).eq('id', editCourse.id).select().single()
-      if (error) {
-        setCourseError(`저장 실패: ${error.message}`)
+      // 수정 — 존재하지 않는 컬럼 자동 제거 후 재시도
+      let updatePayload = { ...payload }
+      let updateData: any = null
+      let updateError: any = null
+
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const { data: d, error: e } = await supabase
+          .from('golf_courses').update(updatePayload).eq('id', editCourse.id).select().single()
+        if (!e) { updateData = d; break }
+        updateError = e
+        const msg: string = e.message ?? ''
+        if (msg.includes('sub_courses'))  { const { sub_courses: _, ...rest } = updatePayload; updatePayload = rest }
+        else if (msg.includes('designer')){ const { designer: _, ...rest } = updatePayload; updatePayload = rest }
+        else if (msg.includes('club_id')) { const { club_id: _, ...rest } = updatePayload; updatePayload = rest }
+        else break
+      }
+
+      if (updateError && !updateData) {
+        setCourseError(`저장 실패: ${updateError.message}`)
         setCourseSaving(false)
         return
       }
-      if (data) setCourses(prev => prev.map(c => c.id === data.id ? data : c))
+      if (updateData) setCourses(prev => prev.map(c => c.id === updateData.id ? updateData : c))
     } else {
-      // 신규 — club_id 없이 실패하는 경우를 대비해 두 가지 방식 시도
-      const { data, error } = await supabase
-        .from('golf_courses').insert(payload).select().single()
-      if (error) {
-        // club_id 컬럼이 없는 테이블이라면 제거 후 재시도
-        if (error.message.includes('club_id') || error.code === '42703') {
-          const { club_id: _removed, ...payloadWithoutClub } = payload
-          const { data: data2, error: error2 } = await supabase
-            .from('golf_courses').insert(payloadWithoutClub).select().single()
-          if (error2) {
-            setCourseError(`저장 실패: ${error2.message}`)
-            setCourseSaving(false)
-            return
-          }
-          if (data2) setCourses(prev =>
-            [...prev, data2].sort((a, b) => (a.distance_km ?? 999) - (b.distance_km ?? 999)))
-        } else {
-          setCourseError(`저장 실패: ${error.message}`)
-          setCourseSaving(false)
-          return
-        }
-      } else if (data) {
+      // 신규 — DB 컬럼 없을 때 자동으로 해당 필드 제거 후 재시도
+      let insertPayload = { ...payload }
+      let insertData: any = null
+      let insertError: any = null
+
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const { data: d, error: e } = await supabase
+          .from('golf_courses').insert(insertPayload).select().single()
+        if (!e) { insertData = d; break }
+        insertError = e
+        const msg: string = e.message ?? ''
+        // 존재하지 않는 컬럼이면 해당 컬럼 제거 후 재시도
+        if (msg.includes('club_id'))     { const { club_id: _, ...rest } = insertPayload; insertPayload = rest }
+        else if (msg.includes('sub_courses'))  { const { sub_courses: _, ...rest } = insertPayload; insertPayload = rest }
+        else if (msg.includes('designer'))     { const { designer: _, ...rest } = insertPayload; insertPayload = rest }
+        else break  // 다른 에러면 중단
+      }
+
+      if (insertError && !insertData) {
+        setCourseError(`저장 실패: ${insertError.message}`)
+        setCourseSaving(false)
+        return
+      }
+      if (insertData) {
         setCourses(prev =>
-          [...prev, data].sort((a, b) => (a.distance_km ?? 999) - (b.distance_km ?? 999)))
+          [...prev, insertData].sort((a: any, b: any) => (a.distance_km ?? 999) - (b.distance_km ?? 999)))
       }
     }
     setCourseSaving(false)
@@ -401,6 +435,9 @@ export default function SettingsPage() {
                           <span className="text-xs text-green-500">{c.holes}H / Par{c.par}</span>
                           {c.distance_km && <span className="text-xs text-gray-600">{c.distance_km}km</span>}
                         </div>
+                        {c.sub_courses && (
+                          <p className="text-xs text-blue-400/70 mt-0.5 truncate">{c.sub_courses}</p>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <button onClick={() => openEditCourse(c)}
@@ -470,8 +507,8 @@ export default function SettingsPage() {
                       address:     c.address     ?? f.address,
                       phone:       c.phone       ?? f.phone,
                       website:     c.website     ?? f.website,
-                      designer:    c.designer    ?? f.designer,
                       description: c.description ?? f.description,
+                      sub_courses: c.holes > 18 ? defaultSubCourses(c.holes) : [],
                     }))
                     // 2. 주소가 없으면 Google Places 에서 자동 조회
                     if (!c.address) {
@@ -522,7 +559,15 @@ export default function SettingsPage() {
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-xs text-gray-400 block mb-1">{ko ? '홀 수' : 'Holes'}</label>
-                  <select value={courseForm.holes} onChange={e => setCourseForm(f => ({ ...f, holes: parseInt(e.target.value) }))}
+                  <select value={courseForm.holes} onChange={e => {
+                    const h = parseInt(e.target.value)
+                    setCourseForm(f => ({
+                      ...f,
+                      holes: h,
+                      par: h === 9 ? 36 : h === 18 ? 72 : h === 27 ? 108 : 144,
+                      sub_courses: h > 18 ? (f.sub_courses.length > 0 ? f.sub_courses : defaultSubCourses(h)) : [],
+                    }))
+                  }}
                     className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-green-500">
                     {[9, 18, 27, 36].map(h => <option key={h} value={h}>{h}홀</option>)}
                   </select>
@@ -660,13 +705,43 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              {/* 설계자 */}
-              <div>
-                <label className="text-xs text-gray-400 block mb-1">{ko ? '설계자' : 'Designer'}</label>
-                <input value={courseForm.designer} onChange={e => setCourseForm(f => ({ ...f, designer: e.target.value }))}
-                  placeholder="Greg Norman"
-                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-green-500" />
-              </div>
+              {/* 서브코스 이름 (27H / 36H 전용) */}
+              {courseForm.holes > 18 && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs text-gray-400">
+                      {ko ? `코스 이름 (${courseForm.holes / 9}개 × 9홀)` : `Sub-course Names (${courseForm.holes / 9} × 9H)`}
+                    </label>
+                    <button type="button"
+                      onClick={() => setCourseForm(f => ({ ...f, sub_courses: defaultSubCourses(f.holes) }))}
+                      className="text-xs text-green-500 hover:text-green-400">
+                      {ko ? '기본값으로' : 'Reset'}
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {courseForm.sub_courses.map((name, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <span className="text-xs text-gray-500 w-14 flex-shrink-0">
+                          {idx + 1}번 코스
+                        </span>
+                        <input
+                          value={name}
+                          onChange={e => setCourseForm(f => {
+                            const subs = [...f.sub_courses]
+                            subs[idx] = e.target.value
+                            return { ...f, sub_courses: subs }
+                          })}
+                          placeholder={`예: 루나, 스텔라, 솔래`}
+                          className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-600 mt-1.5">
+                    {ko ? '스코어카드에서 어떤 코스 조합으로 라운딩했는지 표시됩니다' : 'Shown in scorecard when selecting course combination'}
+                  </p>
+                </div>
+              )}
 
               {/* 설명 */}
               <div>
