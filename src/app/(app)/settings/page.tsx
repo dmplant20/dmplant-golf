@@ -185,24 +185,34 @@ export default function SettingsPage() {
       club_id: currentClubId,
     }
 
+    // ── 스키마 캐시에 없는 컬럼을 에러 메시지에서 파싱해 자동 제거 ──────────
+    function stripMissingColumn(p: any, errMsg: string): any | null {
+      // "Could not find the 'col_name' column of 'table' in the schema cache"
+      const m = errMsg.match(/Could not find the '([^']+)' column/)
+      if (m) {
+        const col = m[1]
+        if (col in p) {
+          const { [col]: _removed, ...rest } = p
+          return rest
+        }
+      }
+      return null  // 파싱 실패 → 중단
+    }
+
     if (editCourse?.id) {
-      // 수정 — 존재하지 않는 컬럼 자동 제거 후 재시도
+      // 수정 — 존재하지 않는 컬럼 자동 제거 후 재시도 (최대 10회)
       let updatePayload = { ...payload }
       let updateData: any = null
       let updateError: any = null
 
-      for (let attempt = 0; attempt < 4; attempt++) {
+      for (let attempt = 0; attempt < 10; attempt++) {
         const { data: d, error: e } = await supabase
           .from('golf_courses').update(updatePayload).eq('id', editCourse.id).select().single()
-        if (!e) { updateData = d; break }
+        if (!e) { updateData = d; updateError = null; break }
         updateError = e
-        const msg: string = e.message ?? ''
-        if      (msg.includes('sub_courses'))  { const { sub_courses: _, ...rest } = updatePayload; updatePayload = rest }
-        else if (msg.includes('designer'))    { const { designer: _, ...rest } = updatePayload; updatePayload = rest }
-        else if (msg.includes('distance_km')) { const { distance_km: _, ...rest } = updatePayload; updatePayload = rest }
-        else if (msg.includes('district'))    { const { district: _, ...rest } = updatePayload; updatePayload = rest }
-        else if (msg.includes('club_id'))     { const { club_id: _, ...rest } = updatePayload; updatePayload = rest }
-        else break
+        const stripped = stripMissingColumn(updatePayload, e.message ?? '')
+        if (stripped) { updatePayload = stripped }
+        else break  // 알 수 없는 에러면 중단
       }
 
       if (updateError && !updateData) {
@@ -212,24 +222,19 @@ export default function SettingsPage() {
       }
       if (updateData) setCourses(prev => prev.map(c => c.id === updateData.id ? updateData : c))
     } else {
-      // 신규 — DB 컬럼 없을 때 자동으로 해당 필드 제거 후 재시도
+      // 신규 — DB 컬럼 없을 때 자동으로 해당 필드 제거 후 재시도 (최대 10회)
       let insertPayload = { ...payload }
       let insertData: any = null
       let insertError: any = null
 
-      for (let attempt = 0; attempt < 4; attempt++) {
+      for (let attempt = 0; attempt < 10; attempt++) {
         const { data: d, error: e } = await supabase
           .from('golf_courses').insert(insertPayload).select().single()
-        if (!e) { insertData = d; break }
+        if (!e) { insertData = d; insertError = null; break }
         insertError = e
-        const msg: string = e.message ?? ''
-        // 존재하지 않는 컬럼이면 해당 컬럼 제거 후 재시도
-        if      (msg.includes('sub_courses'))  { const { sub_courses: _, ...rest } = insertPayload; insertPayload = rest }
-        else if (msg.includes('designer'))    { const { designer: _, ...rest } = insertPayload; insertPayload = rest }
-        else if (msg.includes('distance_km')) { const { distance_km: _, ...rest } = insertPayload; insertPayload = rest }
-        else if (msg.includes('district'))    { const { district: _, ...rest } = insertPayload; insertPayload = rest }
-        else if (msg.includes('club_id'))     { const { club_id: _, ...rest } = insertPayload; insertPayload = rest }
-        else break  // 다른 에러면 중단
+        const stripped = stripMissingColumn(insertPayload, e.message ?? '')
+        if (stripped) { insertPayload = stripped }
+        else break  // 알 수 없는 에러면 중단
       }
 
       if (insertError && !insertData) {
