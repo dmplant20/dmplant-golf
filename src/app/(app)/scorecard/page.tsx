@@ -856,16 +856,16 @@ export default function ScorecardPage() {
                   <label className="text-[11px] font-bold mb-1.5 block" style={{ color: '#5a7a5a' }}>
                     {ko ? '홀 수' : 'Holes'}
                   </label>
-                  <div className="flex gap-2">
-                    {[18, 9].map(h => (
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {[9, 18, 27, 36].map(h => (
                       <button key={h} onClick={() => {
                         const p = selectedCourseObj
-                          ? (selectedCourseObj.holes > h ? Math.round(selectedCourseObj.par * h / selectedCourseObj.holes) : selectedCourseObj.par)
-                          : (h === 9 ? 36 : 72)
+                          ? Math.round(selectedCourseObj.par * h / selectedCourseObj.holes)
+                          : h === 9 ? 36 : h === 18 ? 72 : h === 27 ? 108 : 144
                         setNewForm(f => ({ ...f, holes: h, coursePar: p }))
                         setSubCourse('')
                       }}
-                        className="flex-1 py-2.5 rounded-xl text-sm font-black transition"
+                        className="py-2.5 rounded-xl text-sm font-black transition"
                         style={newForm.holes === h
                           ? { background: 'linear-gradient(135deg,#16a34a,#14532d)', color: '#fff' }
                           : { background: 'rgba(255,255,255,0.05)', color: '#5a7a5a', border: '1px solid rgba(34,197,94,0.1)' }}>
