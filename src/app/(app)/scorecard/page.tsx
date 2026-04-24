@@ -5,41 +5,34 @@ import { useAuthStore } from '@/stores/authStore'
 import {
   ChevronLeft, Plus, Trash2, Save, X,
   Flag, BarChart2, Calendar, MapPin, ChevronRight,
-  Search, Globe, ChevronDown,
+  Search, ChevronDown,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
 // ── 국가 감지 ─────────────────────────────────────────────────────────────
 type CountryKey = 'Vietnam' | 'Korea' | 'Indonesia' | 'Other'
 
-// ── 하드코딩된 골프장 목록 (DB 없이도 항상 작동) ──────────────────────────
-// Supabase migration_golf_courses.sql 와 동기화 유지
+// ── 하드코딩된 골프장 목록 ──────────────────────────────────────────────────
 const BUILTIN_COURSES: {
   id: string; name: string; name_vn: string | null; province: string;
   holes: number; par: number; distance_km: number | null
 }[] = [
-  // ── 호치민시 ──────────────────────────────────────────────────────────
-  { id: '_tsn',  name: 'Tan Son Nhat Golf Course',      name_vn: 'Sân Golf Tân Sơn Nhất',              province: 'Ho Chi Minh City', holes: 36, par: 72,  distance_km: 6   },
-  { id: '_ssg',  name: 'Saigon South Golf Club',        name_vn: 'Sân Golf Nam Sài Gòn',               province: 'Ho Chi Minh City', holes: 9,  par: 27,  distance_km: 8   },
-  { id: '_vgcc', name: 'Vietnam Golf & Country Club',   name_vn: 'Sân Golf & Country Club Việt Nam',   province: 'Ho Chi Minh City', holes: 36, par: 72,  distance_km: 20  },
-  { id: '_vpl',  name: 'Vinpearl Golf Léman Cu Chi',    name_vn: 'Sân Golf Vinpearl Golf Léman Củ Chi', province: 'Ho Chi Minh City', holes: 36, par: 72,  distance_km: 35  },
-  // ── 빈증성 ────────────────────────────────────────────────────────────
-  { id: '_sbg',  name: 'Song Be Golf Resort',           name_vn: 'Sân Golf Song Bé',                   province: 'Binh Duong',       holes: 27, par: 72,  distance_km: 15  },
-  { id: '_tdg',  name: 'Twin Doves Golf Club',          name_vn: 'Sân Golf Twin Doves',                province: 'Binh Duong',       holes: 27, par: 108, distance_km: 35  },
-  { id: '_hmg',  name: 'Harmonie Golf Park',            name_vn: 'Sân Golf Harmonie',                  province: 'Binh Duong',       holes: 18, par: 72,  distance_km: 35  },
-  // ── 동나이성 ──────────────────────────────────────────────────────────
-  { id: '_ltg',  name: 'Long Thanh Golf Club',          name_vn: 'Sân Golf Long Thành',                province: 'Dong Nai',         holes: 36, par: 72,  distance_km: 36  },
-  { id: '_dng',  name: 'Dong Nai Golf Resort (Bo Chang)', name_vn: 'Sân Golf Đồng Nai (Bò Chang)',    province: 'Dong Nai',         holes: 27, par: 72,  distance_km: 50  },
-  { id: '_ecc',  name: 'Emerald Country Club',          name_vn: 'Sân Golf Emerald Country Club',      province: 'Dong Nai',         holes: 18, par: 72,  distance_km: 40  },
-  // ── 롱안성 ────────────────────────────────────────────────────────────
-  { id: '_rla',  name: 'Royal Long An Golf & Country Club', name_vn: 'Sân Golf Royal Long An',         province: 'Long An',          holes: 27, par: 72,  distance_km: 50  },
-  { id: '_wlg',  name: 'West Lakes Golf & Villas',      name_vn: 'Sân Golf West Lakes',                province: 'Long An',          holes: 18, par: 72,  distance_km: 52  },
-  // ── 바리아붕따우성 ────────────────────────────────────────────────────
-  { id: '_vtg',  name: 'Vung Tau Paradise Golf Resort', name_vn: 'Sân Golf Vũng Tàu Paradise',         province: 'Ba Ria-Vung Tau',  holes: 27, par: 108, distance_km: 125 },
-  { id: '_scg',  name: 'Sonadezi Chau Duc Golf Course', name_vn: 'Sân Golf Sonadezi Châu Đức',         province: 'Ba Ria-Vung Tau',  holes: 36, par: 72,  distance_km: 90  },
-  { id: '_blf',  name: 'The Bluffs Grand Ho Tram Strip', name_vn: 'Sân Golf The Bluffs Hồ Tràm',      province: 'Ba Ria-Vung Tau',  holes: 18, par: 71,  distance_km: 130 },
-  // ── 빈투언성 ──────────────────────────────────────────────────────────
-  { id: '_pga',  name: 'PGA NovaWorld Phan Thiet',      name_vn: 'Sân Golf PGA NovaWorld Phan Thiết',  province: 'Binh Thuan',       holes: 36, par: 72,  distance_km: 200 },
+  { id: '_tsn',  name: 'Tan Son Nhat Golf Course',          name_vn: 'Sân Golf Tân Sơn Nhất',              province: 'Ho Chi Minh City', holes: 36, par: 144, distance_km: 6   },
+  { id: '_ssg',  name: 'Saigon South Golf Club',            name_vn: 'Sân Golf Nam Sài Gòn',               province: 'Ho Chi Minh City', holes: 9,  par: 27,  distance_km: 8   },
+  { id: '_vgcc', name: 'Vietnam Golf & Country Club',       name_vn: 'Sân Golf & Country Club Việt Nam',   province: 'Ho Chi Minh City', holes: 36, par: 144, distance_km: 20  },
+  { id: '_vpl',  name: 'Vinpearl Golf Léman Cu Chi',        name_vn: 'Sân Golf Vinpearl Golf Léman Củ Chi', province: 'Ho Chi Minh City', holes: 36, par: 144, distance_km: 35  },
+  { id: '_sbg',  name: 'Song Be Golf Resort',               name_vn: 'Sân Golf Song Bé',                   province: 'Binh Duong',       holes: 27, par: 108, distance_km: 15  },
+  { id: '_tdg',  name: 'Twin Doves Golf Club',              name_vn: 'Sân Golf Twin Doves',                province: 'Binh Duong',       holes: 27, par: 108, distance_km: 35  },
+  { id: '_hmg',  name: 'Harmonie Golf Park',                name_vn: 'Sân Golf Harmonie',                  province: 'Binh Duong',       holes: 18, par: 72,  distance_km: 35  },
+  { id: '_ltg',  name: 'Long Thanh Golf Club',              name_vn: 'Sân Golf Long Thành',                province: 'Dong Nai',         holes: 36, par: 144, distance_km: 36  },
+  { id: '_dng',  name: 'Dong Nai Golf Resort (Bo Chang)',   name_vn: 'Sân Golf Đồng Nai (Bò Chang)',       province: 'Dong Nai',         holes: 27, par: 108, distance_km: 50  },
+  { id: '_ecc',  name: 'Emerald Country Club',              name_vn: 'Sân Golf Emerald Country Club',       province: 'Dong Nai',         holes: 18, par: 72,  distance_km: 40  },
+  { id: '_rla',  name: 'Royal Long An Golf & Country Club', name_vn: 'Sân Golf Royal Long An',              province: 'Long An',          holes: 27, par: 108, distance_km: 50  },
+  { id: '_wlg',  name: 'West Lakes Golf & Villas',          name_vn: 'Sân Golf West Lakes',                 province: 'Long An',          holes: 18, par: 72,  distance_km: 52  },
+  { id: '_vtg',  name: 'Vung Tau Paradise Golf Resort',     name_vn: 'Sân Golf Vũng Tàu Paradise',          province: 'Ba Ria-Vung Tau',  holes: 27, par: 108, distance_km: 125 },
+  { id: '_scg',  name: 'Sonadezi Chau Duc Golf Course',     name_vn: 'Sân Golf Sonadezi Châu Đức',          province: 'Ba Ria-Vung Tau',  holes: 36, par: 144, distance_km: 90  },
+  { id: '_blf',  name: 'The Bluffs Grand Ho Tram Strip',    name_vn: 'Sân Golf The Bluffs Hồ Tràm',         province: 'Ba Ria-Vung Tau',  holes: 18, par: 71,  distance_km: 130 },
+  { id: '_pga',  name: 'PGA NovaWorld Phan Thiet',          name_vn: 'Sân Golf PGA NovaWorld Phan Thiết',   province: 'Binh Thuan',       holes: 36, par: 144, distance_km: 200 },
 ]
 
 function detectCountry(province: string): CountryKey {
@@ -55,6 +48,30 @@ const COUNTRY_META: Record<CountryKey | 'all', { flag: string; ko: string; en: s
   Korea:     { flag: '🇰🇷', ko: '한국',      en: 'Korea'     },
   Indonesia: { flag: '🇮🇩', ko: '인도네시아', en: 'Indonesia' },
   Other:     { flag: '🌍', ko: '기타',       en: 'Other'     },
+}
+
+// ── 서브코스 조합 ─────────────────────────────────────────────────────────
+const SUB_COURSE_LABELS: Record<string, string> = {
+  A: 'A코스', B: 'B코스', C: 'C코스', D: 'D코스',
+  AB: 'A+B코스', BC: 'B+C코스', AC: 'A+C코스',
+  CD: 'C+D코스', AD: 'A+D코스', BD: 'B+D코스',
+}
+function getSubCourseCombos(courseHoles: number, playHoles: number) {
+  if (courseHoles === 27 && playHoles === 18) return [
+    { key: 'AB', label: 'A+B코스' }, { key: 'BC', label: 'B+C코스' }, { key: 'AC', label: 'A+C코스' },
+  ]
+  if (courseHoles === 27 && playHoles === 9) return [
+    { key: 'A', label: 'A코스' }, { key: 'B', label: 'B코스' }, { key: 'C', label: 'C코스' },
+  ]
+  if (courseHoles === 36 && playHoles === 18) return [
+    { key: 'AB', label: 'A+B코스' }, { key: 'CD', label: 'C+D코스' },
+    { key: 'BC', label: 'B+C코스' }, { key: 'AD', label: 'A+D코스' },
+  ]
+  if (courseHoles === 36 && playHoles === 9) return [
+    { key: 'A', label: 'A코스' }, { key: 'B', label: 'B코스' },
+    { key: 'C', label: 'C코스' }, { key: 'D', label: 'D코스' },
+  ]
+  return []
 }
 
 // ── 기본 파 ───────────────────────────────────────────────────────────────
@@ -106,10 +123,12 @@ function calcStats(rounds: any[]) {
   }
 }
 
+const CURRENCY_SYMBOL: Record<string, string> = { KRW: '₩', VND: '₫', IDR: 'Rp' }
+
 // ─────────────────────────────────────────────────────────────────────────
 export default function ScorecardPage() {
   const router = useRouter()
-  const { user, lang } = useAuthStore()
+  const { user, lang, currentClubId } = useAuthStore()
   const ko = lang === 'ko'
 
   const [view,          setView]          = useState<'list'|'card'>('list')
@@ -119,15 +138,18 @@ export default function ScorecardPage() {
   const [loading,       setLoading]       = useState(true)
 
   // new round
-  const [showNew,       setShowNew]       = useState(false)
-  // BUILTIN_COURSES 를 초기값으로 설정 — DB 없이도 즉시 표시
-  const [courses,       setCourses]       = useState<any[]>(BUILTIN_COURSES)
-  const [newForm,       setNewForm]       = useState({
+  const [showNew,         setShowNew]         = useState(false)
+  const [courses,         setCourses]         = useState<any[]>(BUILTIN_COURSES)
+  const [newForm,         setNewForm]         = useState({
     courseName: '', courseId: '', coursePar: 72, holes: 18,
     playedAt: new Date().toISOString().split('T')[0], notes: '',
   })
-  const [pars,          setPars]          = useState<number[]>(DEFAULT_PARS_18)
-  const [creating,      setCreating]      = useState(false)
+  const [pars,            setPars]            = useState<number[]>(DEFAULT_PARS_18)
+  const [creating,        setCreating]        = useState(false)
+  const [createError,     setCreateError]     = useState('')
+  // 선택된 코스 전체 객체 (27홀 등 sub-course 선택에 필요)
+  const [selectedCourseObj, setSelectedCourseObj] = useState<any>(null)
+  const [subCourse,       setSubCourse]       = useState<string>('')
 
   // course picker state
   const [cpSearch,      setCpSearch]      = useState('')
@@ -136,11 +158,14 @@ export default function ScorecardPage() {
 
   // hole editing
   const [editHole,      setEditHole]      = useState<number | null>(null)
-  const [localHoles,    setLocalHoles]    = useState<Record<number, { score: number|null; par: number; putts: number|null }>>({})
+  const [localHoles,    setLocalHoles]    = useState<Record<number, { score: number|null; par: number; putts: number|null; yardage: number|null }>>({})
   const [saving,        setSaving]        = useState(false)
   const [showParEdit,   setShowParEdit]   = useState(false)
 
-  // ── course countries / provinces (derived from loaded courses) ─────────
+  // fine toast
+  const [fineToast,     setFineToast]     = useState<string | null>(null)
+
+  // ── course countries / provinces ──────────────────────────────────────
   const availableCountries = useMemo(() => {
     const keys = new Set<string>()
     courses.forEach(c => keys.add(detectCountry(c.province)))
@@ -170,6 +195,14 @@ export default function ScorecardPage() {
     return list
   }, [courses, selCountry, selProvince, cpSearch])
 
+  // 선택된 코스의 sub-course 조합
+  const subCourseCombos = useMemo(() => {
+    if (!selectedCourseObj) return []
+    return getSubCourseCombos(selectedCourseObj.holes, newForm.holes)
+  }, [selectedCourseObj, newForm.holes])
+
+  const needsSubCourse = subCourseCombos.length > 0
+
   // ── loaders ───────────────────────────────────────────────────────────
   async function loadRounds() {
     if (!user) { setLoading(false); return }
@@ -186,25 +219,24 @@ export default function ScorecardPage() {
     const { data } = await supabase.from('personal_round_holes')
       .select('*').eq('round_id', roundId).order('hole_number')
     setHoleRows(data ?? [])
-    const local: Record<number, { score: number|null; par: number; putts: number|null }> = {}
-    data?.forEach(h => { local[h.hole_number] = { score: h.score, par: h.par, putts: h.putts } })
+    const local: Record<number, { score: number|null; par: number; putts: number|null; yardage: number|null }> = {}
+    data?.forEach(h => {
+      local[h.hole_number] = { score: h.score, par: h.par, putts: h.putts, yardage: h.yardage ?? null }
+    })
     setLocalHoles(local)
   }
 
   async function loadCourses() {
-    // 이미 DB에서 한 번이라도 로드했으면 스킵 (builtin ID는 '_'로 시작)
     if (courses.some(c => !String(c.id).startsWith('_'))) return
     const supabase = createClient()
     const { data } = await supabase.from('golf_courses')
       .select('id, name, name_vn, province, par, holes, distance_km')
       .eq('is_active', true).order('name')
     if (data && data.length > 0) {
-      // DB 골프장 우선, BUILTIN 중 DB에 없는 것만 보충
       const dbNames = new Set(data.map((c: any) => c.name.toLowerCase()))
       const extras = BUILTIN_COURSES.filter(b => !dbNames.has(b.name.toLowerCase()))
       setCourses([...data, ...extras])
     }
-    // DB 비어 있으면 BUILTIN_COURSES 그대로 유지 (초기값)
   }
 
   useEffect(() => { loadRounds() }, [user])
@@ -212,32 +244,78 @@ export default function ScorecardPage() {
   async function openRound(round: any) {
     setSelectedRound(round)
     await loadHoles(round.id)
-    const totalHoles    = round.total_holes
-    const computedPars  = computePars(round.course_par, totalHoles)
+    const totalHoles   = round.total_holes
+    const computedPars = computePars(round.course_par, totalHoles)
     setLocalHoles(prev => {
       const next = { ...prev }
       for (let i = 1; i <= totalHoles; i++) {
-        if (!next[i]) next[i] = { score: null, par: computedPars[i-1], putts: null }
+        if (!next[i]) next[i] = { score: null, par: computedPars[i-1], putts: null, yardage: null }
       }
       return next
     })
     setView('card')
   }
 
+  // ── 코스 선택 핸들러 ──────────────────────────────────────────────────
+  function handleSelectCourse(c: any) {
+    setSelectedCourseObj(c)
+    setSubCourse('')
+    setCreateError('')
+    // 현재 play holes에 맞게 par 자동 계산
+    const adjustedPar = c.holes > newForm.holes
+      ? Math.round(c.par * newForm.holes / c.holes)
+      : (c.par ?? 72)
+    setNewForm(f => ({ ...f, courseName: c.name, courseId: c.id, coursePar: adjustedPar }))
+    setPars(computePars(adjustedPar, newForm.holes))
+    setCpSearch('')
+  }
+
+  // ── sub-course 선택 핸들러 ────────────────────────────────────────────
+  function handleSelectSubCourse(comboKey: string) {
+    if (!selectedCourseObj) return
+    setSubCourse(comboKey)
+    setCreateError('')
+    // sub-course별 par는 비례 계산 (이미 adjustedPar가 설정됐으면 그대로 유지)
+    // 명시적으로 표시 이름 업데이트는 createRound 시점에 처리
+  }
+
   async function createRound() {
     if (!user || !newForm.courseName) return
+    // sub-course 선택 필요한데 안 됐으면 에러
+    if (needsSubCourse && !subCourse) {
+      setCreateError(ko ? '어떤 코스를 도는지 선택해주세요' : 'Please select which course to play')
+      return
+    }
     setCreating(true)
+    setCreateError('')
     const supabase = createClient()
+
+    // 코스명에 sub-course 포함
+    const finalCourseName = subCourse
+      ? `${newForm.courseName} (${SUB_COURSE_LABELS[subCourse] ?? subCourse})`
+      : newForm.courseName
+
+    // BUILTIN 코스 ID('_' 시작)는 FK 오류 방지를 위해 null 처리
+    const courseId = (newForm.courseId && !String(newForm.courseId).startsWith('_'))
+      ? newForm.courseId : null
+
     const { data: round, error } = await supabase.from('personal_rounds').insert({
       user_id:     user.id,
-      course_id:   newForm.courseId  || null,
-      course_name: newForm.courseName,
+      course_id:   courseId,
+      course_name: finalCourseName,
       course_par:  newForm.coursePar,
       total_holes: newForm.holes,
       played_at:   newForm.playedAt,
       notes:       newForm.notes || null,
     }).select().single()
-    if (!error && round) {
+
+    if (error) {
+      setCreateError(error.message || (ko ? '저장 실패' : 'Save failed'))
+      setCreating(false)
+      return
+    }
+
+    if (round) {
       const computedPars = computePars(newForm.coursePar, newForm.holes)
       await supabase.from('personal_round_holes').insert(
         Array.from({ length: newForm.holes }, (_, i) => ({
@@ -256,6 +334,7 @@ export default function ScorecardPage() {
     setNewForm({ courseName: '', courseId: '', coursePar: 72, holes: 18, playedAt: new Date().toISOString().split('T')[0], notes: '' })
     setPars(DEFAULT_PARS_18)
     setCpSearch(''); setSelCountry('all'); setSelProvince('all')
+    setSelectedCourseObj(null); setSubCourse(''); setCreateError('')
   }
 
   async function saveCard() {
@@ -265,7 +344,11 @@ export default function ScorecardPage() {
     const entries   = Object.entries(localHoles)
     for (const [holeStr, hd] of entries) {
       await supabase.from('personal_round_holes').upsert(
-        { round_id: selectedRound.id, hole_number: parseInt(holeStr), par: hd.par, score: hd.score, putts: hd.putts },
+        {
+          round_id: selectedRound.id, hole_number: parseInt(holeStr),
+          par: hd.par, score: hd.score, putts: hd.putts,
+          yardage: hd.yardage ?? null,
+        },
         { onConflict: 'round_id,hole_number' }
       )
     }
@@ -277,6 +360,43 @@ export default function ScorecardPage() {
     await loadRounds()
     const { data } = await supabase.from('personal_rounds').select('*').eq('id', selectedRound.id).single()
     if (data) setSelectedRound(data)
+
+    // ── 자동 핸디오버 벌금 계산 ──────────────────────────────────────
+    try {
+      if (total !== null && currentClubId && user) {
+        const [{ data: clubData }, { data: membership }] = await Promise.all([
+          supabase.from('clubs').select('fine_handicap_per_stroke, fine_handicap_max, currency').eq('id', currentClubId).single(),
+          supabase.from('club_memberships').select('club_handicap').eq('club_id', currentClubId).eq('user_id', user.id).maybeSingle(),
+        ])
+        const perStroke  = clubData?.fine_handicap_per_stroke
+        const maxFine    = clubData?.fine_handicap_max ?? null
+        const clubHandicap = membership?.club_handicap ?? null
+        const clubCurrency = clubData?.currency ?? 'KRW'
+        const fineSym    = CURRENCY_SYMBOL[clubCurrency] ?? '₩'
+
+        if (perStroke && clubHandicap !== null) {
+          const allowedScore = selectedRound.course_par + clubHandicap
+          if (total > allowedScore) {
+            const overStrokes = total - allowedScore
+            const fineAmount  = maxFine !== null
+              ? Math.min(overStrokes * perStroke, maxFine)
+              : overStrokes * perStroke
+            await supabase.from('finance_transactions').insert({
+              club_id: currentClubId, type: 'fine', amount: fineAmount, currency: clubCurrency,
+              description: ko ? `핸디오버 벌금 (+${overStrokes}타)` : `Handicap-over fine (+${overStrokes} strokes)`,
+              transaction_date: selectedRound.played_at, recorded_by: user.id, member_id: user.id,
+            })
+            setFineToast(ko
+              ? `벌금 ${fineSym}${fineAmount.toLocaleString()} 자동 부과 (+${overStrokes}타)`
+              : `Fine ${fineSym}${fineAmount.toLocaleString()} auto-charged (+${overStrokes} strokes)`)
+            setTimeout(() => setFineToast(null), 3000)
+          } else {
+            setFineToast(ko ? '벌금 없음 ✓' : 'No fine ✓')
+            setTimeout(() => setFineToast(null), 2000)
+          }
+        }
+      }
+    } catch { /* silently ignore */ }
   }
 
   async function deleteRound(roundId: string) {
@@ -291,7 +411,7 @@ export default function ScorecardPage() {
   const totalHoles = selectedRound?.total_holes ?? 18
   const outHoles   = Array.from({ length: 9 }, (_, i) => i + 1)
   const inHoles    = totalHoles === 18 ? Array.from({ length: 9 }, (_, i) => i + 10) : []
-  function holeData(n: number) { return localHoles[n] ?? { score: null, par: 4, putts: null } }
+  function holeData(n: number) { return localHoles[n] ?? { score: null, par: 4, putts: null, yardage: null } }
   function sumScores(hs: number[]) { return hs.reduce((s, h) => s + (localHoles[h]?.score ?? 0), 0) }
   function sumPars(hs: number[])   { return hs.reduce((s, h) => s + (localHoles[h]?.par   ?? 4), 0) }
   const outScore = sumScores(outHoles), inScore = sumScores(inHoles), total = outScore + inScore
@@ -303,18 +423,28 @@ export default function ScorecardPage() {
 
   // ── Scorecard view ────────────────────────────────────────────────────
   if (view === 'card' && selectedRound) return (
-    <ScorecardView
-      round={selectedRound} localHoles={localHoles} setLocalHoles={setLocalHoles}
-      editHole={editHole} setEditHole={setEditHole}
-      outHoles={outHoles} inHoles={inHoles} totalHoles={totalHoles}
-      holeData={holeData} sumScores={sumScores} sumPars={sumPars}
-      outScore={outScore} inScore={inScore} total={total}
-      outPar={outPar} inPar={inPar} totalPar={totalPar}
-      filled={filled} saving={saving} ko={ko} lang={lang}
-      onBack={() => { setView('list'); setSelectedRound(null); setLocalHoles({}) }}
-      onSave={saveCard} onDelete={() => deleteRound(selectedRound.id)}
-      showParEdit={showParEdit} setShowParEdit={setShowParEdit}
-    />
+    <>
+      <ScorecardView
+        round={selectedRound} localHoles={localHoles} setLocalHoles={setLocalHoles}
+        editHole={editHole} setEditHole={setEditHole}
+        outHoles={outHoles} inHoles={inHoles} totalHoles={totalHoles}
+        holeData={holeData} sumScores={sumScores} sumPars={sumPars}
+        outScore={outScore} inScore={inScore} total={total}
+        outPar={outPar} inPar={inPar} totalPar={totalPar}
+        filled={filled} saving={saving} ko={ko} lang={lang}
+        onBack={() => { setView('list'); setSelectedRound(null); setLocalHoles({}) }}
+        onSave={saveCard} onDelete={() => deleteRound(selectedRound.id)}
+        showParEdit={showParEdit} setShowParEdit={setShowParEdit}
+      />
+      {fineToast && (
+        <div className="fixed bottom-24 left-0 right-0 flex justify-center z-[300] px-4 pointer-events-none">
+          <div className="px-5 py-3 rounded-2xl text-sm font-semibold text-white shadow-xl"
+            style={{ background: 'rgba(22,163,74,0.92)', backdropFilter: 'blur(8px)', maxWidth: '90vw', textAlign: 'center' }}>
+            {fineToast}
+          </div>
+        </div>
+      )}
+    </>
   )
 
   // ─────────────────────────────────────────────────────────────────────
@@ -323,7 +453,7 @@ export default function ScorecardPage() {
   return (
     <div className="min-h-screen pb-28" style={{ background: 'var(--bg, #060d06)' }}>
 
-      {/* ── 헤더 ── */}
+      {/* 헤더 */}
       <div className="px-4 pt-5 pb-3 flex items-center gap-2">
         <button onClick={() => router.back()} className="text-gray-400 p-1">
           <ChevronLeft size={22} />
@@ -344,7 +474,7 @@ export default function ScorecardPage() {
 
       <div className="px-4 space-y-3">
 
-        {/* ── 통계 카드 ── */}
+        {/* 통계 카드 */}
         {stats ? (
           <div className="rounded-2xl p-4"
             style={{ background: 'linear-gradient(135deg,rgba(22,163,74,0.12),rgba(6,13,6,0.97))', border: '1px solid rgba(34,197,94,0.18)' }}>
@@ -375,7 +505,7 @@ export default function ScorecardPage() {
           </div>
         )}
 
-        {/* ── 라운드 목록 ── */}
+        {/* 라운드 목록 */}
         {loading ? (
           <div className="flex items-center justify-center py-14">
             <div className="w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
@@ -388,7 +518,6 @@ export default function ScorecardPage() {
                 <button key={r.id} onClick={() => openRound(r)}
                   className="w-full text-left rounded-2xl px-4 py-3.5 flex items-center gap-3 active:scale-[0.98] transition-transform"
                   style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(34,197,94,0.1)' }}>
-                  {/* 스코어 뱃지 */}
                   <div className="w-11 h-11 rounded-xl flex flex-col items-center justify-center flex-shrink-0"
                     style={{ background: diff === null ? 'rgba(107,114,128,0.15)' : diff <= 0 ? 'rgba(22,163,74,0.15)' : diff <= 5 ? 'rgba(234,179,8,0.15)' : 'rgba(239,68,68,0.15)' }}>
                     {r.total_score ? (
@@ -464,12 +593,25 @@ export default function ScorecardPage() {
                   <div className="flex gap-2">
                     {[18, 9].map(h => (
                       <button key={h} type="button"
-                        onClick={() => { setNewForm(f => ({ ...f, holes: h })); setPars(computePars(newForm.coursePar, h)) }}
+                        onClick={() => {
+                          setNewForm(f => ({ ...f, holes: h }))
+                          // 코스가 선택됐으면 par 재계산
+                          if (selectedCourseObj) {
+                            const p = selectedCourseObj.holes > h
+                              ? Math.round(selectedCourseObj.par * h / selectedCourseObj.holes)
+                              : (selectedCourseObj.par ?? 72)
+                            setNewForm(f => ({ ...f, holes: h, coursePar: p }))
+                            setPars(computePars(p, h))
+                          } else {
+                            setPars(computePars(newForm.coursePar, h))
+                          }
+                          setSubCourse('')
+                        }}
                         className="flex-1 py-2.5 rounded-xl text-sm font-bold transition"
                         style={newForm.holes === h
                           ? { background: 'linear-gradient(135deg,#16a34a,#14532d)', color: '#fff' }
                           : { background: 'rgba(255,255,255,0.05)', color: '#5a7a5a', border: '1px solid rgba(34,197,94,0.12)' }}>
-                        {h}{ko ? 'H' : 'H'}
+                        {h}H
                       </button>
                     ))}
                   </div>
@@ -478,34 +620,73 @@ export default function ScorecardPage() {
 
               {/* ── 골프장 검색 섹션 ── */}
               <div>
-                <label className="text-[11px] font-semibold mb-2 block flex items-center gap-1" style={{ color: '#5a7a5a' }}>
-                  <MapPin size={10} className="inline" />{ko ? '골프장 선택' : 'Golf Course'}
+                <label className="text-[11px] font-semibold mb-2 block" style={{ color: '#5a7a5a' }}>
+                  <MapPin size={10} className="inline mr-1" />{ko ? '골프장 선택' : 'Golf Course'}
                 </label>
 
                 {/* 선택된 골프장 */}
                 {newForm.courseName ? (
-                  <div className="rounded-xl px-3 py-2.5 flex items-center gap-2 mb-3"
-                    style={{ background: 'rgba(22,163,74,0.1)', border: '1px solid rgba(34,197,94,0.25)' }}>
-                    <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{ background: 'rgba(22,163,74,0.2)' }}>
-                      <Flag size={12} style={{ color: '#22c55e' }} />
+                  <div>
+                    <div className="rounded-xl px-3 py-2.5 flex items-center gap-2 mb-3"
+                      style={{ background: 'rgba(22,163,74,0.1)', border: '1px solid rgba(34,197,94,0.25)' }}>
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                        style={{ background: 'rgba(22,163,74,0.2)' }}>
+                        <Flag size={12} style={{ color: '#22c55e' }} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-white truncate">{newForm.courseName}</p>
+                        <p className="text-[10px]" style={{ color: '#5a7a5a' }}>
+                          Par {newForm.coursePar} · {newForm.holes}홀
+                          {selectedCourseObj?.holes > newForm.holes && (
+                            <span style={{ color: '#f59e0b' }}> · {selectedCourseObj.holes}홀 코스</span>
+                          )}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setNewForm(f => ({ ...f, courseName: '', courseId: '' }))
+                          setSelectedCourseObj(null); setSubCourse(''); setCpSearch('')
+                        }}
+                        className="flex-shrink-0" style={{ color: '#3a5a3a' }}>
+                        <X size={15} />
+                      </button>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-white truncate">{newForm.courseName}</p>
-                      <p className="text-[10px]" style={{ color: '#5a7a5a' }}>Par {newForm.coursePar} · {newForm.holes === 18 ? '18홀' : '9홀'}</p>
-                    </div>
-                    <button onClick={() => { setNewForm(f => ({ ...f, courseName: '', courseId: '' })); setCpSearch('') }}
-                      className="flex-shrink-0" style={{ color: '#3a5a3a' }}>
-                      <X size={15} />
-                    </button>
+
+                    {/* ── sub-course 선택 (27홀/36홀인 경우) ── */}
+                    {needsSubCourse && (
+                      <div className="rounded-xl p-3 mb-1"
+                        style={{ background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.25)' }}>
+                        <p className="text-[11px] font-semibold mb-2" style={{ color: '#f59e0b' }}>
+                          ⛳ {ko
+                            ? `${selectedCourseObj.holes}홀 코스입니다. 어떤 코스를 도시나요?`
+                            : `${selectedCourseObj.holes}-hole course. Which courses will you play?`}
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {subCourseCombos.map(combo => (
+                            <button key={combo.key} type="button"
+                              onClick={() => handleSelectSubCourse(combo.key)}
+                              className="px-3 py-2 rounded-xl text-sm font-bold transition"
+                              style={subCourse === combo.key
+                                ? { background: 'linear-gradient(135deg,#d97706,#92400e)', color: '#fff' }
+                                : { background: 'rgba(255,255,255,0.05)', color: '#d97706', border: '1px solid rgba(234,179,8,0.3)' }}>
+                              {combo.label}
+                            </button>
+                          ))}
+                        </div>
+                        {subCourse && (
+                          <p className="text-[10px] mt-2" style={{ color: '#22c55e' }}>
+                            ✓ {SUB_COURSE_LABELS[subCourse]} 선택됨
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <>
                     {/* 국가 필터 */}
                     {availableCountries.length > 0 && (
                       <div className="flex gap-1.5 overflow-x-auto pb-1.5 scroll-hide mb-2">
-                        <button
-                          onClick={() => { setSelCountry('all'); setSelProvince('all') }}
+                        <button onClick={() => { setSelCountry('all'); setSelProvince('all') }}
                           className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-semibold transition"
                           style={selCountry === 'all'
                             ? { background: 'linear-gradient(135deg,#16a34a,#14532d)', color: '#fff' }
@@ -513,8 +694,7 @@ export default function ScorecardPage() {
                           {COUNTRY_META.all.flag} {ko ? COUNTRY_META.all.ko : COUNTRY_META.all.en}
                         </button>
                         {availableCountries.map(ck => (
-                          <button key={ck}
-                            onClick={() => { setSelCountry(ck); setSelProvince('all') }}
+                          <button key={ck} onClick={() => { setSelCountry(ck); setSelProvince('all') }}
                             className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-semibold transition whitespace-nowrap"
                             style={selCountry === ck
                               ? { background: 'linear-gradient(135deg,#16a34a,#14532d)', color: '#fff' }
@@ -525,11 +705,10 @@ export default function ScorecardPage() {
                       </div>
                     )}
 
-                    {/* 지역(Province) 필터 — 국가 선택 시 표시 */}
+                    {/* 지역 필터 */}
                     {selCountry !== 'all' && availableProvinces.length > 1 && (
                       <div className="flex gap-1.5 overflow-x-auto pb-1.5 scroll-hide mb-2">
-                        <button
-                          onClick={() => setSelProvince('all')}
+                        <button onClick={() => setSelProvince('all')}
                           className="flex-shrink-0 px-2.5 py-1 rounded-full text-[11px] font-medium transition"
                           style={selProvince === 'all'
                             ? { background: 'rgba(34,197,94,0.2)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)' }
@@ -537,8 +716,7 @@ export default function ScorecardPage() {
                           {ko ? '전 지역' : 'All Areas'}
                         </button>
                         {availableProvinces.map(pv => (
-                          <button key={pv}
-                            onClick={() => setSelProvince(pv)}
+                          <button key={pv} onClick={() => setSelProvince(pv)}
                             className="flex-shrink-0 px-2.5 py-1 rounded-full text-[11px] font-medium transition whitespace-nowrap"
                             style={selProvince === pv
                               ? { background: 'rgba(34,197,94,0.2)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)' }
@@ -555,7 +733,7 @@ export default function ScorecardPage() {
                       <input
                         value={cpSearch}
                         onChange={e => setCpSearch(e.target.value)}
-                        placeholder={ko ? '골프장명 첫 글자부터 검색 (한/영)...' : 'Type to search courses (Korean/English)...'}
+                        placeholder={ko ? '골프장명 검색...' : 'Search courses...'}
                         className="w-full pl-9 pr-8 py-3 rounded-xl text-sm"
                         style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(34,197,94,0.18)', color: '#fff' }}
                         autoComplete="off"
@@ -573,12 +751,13 @@ export default function ScorecardPage() {
                       {filteredCourses.length === 0 ? (
                         <div className="px-4 py-5 text-center">
                           <p className="text-sm" style={{ color: '#3a5a3a' }}>
-                            {ko ? '검색 결과가 없습니다' : 'No courses found'}
+                            {ko ? '검색 결과 없음' : 'No courses found'}
                           </p>
                           {cpSearch.trim() && (
                             <button
                               onClick={() => {
                                 setNewForm(f => ({ ...f, courseName: cpSearch.trim(), courseId: '' }))
+                                setSelectedCourseObj(null)
                                 setCpSearch('')
                               }}
                               className="text-xs mt-1.5" style={{ color: '#22c55e' }}>
@@ -590,11 +769,7 @@ export default function ScorecardPage() {
                         <div className="max-h-52 overflow-y-auto">
                           {filteredCourses.map((c, idx) => (
                             <button key={c.id} type="button"
-                              onClick={() => {
-                                setNewForm(f => ({ ...f, courseName: c.name, courseId: c.id, coursePar: c.par ?? 72 }))
-                                setPars(computePars(c.par ?? 72, newForm.holes))
-                                setCpSearch('')
-                              }}
+                              onClick={() => handleSelectCourse(c)}
                               className="w-full text-left flex items-center gap-2.5 px-3 py-2.5 transition"
                               style={{ borderTop: idx > 0 ? '1px solid rgba(34,197,94,0.07)' : 'none', background: 'transparent' }}
                               onMouseEnter={e => (e.currentTarget.style.background = 'rgba(34,197,94,0.06)')}
@@ -608,7 +783,10 @@ export default function ScorecardPage() {
                                 <p className="text-sm font-semibold text-white truncate">{c.name}</p>
                                 <div className="flex items-center gap-2 mt-0.5">
                                   <span className="text-[10px]" style={{ color: '#3a5a3a' }}>{c.province}</span>
-                                  <span className="text-[10px]" style={{ color: '#22c55e' }}>{c.holes}H · Par {c.par}</span>
+                                  <span className="text-[10px] font-semibold" style={{ color: c.holes > 18 ? '#f59e0b' : '#22c55e' }}>
+                                    {c.holes}H · Par {Math.round(c.par * newForm.holes / c.holes)}
+                                    {c.holes > 18 && ` (전체 ${c.holes}H)`}
+                                  </span>
                                 </div>
                               </div>
                             </button>
@@ -627,7 +805,7 @@ export default function ScorecardPage() {
                 </label>
                 <div className="flex items-center gap-3">
                   <button
-                    onClick={() => { const p = Math.max(60, newForm.coursePar-1); setNewForm(f => ({ ...f, coursePar: p })); setPars(computePars(p, newForm.holes)) }}
+                    onClick={() => { const p = Math.max(54, newForm.coursePar-1); setNewForm(f => ({ ...f, coursePar: p })); setPars(computePars(p, newForm.holes)) }}
                     className="w-10 h-10 rounded-xl font-bold text-lg transition"
                     style={{ background: 'rgba(255,255,255,0.06)', color: '#9ca3af' }}>−</button>
                   <div className="flex-1 text-center rounded-xl py-2"
@@ -654,6 +832,15 @@ export default function ScorecardPage() {
               </div>
             </div>
 
+            {/* 에러 메시지 */}
+            {createError && (
+              <div className="flex-shrink-0 px-5 pb-2">
+                <div className="rounded-xl px-4 py-2.5" style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)' }}>
+                  <p className="text-red-400 text-sm">⚠ {createError}</p>
+                </div>
+              </div>
+            )}
+
             {/* 하단 버튼 */}
             <div className="flex-shrink-0 px-5 py-4 flex gap-3"
               style={{ borderTop: '1px solid rgba(34,197,94,0.1)' }}>
@@ -662,10 +849,21 @@ export default function ScorecardPage() {
                 style={{ background: 'rgba(255,255,255,0.05)', color: '#6b7280' }}>
                 {ko ? '취소' : 'Cancel'}
               </button>
-              <button onClick={createRound} disabled={creating || !newForm.courseName}
+              <button
+                onClick={createRound}
+                disabled={creating || !newForm.courseName || (needsSubCourse && !subCourse)}
                 className="flex-1 py-3.5 rounded-xl font-black text-sm disabled:opacity-40 transition"
                 style={{ background: 'linear-gradient(135deg,#16a34a,#14532d)', color: '#fff', boxShadow: '0 4px 14px rgba(22,163,74,0.3)' }}>
-                {creating ? '...' : (ko ? '🏌️ 라운드 시작' : '🏌️ Start Round')}
+                {creating ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <span className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin" />
+                    {ko ? '생성 중...' : 'Creating...'}
+                  </span>
+                ) : needsSubCourse && !subCourse ? (
+                  ko ? '코스 선택 필요' : 'Select course'
+                ) : (
+                  ko ? '🏌️ 라운드 시작' : '🏌️ Start Round'
+                )}
               </button>
             </div>
           </div>
@@ -690,6 +888,7 @@ function ScorecardView({
     const sTotal     = sumScores(holes)
     const pTotal     = sumPars(holes)
     const filledHoles = holes.filter((h: number) => localHoles[h]?.score !== null).length
+    const hasYardage  = holes.some((h: number) => localHoles[h]?.yardage)
     return (
       <div className="overflow-x-auto rounded-2xl" style={{ border: '1px solid rgba(34,197,94,0.12)' }}>
         <table className="min-w-max w-full text-xs border-collapse">
@@ -706,6 +905,25 @@ function ScorecardView({
             </tr>
           </thead>
           <tbody>
+            {/* 야디지 행 */}
+            {hasYardage && (
+              <tr style={{ background: 'rgba(255,255,255,0.01)' }}>
+                <td className="sticky left-0 px-2 py-1.5 font-semibold text-left text-[10px]"
+                  style={{ background: 'rgba(12,22,12,0.95)', color: '#3a5a3a', borderRight: '1px solid rgba(34,197,94,0.1)' }}>
+                  {ko ? '야드' : 'Yds'}
+                </td>
+                {holes.map((h: number) => (
+                  <td key={h} className="px-1.5 py-1.5 text-center text-[10px]" style={{ color: '#3a5a3a' }}>
+                    {localHoles[h]?.yardage ?? ''}
+                  </td>
+                ))}
+                <td className="px-2 py-1.5 text-center text-[10px]"
+                  style={{ color: '#3a5a3a', borderLeft: '1px solid rgba(34,197,94,0.1)' }}>
+                  {holes.reduce((s: number, h: number) => s + (localHoles[h]?.yardage ?? 0), 0) || ''}
+                </td>
+              </tr>
+            )}
+            {/* 파 행 */}
             <tr style={{ background: 'rgba(255,255,255,0.02)' }}>
               <td className="sticky left-0 px-2 py-2 font-semibold text-left"
                 style={{ background: 'rgba(12,22,12,0.95)', color: '#3a5a3a', borderRight: '1px solid rgba(34,197,94,0.1)' }}>
@@ -718,6 +936,7 @@ function ScorecardView({
               ))}
               <td className="px-2 py-2 text-center font-bold" style={{ color: '#22c55e', borderLeft: '1px solid rgba(34,197,94,0.1)' }}>{pTotal}</td>
             </tr>
+            {/* 스코어 행 */}
             <tr>
               <td className="sticky left-0 px-2 py-2 font-semibold text-left"
                 style={{ background: 'rgba(6,10,6,0.98)', color: '#3a5a3a', borderRight: '1px solid rgba(34,197,94,0.1)' }}>
@@ -827,11 +1046,11 @@ function ScorecardView({
       {editHole !== null && editHole > 0 && (
         <HoleEditModal
           hole={editHole}
-          data={localHoles[editHole] ?? { score: null, par: 4, putts: null }}
+          data={localHoles[editHole] ?? { score: null, par: 4, putts: null, yardage: null }}
           ko={ko}
           onClose={() => setEditHole(null)}
-          onChange={(score: number|null, putts: number|null, par: number) => {
-            setLocalHoles((prev: any) => ({ ...prev, [editHole]: { score, par, putts } }))
+          onChange={(score: number|null, putts: number|null, par: number, yardage: number|null) => {
+            setLocalHoles((prev: any) => ({ ...prev, [editHole]: { score, par, putts, yardage } }))
             setEditHole(null)
           }}
         />
@@ -842,13 +1061,15 @@ function ScorecardView({
 
 // ── 홀 입력 모달 ──────────────────────────────────────────────────────────
 function HoleEditModal({ hole, data, ko, onClose, onChange }: {
-  hole: number; data: { score: number|null; par: number; putts: number|null }
+  hole: number
+  data: { score: number|null; par: number; putts: number|null; yardage: number|null }
   ko: boolean; onClose: () => void
-  onChange: (score: number|null, putts: number|null, par: number) => void
+  onChange: (score: number|null, putts: number|null, par: number, yardage: number|null) => void
 }) {
-  const [score, setScore] = useState<number|null>(data.score)
-  const [putts, setPutts] = useState<number|null>(data.putts)
-  const [par,   setPar]   = useState(data.par)
+  const [score,   setScore]   = useState<number|null>(data.score)
+  const [putts,   setPutts]   = useState<number|null>(data.putts)
+  const [par,     setPar]     = useState(data.par)
+  const [yardage, setYardage] = useState<string>(data.yardage != null ? String(data.yardage) : '')
   const diff = score !== null ? score - par : null
 
   return (
@@ -914,19 +1135,35 @@ function HoleEditModal({ hole, data, ko, onClose, onChange }: {
           </div>
         </div>
 
-        {/* 퍼트 */}
-        <div className="mb-5">
-          <p className="text-xs font-semibold mb-2" style={{ color: '#5a7a5a' }}>{ko ? '퍼트 (선택)' : 'Putts (optional)'}</p>
-          <div className="flex gap-1.5">
-            {([null, 1, 2, 3, 4] as const).map(p => (
-              <button key={String(p)} onClick={() => setPutts(p)}
-                className="flex-1 py-2.5 rounded-xl text-sm font-bold transition"
-                style={putts === p
-                  ? { background: 'rgba(59,130,246,0.25)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.4)' }
-                  : { background: 'rgba(255,255,255,0.05)', color: '#5a7a5a', border: '1px solid rgba(34,197,94,0.1)' }}>
-                {p === null ? '—' : p}
-              </button>
-            ))}
+        {/* 야디지 + 퍼트 */}
+        <div className="grid grid-cols-2 gap-3 mb-5">
+          {/* 야디지 */}
+          <div>
+            <p className="text-xs font-semibold mb-2" style={{ color: '#5a7a5a' }}>
+              {ko ? '야디지 (선택)' : 'Yardage (opt)'}
+            </p>
+            <input
+              type="number" min="50" max="999" value={yardage}
+              onChange={e => setYardage(e.target.value)}
+              placeholder={ko ? '예: 385' : 'e.g. 385'}
+              className="w-full text-center py-2.5 rounded-xl text-sm font-bold"
+              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(34,197,94,0.15)', color: '#fff' }}
+            />
+          </div>
+          {/* 퍼트 */}
+          <div>
+            <p className="text-xs font-semibold mb-2" style={{ color: '#5a7a5a' }}>{ko ? '퍼트 (선택)' : 'Putts (opt)'}</p>
+            <div className="flex gap-1">
+              {([null, 1, 2, 3, 4] as const).map(p => (
+                <button key={String(p)} onClick={() => setPutts(p)}
+                  className="flex-1 py-2.5 rounded-xl text-xs font-bold transition"
+                  style={putts === p
+                    ? { background: 'rgba(59,130,246,0.25)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.4)' }
+                    : { background: 'rgba(255,255,255,0.05)', color: '#5a7a5a', border: '1px solid rgba(34,197,94,0.1)' }}>
+                  {p === null ? '—' : p}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -936,7 +1173,8 @@ function HoleEditModal({ hole, data, ko, onClose, onChange }: {
             style={{ background: 'rgba(255,255,255,0.05)', color: '#6b7280' }}>
             {ko ? '취소' : 'Cancel'}
           </button>
-          <button onClick={() => onChange(score, putts, par)}
+          <button
+            onClick={() => onChange(score, putts, par, yardage ? parseInt(yardage) : null)}
             className="flex-1 py-3.5 rounded-xl font-black text-sm"
             style={{ background: 'linear-gradient(135deg,#16a34a,#14532d)', color: '#fff' }}>
             {ko ? '확인' : 'OK'}
