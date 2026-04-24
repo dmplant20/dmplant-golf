@@ -46,6 +46,7 @@ export default function SettingsPage() {
   const [editCourse, setEditCourse] = useState<any>(null)  // null=closed, {}=new, {...}=edit
   const [courseForm, setCourseForm] = useState({ ...EMPTY_COURSE })
   const [courseSaving, setCourseSaving] = useState(false)
+  const [courseError, setCourseError] = useState('')
 
   // ── 주소 장소 검색 ────────────────────────────────────────────────────
   const [addrOpen,    setAddrOpen]    = useState(false)
@@ -115,6 +116,7 @@ export default function SettingsPage() {
   // ── Course CRUD ───────────────────────────────────────────────────────
   function openNewCourse() {
     setCourseForm({ ...EMPTY_COURSE })
+    setCourseError('')
     setEditCourse({})  // empty object = new
     setAddrOpen(false); setAddrQ(''); setAddrResults([])
   }
@@ -137,14 +139,16 @@ export default function SettingsPage() {
       description: course.description ?? '',
     })
     setEditCourse(course)
+    setCourseError('')
     setAddrOpen(false); setAddrQ(''); setAddrResults([])
   }
 
   async function saveCourse() {
     if (!courseForm.name.trim()) return
+    setCourseError('')
     setCourseSaving(true)
     const supabase = createClient()
-    const payload = {
+    const payload: any = {
       name: courseForm.name.trim(),
       name_vn: courseForm.name_vn.trim() || null,
       province: courseForm.province,
@@ -160,16 +164,45 @@ export default function SettingsPage() {
       website: courseForm.website.trim() || null,
       description: courseForm.description.trim() || null,
       is_active: true,
+      club_id: currentClubId,   // ← RLS 정책에 필요한 club_id 포함
     }
 
     if (editCourse?.id) {
       // 수정
-      const { data } = await supabase.from('golf_courses').update(payload).eq('id', editCourse.id).select().single()
+      const { data, error } = await supabase
+        .from('golf_courses').update(payload).eq('id', editCourse.id).select().single()
+      if (error) {
+        setCourseError(`저장 실패: ${error.message}`)
+        setCourseSaving(false)
+        return
+      }
       if (data) setCourses(prev => prev.map(c => c.id === data.id ? data : c))
     } else {
-      // 신규
-      const { data } = await supabase.from('golf_courses').insert(payload).select().single()
-      if (data) setCourses(prev => [...prev, data].sort((a, b) => (a.distance_km ?? 999) - (b.distance_km ?? 999)))
+      // 신규 — club_id 없이 실패하는 경우를 대비해 두 가지 방식 시도
+      const { data, error } = await supabase
+        .from('golf_courses').insert(payload).select().single()
+      if (error) {
+        // club_id 컬럼이 없는 테이블이라면 제거 후 재시도
+        if (error.message.includes('club_id') || error.code === '42703') {
+          const { club_id: _removed, ...payloadWithoutClub } = payload
+          const { data: data2, error: error2 } = await supabase
+            .from('golf_courses').insert(payloadWithoutClub).select().single()
+          if (error2) {
+            setCourseError(`저장 실패: ${error2.message}`)
+            setCourseSaving(false)
+            return
+          }
+          if (data2) setCourses(prev =>
+            [...prev, data2].sort((a, b) => (a.distance_km ?? 999) - (b.distance_km ?? 999)))
+        } else {
+          setCourseError(`저장 실패: ${error.message}`)
+          setCourseSaving(false)
+          return
+        }
+      } else if (data) {
+        setCourses(prev =>
+          [...prev, data].sort((a, b) => (a.distance_km ?? 999) - (b.distance_km ?? 999)))
+      }
     }
     setCourseSaving(false)
     setEditCourse(null)
@@ -641,16 +674,23 @@ export default function SettingsPage() {
             </div>
 
             {/* 저장 버튼 (sticky) */}
-            <div className="flex-shrink-0 px-5 py-4 border-t border-gray-800 flex gap-3">
-              <button onClick={() => setEditCourse(null)}
-                className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 text-sm font-medium">
-                {ko ? '취소' : 'Cancel'}
-              </button>
-              <button onClick={saveCourse} disabled={courseSaving || !courseForm.name.trim()}
-                className="flex-1 py-3 rounded-xl bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white text-sm font-semibold transition flex items-center justify-center gap-2">
-                <Save size={16} />
-                {courseSaving ? (ko ? '저장 중...' : 'Saving...') : (ko ? '저장' : 'Save')}
-              </button>
+            <div className="flex-shrink-0 px-5 py-4 border-t border-gray-800 space-y-2">
+              {courseError && (
+                <div className="bg-red-900/40 border border-red-700/50 rounded-xl px-3 py-2">
+                  <p className="text-red-400 text-xs">{courseError}</p>
+                </div>
+              )}
+              <div className="flex gap-3">
+                <button onClick={() => { setEditCourse(null); setCourseError('') }}
+                  className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 text-sm font-medium">
+                  {ko ? '취소' : 'Cancel'}
+                </button>
+                <button onClick={saveCourse} disabled={courseSaving || !courseForm.name.trim()}
+                  className="flex-1 py-3 rounded-xl bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white text-sm font-semibold transition flex items-center justify-center gap-2">
+                  <Save size={16} />
+                  {courseSaving ? (ko ? '저장 중...' : 'Saving...') : (ko ? '저장' : 'Save')}
+                </button>
+              </div>
             </div>
           </div>
         </div>
