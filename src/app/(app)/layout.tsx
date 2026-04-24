@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores/authStore'
 import AppHeader from '@/components/layout/AppHeader'
 import BottomNav from '@/components/layout/BottomNav'
+import NotificationModals from '@/components/ui/NotificationModals'
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -63,6 +64,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         {children}
       </main>
       {!isOnboarding && <BottomNav />}
+      <NotificationModals />
     </div>
   )
 }

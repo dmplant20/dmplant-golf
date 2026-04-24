@@ -38,6 +38,21 @@ CREATE TABLE IF NOT EXISTS birthday_notifications (
 );
 CREATE INDEX IF NOT EXISTS idx_birthday_notifications_club_year
   ON birthday_notifications(club_id, year);
+
+-- 정기모임 참석 응답 테이블
+CREATE TABLE IF NOT EXISTS meeting_attendances (
+  id          uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  club_id     uuid REFERENCES clubs(id) ON DELETE CASCADE NOT NULL,
+  user_id     uuid REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+  year        int  NOT NULL,
+  month       int  NOT NULL,
+  status      text NOT NULL CHECK (status IN ('attending', 'not_attending')),
+  reason      text,
+  responded_at timestamptz DEFAULT now() NOT NULL,
+  UNIQUE(club_id, user_id, year, month)
+);
+CREATE INDEX IF NOT EXISTS idx_meeting_attendances_club
+  ON meeting_attendances(club_id, year, month);
 `
 
 export async function autoMigrate(): Promise<void> {

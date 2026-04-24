@@ -16,6 +16,10 @@
     {
       "path": "/api/birthday/check",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/meetings/notify",
+      "schedule": "0 1 * * *"
     }
   ]
 }
