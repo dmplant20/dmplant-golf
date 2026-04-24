@@ -111,29 +111,20 @@ export default function InstallPage() {
   )
 
   // ══════════════════════════════════════════════════════════════════════════
-  // CASE A: beforeinstallprompt 있음 → 원터치 자동 설치
+  // CASE A: beforeinstallprompt 있음 → 브라우저 네이티브 배너가 하단에 자동 표시됨
+  //         우리 버튼 없이 안내 텍스트만 표시 (버튼 중복 방지)
   // ══════════════════════════════════════════════════════════════════════════
   if (hasPrompt) return (
-    <div className="min-h-screen bg-gray-950 flex flex-col">
-      <div className="flex-1 flex flex-col items-center justify-center px-6">
-        <AppIcon />
-        <p className="text-gray-400 text-sm text-center leading-relaxed">
-          버튼 한 번으로<br/>
-          <span className="text-white font-semibold">홈 화면에 앱 아이콘이 바로 생성</span>됩니다
+    <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center px-6 pb-32">
+      <AppIcon />
+      <div className="text-center space-y-3">
+        <p className="text-white font-bold text-lg">설치 준비 완료!</p>
+        <p className="text-gray-400 text-sm leading-relaxed">
+          화면 하단의<br/>
+          <span className="text-green-400 font-semibold">"지금 설치 (홈 화면에 추가)"</span><br/>
+          버튼을 탭하세요
         </p>
-      </div>
-      <div className="px-4 pb-12 pt-4 space-y-2">
-        <button
-          onClick={doInstall}
-          disabled={installing}
-          className="w-full flex items-center justify-center gap-3 text-white font-black text-xl py-5 rounded-2xl disabled:opacity-60 active:scale-[0.97] transition-all"
-          style={{
-            background: installing ? 'rgba(22,163,74,0.5)' : 'linear-gradient(135deg,#16a34a,#22c55e)',
-            boxShadow: installing ? 'none' : '0 8px 36px rgba(22,163,74,0.55)',
-          }}>
-          {installing ? <><span className="animate-spin text-2xl">⏳</span> 설치 중...</> : <><span className="text-2xl">📲</span> 지금 설치하기</>}
-        </button>
-        <p className="text-center text-xs text-gray-600">탭 한 번으로 홈 화면에 아이콘이 추가됩니다</p>
+        <div className="text-3xl animate-bounce pt-2">⬇️</div>
       </div>
     </div>
   )
