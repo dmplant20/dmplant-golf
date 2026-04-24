@@ -53,6 +53,47 @@ CREATE TABLE IF NOT EXISTS meeting_attendances (
 );
 CREATE INDEX IF NOT EXISTS idx_meeting_attendances_club
   ON meeting_attendances(club_id, year, month);
+
+-- club_memberships 역할 제약 조건 확장 (vice_president, auditor, advisor 포함)
+DO $$ BEGIN
+  ALTER TABLE club_memberships DROP CONSTRAINT IF EXISTS club_memberships_role_check;
+  ALTER TABLE club_memberships ADD CONSTRAINT club_memberships_role_check
+    CHECK (role IN ('president','vice_president','secretary','auditor','advisor','officer','member'));
+EXCEPTION WHEN others THEN NULL;
+END $$;
+
+-- 탈퇴 추적 컬럼
+ALTER TABLE club_memberships ADD COLUMN IF NOT EXISTS withdrawn_at       timestamptz;
+ALTER TABLE club_memberships ADD COLUMN IF NOT EXISTS withdrawn_by       uuid REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE club_memberships ADD COLUMN IF NOT EXISTS withdrawal_reason  text;
+
+-- 회원 활동 감사 로그 (한번 기록된 내용은 삭제 불가)
+CREATE TABLE IF NOT EXISTS member_activity_log (
+  id             uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
+  club_id        uuid        REFERENCES clubs(id) ON DELETE CASCADE NOT NULL,
+  target_user_id uuid        REFERENCES users(id) ON DELETE SET NULL,
+  actor_id       uuid        REFERENCES users(id) ON DELETE SET NULL,
+  action         text        NOT NULL,
+  old_value      text,
+  new_value      text,
+  note           text,
+  created_at     timestamptz DEFAULT now() NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_member_activity_log_club_time
+  ON member_activity_log(club_id, created_at DESC);
+
+-- RLS
+ALTER TABLE member_activity_log ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "mal_select" ON member_activity_log;
+CREATE POLICY "mal_select" ON member_activity_log FOR SELECT
+  USING (EXISTS (
+    SELECT 1 FROM club_memberships
+    WHERE club_id = member_activity_log.club_id
+      AND user_id = auth.uid() AND status = 'approved'
+  ));
+DROP POLICY IF EXISTS "mal_insert" ON member_activity_log;
+CREATE POLICY "mal_insert" ON member_activity_log FOR INSERT
+  WITH CHECK (actor_id = auth.uid());
 `
 
 export async function autoMigrate(): Promise<void> {
