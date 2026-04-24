@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores/authStore'
 import {
   ChevronLeft, ChevronRight, Plus, Trash2, Save, X,
-  Flag, BarChart2, Calendar, Search, CheckCircle2,
+  Flag, BarChart2, Calendar, Search, CheckCircle2, Pencil,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
@@ -147,6 +147,14 @@ export default function ScorecardPage() {
   const [selCountry,        setSelCountry]        = useState<string>('all')
   const [selProvince,       setSelProvince]       = useState<string>('all')
   const [customSubCourse,   setCustomSubCourse]   = useState('')
+
+  // 코스명 수정
+  const [editingName,     setEditingName]     = useState(false)
+  const [editNameValue,   setEditNameValue]   = useState('')
+  const [editNameSaving,  setEditNameSaving]  = useState(false)
+  // 서브코스 조합 선택용 (코스명 수정 시트에서)
+  const [editSubCourse,   setEditSubCourse]   = useState('')
+  const [editCustomSub,   setEditCustomSub]   = useState('')
 
   // scorecard
   const [localHoles, setLocalHoles] = useState<Record<number, { score: number|null; par: number; putts: number|null; yardage: number|null }>>({})
@@ -334,6 +342,54 @@ export default function ScorecardPage() {
     } catch { /* ignore */ }
   }
 
+  // ── 코스명(서브코스) 수정 ────────────────────────────────────────────────
+  function openEditName() {
+    setEditNameValue(selectedRound?.course_name ?? '')
+    setEditSubCourse('')
+    setEditCustomSub('')
+    setEditingName(true)
+  }
+
+  async function saveCourseName() {
+    if (!selectedRound) return
+    // 서브코스 조합이 선택된 경우 조합 라벨을 이름에 반영
+    let finalName = editNameValue.trim()
+    if (editSubCourse) {
+      // 기존 괄호 부분 제거 후 새 조합 추가
+      const baseName = finalName.replace(/\s*\(.*\)\s*$/, '').trim()
+      const subLabel = editSubCourse === CUSTOM_KEY
+        ? editCustomSub.trim()
+        : (editSubCombos.find(c => c.key === editSubCourse)?.label ?? editSubCourse)
+      finalName = subLabel ? `${baseName} (${subLabel})` : baseName
+    }
+    if (!finalName) return
+    setEditNameSaving(true)
+    const supabase = createClient()
+    const { data } = await supabase.from('personal_rounds')
+      .update({ course_name: finalName })
+      .eq('id', selectedRound.id)
+      .select().single()
+    if (data) {
+      setSelectedRound(data)
+      setRounds(prev => prev.map(r => r.id === data.id ? data : r))
+    }
+    setEditNameSaving(false)
+    setEditingName(false)
+  }
+
+  // 현재 라운드의 원본 코스 찾기 (서브코스 조합 피커용)
+  const editBaseCourse = useMemo(() => {
+    if (!selectedRound) return null
+    // course_name에서 괄호 이전 부분으로 매칭
+    const baseName = selectedRound.course_name?.replace(/\s*\(.*\)\s*$/, '').trim() ?? ''
+    return courses.find(c => c.name === baseName || c.name === selectedRound.course_name) ?? null
+  }, [selectedRound, courses])
+
+  const editSubCombos = useMemo(() => {
+    if (!editBaseCourse) return []
+    return getSubCourseCombos(editBaseCourse.holes, selectedRound?.total_holes ?? 18, editBaseCourse.sub_courses)
+  }, [editBaseCourse, selectedRound])
+
   async function deleteRound(roundId: string) {
     if (!confirm(ko ? '이 라운드를 삭제하시겠습니까?' : 'Delete this round?')) return
     await createClient().from('personal_rounds').delete().eq('id', roundId)
@@ -365,7 +421,16 @@ export default function ScorecardPage() {
           <ChevronLeft size={18} className="text-gray-400" />
         </button>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-black text-white truncate leading-tight">{selectedRound.course_name}</p>
+          <div className="flex items-center gap-1.5">
+            <p className="text-sm font-black text-white truncate leading-tight">{selectedRound.course_name}</p>
+            <button
+              onClick={openEditName}
+              className="flex-shrink-0 w-6 h-6 rounded-lg flex items-center justify-center transition"
+              style={{ background: 'rgba(255,255,255,0.07)' }}
+              title={ko ? '코스명 수정' : 'Edit course name'}>
+              <Pencil size={11} style={{ color: '#6b7280' }} />
+            </button>
+          </div>
           <p className="text-[11px]" style={{ color: '#5a7a5a' }}>
             {selectedRound.played_at} · Par {selectedRound.course_par} · {totalHoles}H
           </p>
@@ -519,6 +584,128 @@ export default function ScorecardPage() {
           <div className="px-5 py-3 rounded-2xl text-sm font-bold text-white shadow-xl text-center"
             style={{ background: 'rgba(22,163,74,0.95)', backdropFilter: 'blur(8px)' }}>
             {fineToast}
+          </div>
+        </div>
+      )}
+
+      {/* ── 코스명 수정 바텀시트 ── */}
+      {editingName && (
+        <div className="fixed inset-0 z-[250]" onClick={() => setEditingName(false)}>
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+          <div
+            className="absolute bottom-0 left-0 right-0 rounded-t-3xl flex flex-col"
+            style={{ background: '#0c160c', border: '1px solid rgba(34,197,94,0.18)', borderBottom: 'none' }}
+            onClick={e => e.stopPropagation()}>
+
+            {/* 핸들 */}
+            <div className="flex justify-center pt-3 pb-2 flex-shrink-0">
+              <div className="w-10 h-1 rounded-full" style={{ background: 'rgba(34,197,94,0.25)' }} />
+            </div>
+
+            {/* 헤더 */}
+            <div className="flex items-center justify-between px-5 pb-3 flex-shrink-0"
+              style={{ borderBottom: '1px solid rgba(34,197,94,0.1)' }}>
+              <div className="flex items-center gap-2">
+                <Pencil size={14} className="text-green-400" />
+                <h3 className="text-sm font-black text-white">
+                  {ko ? '코스 정보 수정' : 'Edit Course Info'}
+                </h3>
+              </div>
+              <button onClick={() => setEditingName(false)}
+                className="w-8 h-8 rounded-full flex items-center justify-center"
+                style={{ background: 'rgba(255,255,255,0.07)' }}>
+                <X size={14} className="text-gray-400" />
+              </button>
+            </div>
+
+            <div className="px-5 py-4 space-y-4">
+              {/* 현재 코스명 직접 편집 */}
+              <div>
+                <label className="text-[11px] font-bold mb-1.5 block" style={{ color: '#5a7a5a' }}>
+                  {ko ? '코스명 (직접 수정)' : 'Course Name'}
+                </label>
+                <input
+                  value={editNameValue}
+                  onChange={e => setEditNameValue(e.target.value)}
+                  className="w-full rounded-xl px-3.5 py-2.5 text-white text-sm font-semibold"
+                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(34,197,94,0.2)', outline: 'none' }}
+                />
+              </div>
+
+              {/* 서브코스 조합 선택 (해당 코스가 27/36홀인 경우) */}
+              {editSubCombos.length > 0 && (
+                <div>
+                  <label className="text-[11px] font-bold mb-2 block" style={{ color: '#f97316' }}>
+                    {ko ? '서브코스 조합으로 변경' : 'Change sub-course combo'}
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {editSubCombos.map(combo => (
+                      <button key={combo.key}
+                        onClick={() => {
+                          setEditSubCourse(prev => prev === combo.key ? '' : combo.key)
+                          if (combo.key !== CUSTOM_KEY) setEditCustomSub('')
+                        }}
+                        className="px-3 py-2 rounded-xl text-xs font-bold transition"
+                        style={editSubCourse === combo.key
+                          ? combo.key === CUSTOM_KEY
+                            ? { background: 'linear-gradient(135deg,#7c3aed,#4c1d95)', color: '#fff' }
+                            : { background: 'linear-gradient(135deg,#d97706,#92400e)', color: '#fff' }
+                          : combo.key === CUSTOM_KEY
+                            ? { background: 'rgba(139,92,246,0.08)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.25)' }
+                            : { background: 'rgba(251,146,60,0.08)', color: '#fb923c', border: '1px solid rgba(251,146,60,0.25)' }}>
+                        {editSubCourse === combo.key && combo.key !== CUSTOM_KEY && <CheckCircle2 size={11} className="inline mr-1" />}
+                        {combo.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* 직접입력 텍스트란 */}
+                  {editSubCourse === CUSTOM_KEY && (
+                    <input
+                      autoFocus
+                      value={editCustomSub}
+                      onChange={e => setEditCustomSub(e.target.value)}
+                      placeholder={ko ? '예: 솔래+루나' : 'e.g. Sole+Luna'}
+                      className="mt-2 w-full rounded-xl px-3.5 py-2.5 text-white text-sm font-semibold"
+                      style={{ background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.35)', outline: 'none' }}
+                    />
+                  )}
+
+                  {/* 미리보기 */}
+                  {editSubCourse && editSubCourse !== CUSTOM_KEY && (
+                    <p className="text-[11px] mt-1.5 font-semibold" style={{ color: '#22c55e' }}>
+                      → {editNameValue.replace(/\s*\(.*\)\s*$/, '').trim()}
+                      {' '}({editSubCombos.find(c => c.key === editSubCourse)?.label})
+                    </p>
+                  )}
+                  {editSubCourse === CUSTOM_KEY && editCustomSub.trim() && (
+                    <p className="text-[11px] mt-1.5 font-semibold" style={{ color: '#22c55e' }}>
+                      → {editNameValue.replace(/\s*\(.*\)\s*$/, '').trim()} ({editCustomSub.trim()})
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* 저장 버튼 */}
+              <div className="flex gap-3 pt-1 pb-2">
+                <button onClick={() => setEditingName(false)}
+                  className="flex-1 py-3 rounded-xl text-sm font-bold"
+                  style={{ background: 'rgba(255,255,255,0.06)', color: '#6b7280' }}>
+                  {ko ? '취소' : 'Cancel'}
+                </button>
+                <button
+                  onClick={saveCourseName}
+                  disabled={editNameSaving || !editNameValue.trim() ||
+                    (editSubCourse === CUSTOM_KEY && !editCustomSub.trim())}
+                  className="flex-1 py-3 rounded-xl text-sm font-black disabled:opacity-40 transition flex items-center justify-center gap-2"
+                  style={{ background: 'linear-gradient(135deg,#16a34a,#14532d)', color: '#fff' }}>
+                  {editNameSaving
+                    ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />{ko ? '저장 중...' : 'Saving...'}</>
+                    : <><Save size={14} />{ko ? '저장' : 'Save'}</>
+                  }
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
