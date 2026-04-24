@@ -70,17 +70,31 @@ export default function InstallPage() {
     if (standalone) { setPhase('installed'); return }
 
     // ── beforeinstallprompt 캡처 여부 ──
-    if ((window as any).__pwaPrompt) setHasPrompt(true)
+    if ((window as any).__pwaPrompt) {
+      setHasPrompt(true)
+    }
 
     setPhase('ready')
 
-    const onInstallable = () => setHasPrompt(true)
+    // pwa:installable 이벤트 수신 (layout.tsx 에서 beforeinstallprompt 캡처 시 dispatch)
+    const onInstallable = () => { setHasPrompt(true); setShowGuide(false) }
     const onInstalled   = () => setPhase('installed')
     window.addEventListener('pwa:installable', onInstallable)
     window.addEventListener('pwa:installed',   onInstalled)
+
+    // 직접 beforeinstallprompt 도 여기서 한번 더 수신 (혹시 layout 보다 늦게 바인딩돼도 잡기 위해)
+    const onPrompt = (e: Event) => {
+      e.preventDefault()
+      ;(window as any).__pwaPrompt = e
+      setHasPrompt(true)
+      setShowGuide(false)
+    }
+    window.addEventListener('beforeinstallprompt', onPrompt as EventListener)
+
     return () => {
-      window.removeEventListener('pwa:installable', onInstallable)
-      window.removeEventListener('pwa:installed',   onInstalled)
+      window.removeEventListener('pwa:installable',      onInstallable)
+      window.removeEventListener('pwa:installed',        onInstalled)
+      window.removeEventListener('beforeinstallprompt',  onPrompt as EventListener)
     }
   }, [])
 
@@ -88,10 +102,10 @@ export default function InstallPage() {
   const handleInstallTap = useCallback(async () => {
     const p = (window as any).__pwaPrompt
     if (p) {
-      // 자동 설치 (beforeinstallprompt 있음)
+      // ✅ 자동 설치 — 브라우저 다이얼로그 표시
       setInstalling(true)
       try {
-        p.prompt()
+        await p.prompt()
         const { outcome } = await p.userChoice
         if (outcome === 'accepted') {
           ;(window as any).__pwaPrompt = null
@@ -101,7 +115,7 @@ export default function InstallPage() {
         setInstalling(false)
       }
     } else {
-      // 수동 가이드 시트 열기
+      // 브라우저가 아직 설치 허락 안 함 → 브라우저별 수동 안내
       setShowGuide(true)
     }
   }, [])
@@ -231,10 +245,13 @@ export default function InstallPage() {
             <div className="w-10 h-1 bg-gray-700 rounded-full mx-auto mb-5" />
 
             <h2 className="text-white font-extrabold text-lg mb-1 text-center">
-              {btnName} 메뉴에서 설치하기
+              {btnName}에서 홈 화면 추가
             </h2>
-            <p className="text-gray-500 text-xs text-center mb-5">
-              아래 순서대로 3번만 탭하세요
+            <p className="text-gray-500 text-xs text-center mb-1">
+              아래 순서대로 3번만 탭 — 30초 완료
+            </p>
+            <p className="text-yellow-500/80 text-xs text-center mb-5">
+              ※ 브라우저가 설치 허용 전이라 수동으로 추가합니다
             </p>
 
             {/* 스텝 */}
