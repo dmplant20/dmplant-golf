@@ -159,6 +159,14 @@ export default function LoginPage() {
               </Link>
             </p>
           </div>
+
+          {/* 앱 설치 안내 */}
+          <div className="mt-4 text-center">
+            <Link href="/install"
+              className="inline-flex items-center gap-1.5 text-xs text-green-700 hover:text-green-500 transition border border-green-900/60 rounded-full px-3 py-1.5">
+              📲 {ko ? '앱 설치 방법' : 'Install App'}
+            </Link>
+          </div>
         </div>
       </div>
 
