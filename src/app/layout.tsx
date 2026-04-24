@@ -1,6 +1,10 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import PwaInstallPrompt from '@/components/PwaInstallPrompt'
+import { autoMigrate } from '@/lib/db-migrate'
+
+// 앱 시작 시 DB 스키마 자동 최신화 (누락 컬럼 자동 추가)
+autoMigrate().catch(() => {/* 조용히 스킵 */})
 
 export const metadata: Metadata = {
   title: 'Inter Stellar GOLF',
