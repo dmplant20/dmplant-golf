@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState, useRef, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores/authStore'
 import {
@@ -160,11 +161,18 @@ export default function ScorecardPage() {
   // ── 가로모드 감지 ──────────────────────────────────────────────────────
   const [isLandscape, setIsLandscape] = useState(false)
   useEffect(() => {
-    const mq = window.matchMedia('(orientation: landscape) and (max-height: 500px)')
-    setIsLandscape(mq.matches)
-    const handler = (e: MediaQueryListEvent) => setIsLandscape(e.matches)
-    mq.addEventListener('change', handler)
-    return () => mq.removeEventListener('change', handler)
+    function check() {
+      setIsLandscape(window.innerWidth > window.innerHeight)
+    }
+    check()
+    window.addEventListener('resize', check)
+    // iOS는 orientationchange 직후 dimensions 미반영 → 100ms 후 체크
+    function onOrient() { setTimeout(check, 100) }
+    window.addEventListener('orientationchange', onOrient)
+    return () => {
+      window.removeEventListener('resize', check)
+      window.removeEventListener('orientationchange', onOrient)
+    }
   }, [])
 
   // ── filters ──────────────────────────────────────────────────────────
@@ -412,9 +420,9 @@ export default function ScorecardPage() {
   if (view === 'card' && selectedRound) return (
     <div className="min-h-screen pb-28" style={{ background: 'var(--bg)' }}>
 
-      {/* ══════ 가로모드 전체화면 오버레이 ══════ */}
-      {isLandscape && (
-        <div className="fixed inset-0 z-[500] flex flex-col"
+      {/* ══════ 가로모드 전체화면 오버레이 (Portal → body에 직접 마운트) ══════ */}
+      {isLandscape && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[9999] flex flex-col"
           style={{ background: 'linear-gradient(180deg,#071507 0%,#0c1a0c 100%)' }}>
           {/* 가로 헤더 */}
           <div className="flex items-center gap-3 px-4 py-2 flex-shrink-0"
@@ -581,7 +589,8 @@ export default function ScorecardPage() {
                 style={{ background: bg, color: text }}>{label}</span>
             ))}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* 세로모드 헤더 */}
