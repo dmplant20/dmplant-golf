@@ -11,5 +11,11 @@
         { "key": "Service-Worker-Allowed", "value": "/" }
       ]
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/birthday/check",
+      "schedule": "0 8 * * *"
+    }
   ]
 }

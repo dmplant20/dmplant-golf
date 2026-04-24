@@ -5,9 +5,28 @@ import { useAuthStore } from '@/stores/authStore'
 import {
   Bell, Plus, X, ChevronDown, ChevronUp,
   MapPin, Phone, FileText, Lock, Trash2, Calendar,
-  Sparkles, ClipboardPaste, CheckCircle2,
+  Sparkles, ClipboardPaste, CheckCircle2, Cake,
 } from 'lucide-react'
 import { OFFICER_ROLES } from '../members/page'
+
+// ── 생일 유틸 ────────────────────────────────────────────────────────────
+interface BirthdayMember {
+  user_id: string
+  full_name: string
+  name_abbr: string | null
+  birth_date: string   // YYYY-MM-DD
+  daysUntil: number    // 0 = 오늘, 1~7 = 이번 주
+}
+
+function calcDaysUntil(birthDate: string): number {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const bday = new Date(birthDate)
+  // 올해 생일
+  let next = new Date(today.getFullYear(), bday.getMonth(), bday.getDate())
+  if (next < today) next = new Date(today.getFullYear() + 1, bday.getMonth(), bday.getDate())
+  return Math.round((next.getTime() - today.getTime()) / 86400000)
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 📋 자동 분석 파서 — 청첩장 · 부고장 · 기타 경조사 텍스트를 읽고 필드 추출
@@ -257,6 +276,7 @@ export default function AnnouncementPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [expandedRaw,setExpandedRaw]= useState<string | null>(null)
   const [deleting,   setDeleting]   = useState<string | null>(null)
+  const [birthdays,  setBirthdays]  = useState<BirthdayMember[]>([])
 
   // ── 폼 상태 ─────────────────────────────────────────────────────
   const emptyNForm = { title: '', content: '' }
@@ -303,16 +323,42 @@ export default function AnnouncementPage() {
     if (!currentClubId) return
     setLoading(true)
     const supabase = createClient()
-    const [{ data: n }, { data: e }] = await Promise.all([
+    const [{ data: n }, { data: e }, { data: bdMembers }] = await Promise.all([
       supabase.from('announcements')
         .select('id,title,title_en,content,content_en,created_at,users!author_id(full_name,full_name_en)')
         .eq('club_id', currentClubId).order('created_at', { ascending: false }),
       supabase.from('events')
         .select('id,type,title,title_en,description,event_date,person_name,location_name,contact,raw_text')
         .eq('club_id', currentClubId).order('event_date', { ascending: true }),
+      // 생일 데이터: 이번 클럽 승인 멤버 중 birth_date 있는 사람
+      supabase.from('club_memberships')
+        .select('user_id, users!inner(full_name, name_abbr, birth_date)')
+        .eq('club_id', currentClubId)
+        .eq('status', 'approved')
+        .not('users.birth_date', 'is', null),
     ])
     setNotices(n ?? [])
     setEvents(e ?? [])
+
+    // 7일 이내 생일인 멤버만 필터링 + daysUntil 계산
+    const upcoming: BirthdayMember[] = []
+    for (const m of (bdMembers ?? [])) {
+      const u = Array.isArray(m.users) ? m.users[0] : m.users
+      if (!u?.birth_date) continue
+      const days = calcDaysUntil(u.birth_date)
+      if (days <= 7) {
+        upcoming.push({
+          user_id:   m.user_id,
+          full_name: u.full_name,
+          name_abbr: u.name_abbr ?? null,
+          birth_date: u.birth_date,
+          daysUntil: days,
+        })
+      }
+    }
+    // 가장 가까운 순 정렬
+    upcoming.sort((a, b) => a.daysUntil - b.daysUntil)
+    setBirthdays(upcoming)
     setLoading(false)
   }
   useEffect(() => { load() }, [currentClubId])
@@ -397,6 +443,79 @@ export default function AnnouncementPage() {
           </button>
         )}
       </div>
+
+      {/* ── 생일 배너 ── */}
+      {birthdays.length > 0 && (() => {
+        const todayBdays   = birthdays.filter(b => b.daysUntil === 0)
+        const upcomingBdays = birthdays.filter(b => b.daysUntil > 0)
+        return (
+          <div className="space-y-2">
+            {/* 오늘 생일 */}
+            {todayBdays.map(b => (
+              <div key={b.user_id}
+                className="rounded-2xl px-4 py-3.5 flex items-center gap-3 overflow-hidden relative"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(251,191,36,0.18), rgba(234,88,12,0.14))',
+                  border: '1px solid rgba(251,191,36,0.35)',
+                  boxShadow: '0 0 24px rgba(251,191,36,0.1)',
+                }}>
+                {/* 배경 파티클 이모지 */}
+                <span className="absolute right-4 top-1 text-2xl opacity-20 select-none">🎉</span>
+                <div className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0"
+                  style={{ background: 'rgba(251,191,36,0.22)' }}>
+                  <Cake size={20} style={{ color: '#fbbf24' }} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white font-bold text-sm leading-tight">
+                    {ko ? `🎂 오늘은 ${b.full_name} 회원님의 생일입니다!`
+                        : `🎂 Today is ${b.full_name}'s birthday!`}
+                  </p>
+                  <p className="text-xs mt-0.5" style={{ color: '#fbbf24' }}>
+                    {ko ? '따뜻한 축하 메시지를 전해드리세요 🎉' : 'Send warm birthday wishes 🎉'}
+                  </p>
+                </div>
+              </div>
+            ))}
+
+            {/* 이번 주 생일 예고 */}
+            {upcomingBdays.length > 0 && (
+              <div className="rounded-2xl px-4 py-3 flex items-center gap-3"
+                style={{
+                  background: 'rgba(251,146,60,0.08)',
+                  border: '1px solid rgba(251,146,60,0.2)',
+                }}>
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+                  style={{ background: 'rgba(251,146,60,0.15)' }}>
+                  <span className="text-sm">🎈</span>
+                </div>
+                <div className="flex-1 min-w-0 overflow-hidden">
+                  <p className="text-xs font-semibold mb-1.5" style={{ color: '#fb923c' }}>
+                    {ko ? '이번 주 생일' : 'Upcoming Birthdays'}
+                  </p>
+                  <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-none">
+                    {upcomingBdays.map(b => {
+                      const bday = new Date(b.birth_date)
+                      const label = `${String(bday.getMonth() + 1).padStart(2,'0')}/${String(bday.getDate()).padStart(2,'0')}`
+                      return (
+                        <div key={b.user_id}
+                          className="flex-shrink-0 flex flex-col items-center gap-0.5 rounded-xl px-2.5 py-1.5"
+                          style={{ background: 'rgba(251,146,60,0.12)', border: '1px solid rgba(251,146,60,0.2)' }}>
+                          <p className="text-white text-xs font-semibold whitespace-nowrap">
+                            {b.name_abbr || b.full_name}
+                          </p>
+                          <p className="text-[10px]" style={{ color: '#fb923c' }}>
+                            {label} · D-{b.daysUntil}
+                          </p>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {/* ── 탭 ── */}
       <div className="flex gap-1.5 p-1 rounded-2xl"

@@ -197,9 +197,11 @@ export default function SettingsPage() {
         if (!e) { updateData = d; break }
         updateError = e
         const msg: string = e.message ?? ''
-        if (msg.includes('sub_courses'))  { const { sub_courses: _, ...rest } = updatePayload; updatePayload = rest }
-        else if (msg.includes('designer')){ const { designer: _, ...rest } = updatePayload; updatePayload = rest }
-        else if (msg.includes('club_id')) { const { club_id: _, ...rest } = updatePayload; updatePayload = rest }
+        if      (msg.includes('sub_courses'))  { const { sub_courses: _, ...rest } = updatePayload; updatePayload = rest }
+        else if (msg.includes('designer'))    { const { designer: _, ...rest } = updatePayload; updatePayload = rest }
+        else if (msg.includes('distance_km')) { const { distance_km: _, ...rest } = updatePayload; updatePayload = rest }
+        else if (msg.includes('district'))    { const { district: _, ...rest } = updatePayload; updatePayload = rest }
+        else if (msg.includes('club_id'))     { const { club_id: _, ...rest } = updatePayload; updatePayload = rest }
         else break
       }
 
@@ -222,9 +224,11 @@ export default function SettingsPage() {
         insertError = e
         const msg: string = e.message ?? ''
         // 존재하지 않는 컬럼이면 해당 컬럼 제거 후 재시도
-        if (msg.includes('club_id'))     { const { club_id: _, ...rest } = insertPayload; insertPayload = rest }
-        else if (msg.includes('sub_courses'))  { const { sub_courses: _, ...rest } = insertPayload; insertPayload = rest }
-        else if (msg.includes('designer'))     { const { designer: _, ...rest } = insertPayload; insertPayload = rest }
+        if      (msg.includes('sub_courses'))  { const { sub_courses: _, ...rest } = insertPayload; insertPayload = rest }
+        else if (msg.includes('designer'))    { const { designer: _, ...rest } = insertPayload; insertPayload = rest }
+        else if (msg.includes('distance_km')) { const { distance_km: _, ...rest } = insertPayload; insertPayload = rest }
+        else if (msg.includes('district'))    { const { district: _, ...rest } = insertPayload; insertPayload = rest }
+        else if (msg.includes('club_id'))     { const { club_id: _, ...rest } = insertPayload; insertPayload = rest }
         else break  // 다른 에러면 중단
       }
 
