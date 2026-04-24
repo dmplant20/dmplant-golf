@@ -1,9 +1,9 @@
 'use client'
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores/authStore'
 import {
-  CalendarDays, Settings2, X, ChevronLeft, AlertTriangle,
+  CalendarDays, Settings2, X, ChevronLeft, ChevronRight, AlertTriangle,
   CheckCircle, XCircle, Clock, MapPin, Users, Shuffle,
   ListOrdered, Check, Ban, HelpCircle, Edit2, BarChart2,
   TrendingDown, TrendingUp, Minus, UtensilsCrossed, Bell,
@@ -152,6 +152,10 @@ export default function MeetingsPage() {
   const [saving,            setSaving]            = useState(false)
   const [autoGroupLoading,  setAutoGroupLoading]  = useState(false)
 
+  // ── month navigation (과거 기록 열람) ──────────────────────────────────────
+  const [navYM, setNavYM] = useState<{ year: number; month: number } | null>(null)
+  const navLoadRef = useRef(0)  // prevent stale loads
+
   const [pForm, setPForm] = useState({ week: 3, dow: 4, time: '07:00', venue: '', notes: '' })
   const [oForm, setOForm] = useState({ status: 'cancelled', date: '', time: '', reason: '' })
   const [assign, setAssign] = useState<Record<string, number>>({})
@@ -276,9 +280,57 @@ export default function MeetingsPage() {
     if (meeting) loadRsvp(meeting.year, meeting.month)
   }, [meeting?.year, meeting?.month, currentClubId])
 
+  // ── navigation-based display meeting ──────────────────────────────────────
+  // navYM null = show current/upcoming meeting; non-null = show that specific month
+  const displayMeeting = useMemo(() => {
+    if (!navYM || !pattern) return meeting
+    const ov = overrides.find((o: any) => o.year === navYM.year && o.month === navYM.month)
+    let date: Date | null
+    if (ov?.status === 'rescheduled' && ov.override_date) {
+      date = new Date(ov.override_date + 'T00:00:00')
+    } else {
+      date = getNthWeekday(navYM.year, navYM.month, pattern.week_of_month, pattern.day_of_week)
+    }
+    return {
+      year:   navYM.year,
+      month:  navYM.month,
+      date:   date ?? new Date(navYM.year, navYM.month - 1, 1),
+      time:   ov?.override_time ?? pattern.start_time,
+      venue:  pattern.venue,
+      status: ov?.status ?? 'scheduled',
+      reason: ov?.reason ?? null,
+    }
+  }, [navYM, pattern, overrides, meeting])
+
+  // is the currently viewed month in the past?
+  const nowDate     = new Date(); nowDate.setHours(0, 0, 0, 0)
+  const viewY       = displayMeeting?.year  ?? nowDate.getFullYear()
+  const viewM       = displayMeeting?.month ?? nowDate.getMonth() + 1
+  const isPastView  = new Date(viewY, viewM - 1) < new Date(nowDate.getFullYear(), nowDate.getMonth())
+
+  // navigate to prev/next month
+  function navMonth(delta: number) {
+    const base = navYM ?? (meeting ? { year: meeting.year, month: meeting.month } : { year: nowDate.getFullYear(), month: nowDate.getMonth() + 1 })
+    let y = base.year, m = base.month + delta
+    if (m > 12) { m = 1;  y++ }
+    if (m < 1)  { m = 12; y-- }
+    // limit: 24 months back, 2 months forward
+    const targetDate = new Date(y, m - 1)
+    if (targetDate < new Date(nowDate.getFullYear(), nowDate.getMonth() - 24)) return
+    if (targetDate > new Date(nowDate.getFullYear(), nowDate.getMonth() + 2))  return
+    const token = ++navLoadRef.current
+    setNavYM({ year: y, month: m })
+    loadRsvp(y, m).then(() => { if (navLoadRef.current !== token) {} })
+  }
+
+  function navReset() {
+    setNavYM(null)
+    if (meeting) loadRsvp(meeting.year, meeting.month)
+  }
+
   const daysUntil   = meeting?.date ? getDaysUntil(meeting.date) : null
-  const isRsvpOpen  = daysUntil !== null && daysUntil <= 14 && daysUntil >= -1
-  const isScoreOpen = daysUntil !== null && daysUntil <= 1  // 당일 또는 이후
+  const isRsvpOpen  = !isPastView && daysUntil !== null && daysUntil <= 14 && daysUntil >= -1
+  const isScoreOpen = isPastView || (daysUntil !== null && daysUntil <= 1)
 
   const attending = attendances.filter(a => a.status === 'attending')
   const absent    = attendances.filter(a => a.status === 'absent')
@@ -695,6 +747,32 @@ export default function MeetingsPage() {
         )}
       </div>
 
+      {/* ── Month navigation ── */}
+      {pattern && !loading && (
+        <div className="flex items-center gap-2 mb-2">
+          <button onClick={() => navMonth(-1)}
+            className="w-10 h-10 flex items-center justify-center rounded-xl bg-gray-800/80 text-gray-400 hover:text-white hover:bg-gray-700 transition flex-shrink-0">
+            <ChevronLeft size={18} />
+          </button>
+          <div className="flex-1 text-center">
+            <p className="text-white font-bold text-sm">
+              {ko ? `${viewY}년 ${viewM}월` : new Date(viewY, viewM - 1).toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}
+            </p>
+            {isPastView ? (
+              <button onClick={navReset} className="text-[10px] text-amber-400 underline decoration-dotted">
+                📁 {ko ? '과거 기록 · 현재로 돌아가기' : 'Past record · Back to current'}
+              </button>
+            ) : (
+              <p className="text-[10px] text-green-400">{ko ? '현재 모임' : 'Current meeting'}</p>
+            )}
+          </div>
+          <button onClick={() => navMonth(1)}
+            className="w-10 h-10 flex items-center justify-center rounded-xl bg-gray-800/80 text-gray-400 hover:text-white hover:bg-gray-700 transition flex-shrink-0">
+            <ChevronRight size={18} />
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <p className="text-center text-gray-500 py-16">{ko ? '로딩 중...' : 'Loading...'}</p>
       ) : !pattern ? (
@@ -711,45 +789,60 @@ export default function MeetingsPage() {
             </button>
           )}
         </div>
-      ) : !meeting ? (
+      ) : !displayMeeting ? (
         <div className="glass-card rounded-2xl p-8 text-center">
           <p className="text-gray-400 text-sm">{ko ? '예정된 모임이 없습니다.' : 'No upcoming meetings.'}</p>
         </div>
       ) : (
         <div className="space-y-4">
 
+          {/* ── 과거 기록 배너 ── */}
+          {isPastView && (
+            <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-amber-900/20 border border-amber-700/30">
+              <span className="text-base">📁</span>
+              <div className="flex-1">
+                <p className="text-xs font-semibold text-amber-300">{ko ? '과거 기록 보기' : 'Viewing past record'}</p>
+                <p className="text-[10px] text-amber-500/70">{ko ? '저장된 기록을 열람 중입니다. 편집 기능은 비활성화됩니다.' : 'Browsing archived data. Editing is disabled.'}</p>
+              </div>
+              <button onClick={navReset} className="text-[10px] text-amber-400 border border-amber-700/40 rounded-lg px-2 py-1">
+                {ko ? '현재로' : 'Current'}
+              </button>
+            </div>
+          )}
+
           {/* ── Meeting card ── */}
-          <div className={`glass-card rounded-2xl p-4 space-y-2 ${meeting.status === 'cancelled' ? 'opacity-60' : ''}`}>
+          <div className={`glass-card rounded-2xl p-4 space-y-2 ${displayMeeting.status === 'cancelled' ? 'opacity-60' : ''}`}>
             <div className="flex items-start justify-between gap-2">
               <div>
-                <p className="text-xs text-gray-400">{ko ? `${meeting.year}년 ${meeting.month}월 정기모임` : `${meeting.date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} Meeting`}</p>
+                <p className="text-xs text-gray-400">{ko ? `${displayMeeting.year}년 ${displayMeeting.month}월 정기모임` : `${displayMeeting.date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} Meeting`}</p>
                 <div className="flex items-center gap-2 mt-1">
-                  <p className="text-white font-bold text-lg">{fmtDate(meeting.date, ko)}</p>
-                  {dDayBadge()}
+                  <p className="text-white font-bold text-lg">{fmtDate(displayMeeting.date, ko)}</p>
+                  {!isPastView && dDayBadge()}
+                  {isPastView && <span className="bg-gray-800 text-gray-400 text-xs px-2 py-0.5 rounded-full">{ko ? '완료' : 'Done'}</span>}
                 </div>
               </div>
-              {meeting.status === 'cancelled'   && <XCircle size={20} className="text-red-400 flex-shrink-0 mt-1" />}
-              {meeting.status === 'rescheduled' && <AlertTriangle size={20} className="text-yellow-400 flex-shrink-0 mt-1" />}
-              {meeting.status === 'scheduled'   && <CheckCircle size={20} className="text-green-500 flex-shrink-0 mt-1" />}
+              {displayMeeting.status === 'cancelled'   && <XCircle size={20} className="text-red-400 flex-shrink-0 mt-1" />}
+              {displayMeeting.status === 'rescheduled' && <AlertTriangle size={20} className="text-yellow-400 flex-shrink-0 mt-1" />}
+              {displayMeeting.status === 'scheduled'   && <CheckCircle size={20} className="text-green-500 flex-shrink-0 mt-1" />}
             </div>
             <div className="flex items-center gap-4 text-xs text-gray-400">
-              {meeting.time  && <span className="flex items-center gap-1"><Clock size={12} />{fmtTime(meeting.time.slice(0,5), ko)}</span>}
-              {meeting.venue && <span className="flex items-center gap-1"><MapPin size={12} />{meeting.venue}</span>}
+              {displayMeeting.time  && <span className="flex items-center gap-1"><Clock size={12} />{fmtTime(displayMeeting.time.slice(0,5), ko)}</span>}
+              {displayMeeting.venue && <span className="flex items-center gap-1"><MapPin size={12} />{displayMeeting.venue}</span>}
             </div>
-            {meeting.reason && <p className="text-xs text-yellow-400">{meeting.reason}</p>}
+            {displayMeeting.reason && <p className="text-xs text-yellow-400">{displayMeeting.reason}</p>}
             {noticeSent && isRsvpOpen && (
               <p className="text-xs text-green-500 flex items-center gap-1"><CheckCircle size={11} />{ko ? '공지 자동 발송됨' : 'Notice sent'}</p>
             )}
-            {canManage && meeting.status !== 'cancelled' && (
+            {!isPastView && canManage && displayMeeting.status !== 'cancelled' && (
               <div className="flex gap-2 pt-1">
                 <button onClick={() => {
-                  const ds = `${meeting.date.getFullYear()}-${String(meeting.date.getMonth()+1).padStart(2,'0')}-${String(meeting.date.getDate()).padStart(2,'0')}`
+                  const ds = `${displayMeeting.date.getFullYear()}-${String(displayMeeting.date.getMonth()+1).padStart(2,'0')}-${String(displayMeeting.date.getDate()).padStart(2,'0')}`
                   setOForm({ status: 'cancelled', date: ds, time: '', reason: '' })
                   setShowOverrideModal(true)
                 }} className="flex-1 text-xs border border-gray-700 rounded-lg py-2 text-gray-400 hover:border-yellow-700 hover:text-yellow-400 transition">
                   {ko ? '일정 조정' : 'Adjust'}
                 </button>
-                {meeting.status !== 'scheduled' && (
+                {displayMeeting.status !== 'scheduled' && (
                   <button onClick={removeOverride} className="flex-1 text-xs border border-gray-700 rounded-lg py-2 text-gray-400 hover:border-green-800 hover:text-green-400 transition">
                     {ko ? '원복' : 'Reset'}
                   </button>
@@ -759,7 +852,7 @@ export default function MeetingsPage() {
           </div>
 
           {/* ── RSVP ── */}
-          {isRsvpOpen && meeting.status !== 'cancelled' && (
+          {isRsvpOpen && displayMeeting.status !== 'cancelled' && (
             <div className="glass-card rounded-2xl p-4 space-y-4">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold text-white">{ko ? '참석 여부' : 'RSVP'}</p>
@@ -821,42 +914,63 @@ export default function MeetingsPage() {
           )}
 
           {/* ── Groups ── */}
-          {(groups.length > 0 || (canManage && isRsvpOpen && attending.length > 0)) && (
+          {(groups.length > 0 || (canManage && !isPastView && isRsvpOpen && attending.length > 0)) && (
             <div className="glass-card rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-white flex items-center gap-2">
+                <p className="text-sm font-bold text-white flex items-center gap-2">
                   <Users size={15} className="text-green-400" />{ko ? '조 편성' : 'Groups'}
+                  {groups.length > 0 && <span className="text-[10px] text-green-500 font-normal bg-green-900/30 px-1.5 py-0.5 rounded-full">{groups.length}{ko ? '조' : ' groups'}</span>}
                 </p>
                 <div className="flex items-center gap-2">
                   {groups.length > 0 && (
                     <button onClick={exportGroupsCSV}
-                      className="text-xs text-blue-400 border border-blue-800/60 rounded-full px-3 py-1 flex items-center gap-1 hover:bg-blue-900/20 transition"
+                      className="text-xs text-blue-400 border border-blue-800/60 rounded-full px-3 py-1.5 flex items-center gap-1 hover:bg-blue-900/20 transition"
                       title={ko ? 'CSV(엑셀)로 내보내기' : 'Export to CSV/Excel'}>
                       <FileDown size={11} />{ko ? '엑셀' : 'Export'}
                     </button>
                   )}
-                  {canManage && (
-                    <button onClick={() => setShowGroupModal(true)} className="text-xs text-green-400 border border-green-800 rounded-full px-3 py-1">
-                      <Edit2 size={11} className="inline mr-1" />{ko ? '편집' : 'Edit'}
+                  {canManage && !isPastView && (
+                    <button onClick={() => setShowGroupModal(true)}
+                      className="text-xs text-white bg-green-700 hover:bg-green-600 rounded-full px-3 py-1.5 flex items-center gap-1 transition font-semibold">
+                      <Edit2 size={11} />{ko ? (groups.length > 0 ? '편집' : '조편성') : (groups.length > 0 ? 'Edit' : 'Assign')}
                     </button>
                   )}
                 </div>
               </div>
               {groups.length === 0 ? (
-                <p className="text-xs text-gray-500">{ko ? '아직 조 편성이 없습니다.' : 'No groups yet.'}</p>
+                <div className="text-center py-3">
+                  <p className="text-xs text-gray-500">{ko ? '아직 조 편성이 없습니다.' : 'No groups yet.'}</p>
+                  {canManage && !isPastView && (
+                    <p className="text-[10px] text-gray-600 mt-1">{ko ? '위 "조편성" 버튼을 눌러 자동/수동으로 배정하세요.' : 'Use the "Assign" button above to set groups.'}</p>
+                  )}
+                </div>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-2.5">
                   {groups.map((g: any) => (
-                    <div key={g.group_number} className="bg-gray-800/60 rounded-xl p-3">
-                      <p className="text-xs font-semibold text-green-400 mb-2">
-                        {g.group_number}조{g.tee_time ? ` · ${g.tee_time}` : ''}
-                      </p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {(g.meeting_group_members ?? []).map((m: any) => (
-                          <span key={m.user_id} className="bg-gray-700 text-gray-200 text-xs px-2.5 py-1 rounded-full">
-                            {lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}
+                    <div key={g.group_number}
+                      className="rounded-xl p-3"
+                      style={{ background: 'rgba(22,163,74,0.07)', border: '1px solid rgba(34,197,94,0.15)' }}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xs font-black text-green-400 bg-green-900/40 border border-green-800/40 rounded-lg px-2 py-0.5">
+                          {g.group_number}조
+                        </span>
+                        {g.tee_time && (
+                          <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
+                            <Clock size={10} />{g.tee_time}
                           </span>
-                        ))}
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(g.meeting_group_members ?? []).map((m: any) => {
+                          const nm = lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)
+                          const isMe = m.user_id === user?.id
+                          return (
+                            <span key={m.user_id}
+                              className={`text-xs px-2.5 py-1 rounded-full font-medium ${isMe ? 'bg-green-600 text-white' : 'bg-gray-700/80 text-gray-200'}`}>
+                              {nm}{isMe ? (ko ? ' (나)' : ' (me)') : ''}
+                            </span>
+                          )
+                        })}
                       </div>
                     </div>
                   ))}
@@ -866,12 +980,13 @@ export default function MeetingsPage() {
           )}
 
           {/* ── Score Section ── */}
-          {isScoreOpen && meeting.status !== 'cancelled' && attending.length > 0 && (
+          {isScoreOpen && displayMeeting.status !== 'cancelled' && attending.length > 0 && (
             <div className="glass-card rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold text-white flex items-center gap-2">
                   <BarChart2 size={15} className="text-yellow-400" />
-                  {ko ? `${meeting.month}월 스코어` : `${meeting.date.toLocaleDateString('en-US',{month:'short'})} Scores`}
+                  {ko ? `${displayMeeting.month}월 스코어` : `${displayMeeting.date.toLocaleDateString('en-US',{month:'short'})} Scores`}
+                  {isPastView && <span className="text-[10px] text-gray-500 font-normal">{ko ? '(기록)' : '(archived)'}</span>}
                 </p>
                 <div className="flex items-center gap-2">
                   {scores.length > 0 && (
@@ -907,7 +1022,7 @@ export default function MeetingsPage() {
                 {attending.map((att: any) => {
                   const name = lang === 'ko' ? att.users?.full_name : (att.users?.full_name_en || att.users?.full_name)
                   const abbr = att.users?.name_abbr
-                  const canEdit = canManage || att.user_id === user?.id
+                  const canEdit = !isPastView && (canManage || att.user_id === user?.id)
                   const existing = scores.find(s => s.user_id === att.user_id)
                   const hcInfo = clubMembers.find(m => m.user_id === att.user_id)?.club_handicap
                   return (
@@ -952,7 +1067,7 @@ export default function MeetingsPage() {
           )}
 
           {/* ── 2차 모임 ── */}
-          {meeting.status !== 'cancelled' && (daysUntil !== null && daysUntil >= -3 && daysUntil <= 14) && (
+          {displayMeeting.status !== 'cancelled' && (daysUntil !== null && daysUntil >= -3 && daysUntil <= 14) && (
             <div className="rounded-2xl overflow-hidden"
               style={{ background: 'linear-gradient(135deg,rgba(251,146,60,0.07),rgba(6,13,6,0.98))', border: '1px solid rgba(251,146,60,0.2)' }}>
               {/* 헤더 */}
@@ -961,7 +1076,7 @@ export default function MeetingsPage() {
                 <div className="flex items-center gap-2">
                   <UtensilsCrossed size={14} style={{ color: '#fb923c' }} />
                   <span className="text-sm font-bold text-white">
-                    {ko ? `${meeting.month}월 2차 모임` : `After-party`}
+                    {ko ? `${displayMeeting.month}월 2차 모임` : `After-party`}
                   </span>
                   {secondMeeting && (
                     <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
