@@ -60,24 +60,19 @@ function getSubCourseCombos(courseHoles: number, playHoles: number, subCoursesRa
   const subs = parseSubCourses(subCoursesRaw)
   function name(i: number) { return subs[i] ?? String.fromCharCode(65 + i) + '코스' }
   function combo2(i: number, j: number) { return `${name(i)}+${name(j)}` }
-  const customBtn = { key: CUSTOM_KEY, label: '✏️ 직접입력' }
   if (courseHoles === 27 && playHoles === 18) return [
     { key: '01', label: combo2(0,1) }, { key: '12', label: combo2(1,2) }, { key: '20', label: combo2(2,0) },
-    customBtn,
   ]
   if (courseHoles === 27 && playHoles === 9) return [
     { key: '0', label: name(0) }, { key: '1', label: name(1) }, { key: '2', label: name(2) },
-    customBtn,
   ]
   if (courseHoles === 36 && playHoles === 18) return [
     { key: '01', label: combo2(0,1) }, { key: '23', label: combo2(2,3) },
     { key: '12', label: combo2(1,2) }, { key: '03', label: combo2(0,3) },
-    customBtn,
   ]
   if (courseHoles === 36 && playHoles === 9) return [
     { key: '0', label: name(0) }, { key: '1', label: name(1) },
     { key: '2', label: name(2) }, { key: '3', label: name(3) },
-    customBtn,
   ]
   return []
 }
@@ -256,14 +251,8 @@ export default function ScorecardPage() {
       setCreateError(ko ? '어떤 코스를 도는지 선택해주세요' : 'Please select which course to play')
       return
     }
-    if (needsSubCourse && subCourse === CUSTOM_KEY && !customSubCourse.trim()) {
-      setCreateError(ko ? '코스 이름을 직접 입력해주세요' : 'Please enter the course name')
-      return
-    }
     setCreating(true); setCreateError('')
-    const subCourseLabel = subCourse === CUSTOM_KEY
-      ? customSubCourse.trim()
-      : (subCourseCombos.find(c => c.key === subCourse)?.label ?? subCourse)
+    const subCourseLabel = subCourseCombos.find(c => c.key === subCourse)?.label ?? subCourse
     const finalCourseName = subCourse ? `${newForm.courseName} (${subCourseLabel})` : newForm.courseName
     const courseId = (newForm.courseId && !String(newForm.courseId).startsWith('_')) ? newForm.courseId : null
     const supabase = createClient()
@@ -995,47 +984,21 @@ export default function ScorecardPage() {
                   <div className="flex flex-wrap gap-2">
                     {subCourseCombos.map(combo => (
                       <button key={combo.key}
-                        onClick={() => { setSubCourse(combo.key); setCreateError(''); if (combo.key !== CUSTOM_KEY) setCustomSubCourse('') }}
+                        onClick={() => { setSubCourse(combo.key); setCreateError('') }}
                         className="px-3.5 py-2.5 rounded-xl text-sm font-bold transition"
                         style={subCourse === combo.key
-                          ? combo.key === CUSTOM_KEY
-                            ? { background: 'linear-gradient(135deg,#7c3aed,#4c1d95)', color: '#fff', boxShadow: '0 2px 10px rgba(124,58,237,0.35)' }
-                            : { background: 'linear-gradient(135deg,#d97706,#92400e)', color: '#fff', boxShadow: '0 2px 10px rgba(234,88,12,0.3)' }
-                          : combo.key === CUSTOM_KEY
-                            ? { background: 'rgba(139,92,246,0.08)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.25)' }
-                            : { background: 'rgba(251,146,60,0.08)', color: '#fb923c', border: '1px solid rgba(251,146,60,0.25)' }}>
-                        {subCourse === combo.key && combo.key !== CUSTOM_KEY && <CheckCircle2 size={12} className="inline mr-1" />}
+                          ? { background: 'linear-gradient(135deg,#d97706,#92400e)', color: '#fff', boxShadow: '0 2px 10px rgba(234,88,12,0.3)' }
+                          : { background: 'rgba(251,146,60,0.08)', color: '#fb923c', border: '1px solid rgba(251,146,60,0.25)' }}>
+                        {subCourse === combo.key && <CheckCircle2 size={12} className="inline mr-1" />}
                         {combo.label}
                       </button>
                     ))}
                   </div>
 
-                  {/* 직접입력 선택 시 텍스트 입력란 */}
-                  {subCourse === CUSTOM_KEY && (
-                    <div className="mt-2.5">
-                      <input
-                        autoFocus
-                        value={customSubCourse}
-                        onChange={e => { setCustomSubCourse(e.target.value); setCreateError('') }}
-                        placeholder={ko ? '예: 솔래+루나, 스텔라+루나' : 'e.g. Sole+Luna, Stella+Luna'}
-                        className="w-full rounded-xl px-3.5 py-2.5 text-white text-sm font-semibold"
-                        style={{ background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.35)', outline: 'none' }}
-                      />
-                      <p className="text-[10px] mt-1.5" style={{ color: '#7c3aed' }}>
-                        {ko ? '원하는 코스 조합을 자유롭게 입력하세요' : 'Type any course combination you want'}
-                      </p>
-                    </div>
-                  )}
-
                   {/* 선택 완료 표시 */}
-                  {subCourse && subCourse !== CUSTOM_KEY && (
+                  {subCourse && (
                     <p className="text-xs mt-1.5 font-semibold" style={{ color: '#22c55e' }}>
                       ✓ {subCourseCombos.find(c => c.key === subCourse)?.label} {ko ? '선택됨' : 'selected'}
-                    </p>
-                  )}
-                  {subCourse === CUSTOM_KEY && customSubCourse.trim() && (
-                    <p className="text-xs mt-1 font-semibold" style={{ color: '#22c55e' }}>
-                      ✓ {customSubCourse.trim()} {ko ? '입력됨' : 'entered'}
                     </p>
                   )}
                 </div>
@@ -1085,9 +1048,7 @@ export default function ScorecardPage() {
                 {ko ? '취소' : 'Cancel'}
               </button>
               <button onClick={createRound}
-                disabled={creating || !newForm.courseName ||
-                  (needsSubCourse && !subCourse) ||
-                  (needsSubCourse && subCourse === CUSTOM_KEY && !customSubCourse.trim())}
+                disabled={creating || !newForm.courseName || (needsSubCourse && !subCourse)}
                 className="flex-1 py-3.5 rounded-xl font-black text-sm disabled:opacity-40 transition-all active:scale-95"
                 style={{ background: 'linear-gradient(135deg,#16a34a,#14532d)', color: '#fff', boxShadow: '0 4px 14px rgba(22,163,74,0.3)' }}>
                 {creating ? (
@@ -1096,7 +1057,6 @@ export default function ScorecardPage() {
                     {ko ? '생성 중...' : 'Creating...'}
                   </span>
                 ) : needsSubCourse && !subCourse ? (ko ? '코스 선택 필요' : 'Select course')
-                  : needsSubCourse && subCourse === CUSTOM_KEY && !customSubCourse.trim() ? (ko ? '코스명 입력 필요' : 'Enter course name')
                   : (ko ? '🏌️ 라운드 시작' : '🏌️ Start Round')}
               </button>
             </div>
