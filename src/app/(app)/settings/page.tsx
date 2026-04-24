@@ -508,7 +508,9 @@ export default function SettingsPage() {
                       phone:       c.phone       ?? f.phone,
                       website:     c.website     ?? f.website,
                       description: c.description ?? f.description,
-                      sub_courses: c.holes > 18 ? defaultSubCourses(c.holes) : [],
+                      sub_courses: c.sub_courses
+                        ? c.sub_courses.split(',').map((s: string) => s.trim())
+                        : (c.holes > 18 ? defaultSubCourses(c.holes) : []),
                     }))
                     // 2. 주소가 없으면 Google Places 에서 자동 조회
                     if (!c.address) {

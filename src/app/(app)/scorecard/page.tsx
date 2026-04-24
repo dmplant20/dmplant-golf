@@ -15,24 +15,24 @@ type CountryKey = 'Vietnam' | 'Korea' | 'Indonesia' | 'Other'
 // ── 하드코딩된 골프장 목록 ──────────────────────────────────────────────────
 const BUILTIN_COURSES: {
   id: string; name: string; name_vn: string | null; province: string;
-  holes: number; par: number; distance_km: number | null
+  holes: number; par: number; distance_km: number | null; sub_courses: string | null
 }[] = [
-  { id: '_tsn',  name: 'Tan Son Nhat Golf Course',          name_vn: 'Sân Golf Tân Sơn Nhất',              province: 'Ho Chi Minh City', holes: 36, par: 144, distance_km: 6   },
-  { id: '_ssg',  name: 'Saigon South Golf Club',            name_vn: 'Sân Golf Nam Sài Gòn',               province: 'Ho Chi Minh City', holes: 9,  par: 27,  distance_km: 8   },
-  { id: '_vgcc', name: 'Vietnam Golf & Country Club',       name_vn: 'Sân Golf & Country Club Việt Nam',   province: 'Ho Chi Minh City', holes: 36, par: 144, distance_km: 20  },
-  { id: '_vpl',  name: 'Vinpearl Golf Léman Cu Chi',        name_vn: 'Sân Golf Vinpearl Golf Léman Củ Chi', province: 'Ho Chi Minh City', holes: 36, par: 144, distance_km: 35  },
-  { id: '_sbg',  name: 'Song Be Golf Resort',               name_vn: 'Sân Golf Song Bé',                   province: 'Binh Duong',       holes: 27, par: 108, distance_km: 15  },
-  { id: '_tdg',  name: 'Twin Doves Golf Club',              name_vn: 'Sân Golf Twin Doves',                province: 'Binh Duong',       holes: 27, par: 108, distance_km: 35  },
-  { id: '_hmg',  name: 'Harmonie Golf Park',                name_vn: 'Sân Golf Harmonie',                  province: 'Binh Duong',       holes: 18, par: 72,  distance_km: 35  },
-  { id: '_ltg',  name: 'Long Thanh Golf Club',              name_vn: 'Sân Golf Long Thành',                province: 'Dong Nai',         holes: 36, par: 144, distance_km: 36  },
-  { id: '_dng',  name: 'Dong Nai Golf Resort (Bo Chang)',   name_vn: 'Sân Golf Đồng Nai (Bò Chang)',       province: 'Dong Nai',         holes: 27, par: 108, distance_km: 50  },
-  { id: '_ecc',  name: 'Emerald Country Club',              name_vn: 'Sân Golf Emerald Country Club',       province: 'Dong Nai',         holes: 18, par: 72,  distance_km: 40  },
-  { id: '_rla',  name: 'Royal Long An Golf & Country Club', name_vn: 'Sân Golf Royal Long An',              province: 'Long An',          holes: 27, par: 108, distance_km: 50  },
-  { id: '_wlg',  name: 'West Lakes Golf & Villas',          name_vn: 'Sân Golf West Lakes',                 province: 'Long An',          holes: 18, par: 72,  distance_km: 52  },
-  { id: '_vtg',  name: 'Vung Tau Paradise Golf Resort',     name_vn: 'Sân Golf Vũng Tàu Paradise',          province: 'Ba Ria-Vung Tau',  holes: 27, par: 108, distance_km: 125 },
-  { id: '_scg',  name: 'Sonadezi Chau Duc Golf Course',     name_vn: 'Sân Golf Sonadezi Châu Đức',          province: 'Ba Ria-Vung Tau',  holes: 36, par: 144, distance_km: 90  },
-  { id: '_blf',  name: 'The Bluffs Grand Ho Tram Strip',    name_vn: 'Sân Golf The Bluffs Hồ Tràm',         province: 'Ba Ria-Vung Tau',  holes: 18, par: 71,  distance_km: 130 },
-  { id: '_pga',  name: 'PGA NovaWorld Phan Thiet',          name_vn: 'Sân Golf PGA NovaWorld Phan Thiết',   province: 'Binh Thuan',       holes: 36, par: 144, distance_km: 200 },
+  { id: '_tsn',  name: 'Tan Son Nhat Golf Course',          name_vn: 'Sân Golf Tân Sơn Nhất',               province: 'Ho Chi Minh City', holes: 36, par: 144, distance_km: 6,   sub_courses: 'A코스,B코스,C코스,D코스'         },
+  { id: '_ssg',  name: 'Saigon South Golf Club',            name_vn: 'Sân Golf Nam Sài Gòn',                province: 'Ho Chi Minh City', holes: 9,  par: 36,  distance_km: 8,   sub_courses: null                              },
+  { id: '_vgcc', name: 'Vietnam Golf & Country Club',       name_vn: 'Sân Golf & Country Club Việt Nam',    province: 'Ho Chi Minh City', holes: 36, par: 144, distance_km: 20,  sub_courses: 'West Course,East Course'         },
+  { id: '_vpl',  name: 'Vinpearl Golf Léman Cu Chi',        name_vn: 'Sân Golf Vinpearl Golf Léman Củ Chi', province: 'Ho Chi Minh City', holes: 36, par: 144, distance_km: 35,  sub_courses: 'North Course,South Course'       },
+  { id: '_sbg',  name: 'Song Be Golf Resort',               name_vn: 'Sân Golf Song Bé',                    province: 'Binh Duong',       holes: 27, par: 108, distance_km: 15,  sub_courses: 'Lotus,Palm,Desert'               },
+  { id: '_tdg',  name: 'Twin Doves Golf Club',              name_vn: 'Sân Golf Twin Doves',                 province: 'Binh Duong',       holes: 27, par: 108, distance_km: 35,  sub_courses: 'Luna,Stella,Sole'                },
+  { id: '_hmg',  name: 'Harmonie Golf Park',                name_vn: 'Sân Golf Harmonie',                   province: 'Binh Duong',       holes: 18, par: 72,  distance_km: 35,  sub_courses: null                              },
+  { id: '_ltg',  name: 'Long Thanh Golf Club',              name_vn: 'Sân Golf Long Thành',                 province: 'Dong Nai',         holes: 36, par: 144, distance_km: 36,  sub_courses: 'Hill Course,Lake Course'         },
+  { id: '_dng',  name: 'Dong Nai Golf Resort',              name_vn: 'Sân Golf Đồng Nai (Bò Chang)',        province: 'Dong Nai',         holes: 27, par: 108, distance_km: 50,  sub_courses: 'A코스,B코스,C코스'               },
+  { id: '_ecc',  name: 'Emerald Country Club',              name_vn: 'Sân Golf Emerald Country Club',        province: 'Dong Nai',         holes: 18, par: 72,  distance_km: 40,  sub_courses: null                              },
+  { id: '_rla',  name: 'Royal Long An Golf & Country Club', name_vn: 'Sân Golf Royal Long An',               province: 'Long An',          holes: 27, par: 108, distance_km: 50,  sub_courses: 'Desert,Forest,Lake'              },
+  { id: '_wlg',  name: 'West Lakes Golf & Villas',          name_vn: 'Sân Golf West Lakes',                  province: 'Long An',          holes: 18, par: 72,  distance_km: 52,  sub_courses: null                              },
+  { id: '_vtg',  name: 'Vung Tau Paradise Golf Resort',     name_vn: 'Sân Golf Vũng Tàu Paradise',           province: 'Ba Ria-Vung Tau',  holes: 27, par: 108, distance_km: 125, sub_courses: 'A코스,B코스,C코스'               },
+  { id: '_scg',  name: 'Sonadezi Chau Duc Golf Course',     name_vn: 'Sân Golf Sonadezi Châu Đức',           province: 'Ba Ria-Vung Tau',  holes: 36, par: 144, distance_km: 90,  sub_courses: 'Resort Course,Tournament Course' },
+  { id: '_blf',  name: 'The Bluffs Grand Ho Tram Strip',    name_vn: 'Sân Golf The Bluffs Hồ Tràm',          province: 'Ba Ria-Vung Tau',  holes: 18, par: 71,  distance_km: 130, sub_courses: null                              },
+  { id: '_pga',  name: 'PGA NovaWorld Phan Thiet',          name_vn: 'Sân Golf PGA NovaWorld Phan Thiết',    province: 'Binh Thuan',       holes: 36, par: 144, distance_km: 200, sub_courses: 'Ocean Course,Garden Course'      },
 ]
 
 function detectCountry(province: string): CountryKey {
@@ -51,25 +51,30 @@ const COUNTRY_META: Record<CountryKey | 'all', { flag: string; ko: string; en: s
 }
 
 // ── 서브코스 조합 ─────────────────────────────────────────────────────────
-const SUB_COURSE_LABELS: Record<string, string> = {
-  A: 'A코스', B: 'B코스', C: 'C코스', D: 'D코스',
-  AB: 'A+B코스', BC: 'B+C코스', AC: 'A+C코스',
-  CD: 'C+D코스', AD: 'A+D코스', BD: 'B+D코스',
+// sub_courses: DB 또는 BUILTIN 쉼표구분 문자열 → 배열로 파싱
+function parseSubCourses(raw: string | null | undefined): string[] {
+  if (!raw) return []
+  return raw.split(',').map(s => s.trim()).filter(Boolean)
 }
-function getSubCourseCombos(courseHoles: number, playHoles: number) {
+function getSubCourseCombos(courseHoles: number, playHoles: number, subCoursesRaw?: string | null) {
+  const subs = parseSubCourses(subCoursesRaw)
+  // 실제 코스 이름이 있으면 그대로 사용, 없으면 A/B/C... 기본값
+  function name(i: number) { return subs[i] ?? String.fromCharCode(65 + i) + '코스' }
+  function combo2(i: number, j: number) { return `${name(i)}+${name(j)}` }
+
   if (courseHoles === 27 && playHoles === 18) return [
-    { key: 'AB', label: 'A+B코스' }, { key: 'BC', label: 'B+C코스' }, { key: 'AC', label: 'A+C코스' },
+    { key: '01', label: combo2(0,1) }, { key: '12', label: combo2(1,2) }, { key: '02', label: combo2(0,2) },
   ]
   if (courseHoles === 27 && playHoles === 9) return [
-    { key: 'A', label: 'A코스' }, { key: 'B', label: 'B코스' }, { key: 'C', label: 'C코스' },
+    { key: '0', label: name(0) }, { key: '1', label: name(1) }, { key: '2', label: name(2) },
   ]
   if (courseHoles === 36 && playHoles === 18) return [
-    { key: 'AB', label: 'A+B코스' }, { key: 'CD', label: 'C+D코스' },
-    { key: 'BC', label: 'B+C코스' }, { key: 'AD', label: 'A+D코스' },
+    { key: '01', label: combo2(0,1) }, { key: '23', label: combo2(2,3) },
+    { key: '12', label: combo2(1,2) }, { key: '03', label: combo2(0,3) },
   ]
   if (courseHoles === 36 && playHoles === 9) return [
-    { key: 'A', label: 'A코스' }, { key: 'B', label: 'B코스' },
-    { key: 'C', label: 'C코스' }, { key: 'D', label: 'D코스' },
+    { key: '0', label: name(0) }, { key: '1', label: name(1) },
+    { key: '2', label: name(2) }, { key: '3', label: name(3) },
   ]
   return []
 }
@@ -198,7 +203,7 @@ export default function ScorecardPage() {
   // 선택된 코스의 sub-course 조합
   const subCourseCombos = useMemo(() => {
     if (!selectedCourseObj) return []
-    return getSubCourseCombos(selectedCourseObj.holes, newForm.holes)
+    return getSubCourseCombos(selectedCourseObj.holes, newForm.holes, selectedCourseObj.sub_courses)
   }, [selectedCourseObj, newForm.holes])
 
   const needsSubCourse = subCourseCombos.length > 0
@@ -230,7 +235,7 @@ export default function ScorecardPage() {
     if (courses.some(c => !String(c.id).startsWith('_'))) return
     const supabase = createClient()
     const { data } = await supabase.from('golf_courses')
-      .select('id, name, name_vn, province, par, holes, distance_km')
+      .select('id, name, name_vn, province, par, holes, distance_km, sub_courses')
       .eq('is_active', true).order('name')
     if (data && data.length > 0) {
       const dbNames = new Set(data.map((c: any) => c.name.toLowerCase()))
@@ -291,8 +296,9 @@ export default function ScorecardPage() {
     const supabase = createClient()
 
     // 코스명에 sub-course 포함
+    const subCourseLabel = subCourseCombos.find(c => c.key === subCourse)?.label ?? subCourse
     const finalCourseName = subCourse
-      ? `${newForm.courseName} (${SUB_COURSE_LABELS[subCourse] ?? subCourse})`
+      ? `${newForm.courseName} (${subCourseLabel})`
       : newForm.courseName
 
     // BUILTIN 코스 ID('_' 시작)는 FK 오류 방지를 위해 null 처리
@@ -675,7 +681,7 @@ export default function ScorecardPage() {
                         </div>
                         {subCourse && (
                           <p className="text-[10px] mt-2" style={{ color: '#22c55e' }}>
-                            ✓ {SUB_COURSE_LABELS[subCourse]} 선택됨
+                            ✓ {subCourseCombos.find(c => c.key === subCourse)?.label ?? subCourse} 선택됨
                           </p>
                         )}
                       </div>

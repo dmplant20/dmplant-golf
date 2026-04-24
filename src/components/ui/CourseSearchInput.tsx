@@ -4,29 +4,41 @@ import { createClient } from '@/lib/supabase/client'
 import { Search, MapPin, X, Loader2 } from 'lucide-react'
 
 // ── 기본 내장 골프장 (DB 없이도 즉시 검색, scorecard BUILTIN_COURSES와 동기화) ──
+// sub_courses: 실제 코스 이름 (인터넷 조사 기반, 27H=9H×3, 36H=18H×2 또는 9H×4)
 const BUILTIN_COURSES = [
-  // ── 호치민시 (18/27/36홀) ───────────────────────────────────────────────
-  { id: '_tsn',  name: 'Tan Son Nhat Golf Course',         name_vn: 'Sân Golf Tân Sơn Nhất',               province: 'Ho Chi Minh City', holes: 36, par: 72,  distance_km: 6,   green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
-  { id: '_ssg',  name: 'Saigon South Golf Club',           name_vn: 'Sân Golf Nam Sài Gòn',                province: 'Ho Chi Minh City', holes: 9,  par: 27,  distance_km: 8,   green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
-  { id: '_vgcc', name: 'Vietnam Golf & Country Club',      name_vn: 'Sân Golf & Country Club Việt Nam',    province: 'Ho Chi Minh City', holes: 36, par: 72,  distance_km: 20,  green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
-  { id: '_vpl',  name: 'Vinpearl Golf Léman Cu Chi',       name_vn: 'Sân Golf Vinpearl Golf Léman Củ Chi', province: 'Ho Chi Minh City', holes: 36, par: 72,  distance_km: 35,  green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
-  // ── 빈증성 (18/27홀) ────────────────────────────────────────────────────
-  { id: '_sbg',  name: 'Song Be Golf Resort',              name_vn: 'Sân Golf Song Bé',                    province: 'Binh Duong',       holes: 27, par: 72,  distance_km: 15,  green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
-  { id: '_tdg',  name: 'Twin Doves Golf Club',             name_vn: 'Sân Golf Twin Doves',                 province: 'Binh Duong',       holes: 27, par: 108, distance_km: 35,  green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
-  { id: '_hmg',  name: 'Harmonie Golf Park',               name_vn: 'Sân Golf Harmonie',                   province: 'Binh Duong',       holes: 18, par: 72,  distance_km: 35,  green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
-  // ── 동나이성 (18/27/36홀) ───────────────────────────────────────────────
-  { id: '_ltg',  name: 'Long Thanh Golf Club',             name_vn: 'Sân Golf Long Thành',                 province: 'Dong Nai',         holes: 36, par: 72,  distance_km: 36,  green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
-  { id: '_dng',  name: 'Dong Nai Golf Resort',             name_vn: 'Sân Golf Đồng Nai (Bò Chang)',        province: 'Dong Nai',         holes: 27, par: 72,  distance_km: 50,  green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
-  { id: '_ecc',  name: 'Emerald Country Club',             name_vn: 'Sân Golf Emerald Country Club',       province: 'Dong Nai',         holes: 18, par: 72,  distance_km: 40,  green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
-  // ── 롱안성 (18/27홀) ────────────────────────────────────────────────────
-  { id: '_rla',  name: 'Royal Long An Golf & Country Club',name_vn: 'Sân Golf Royal Long An',              province: 'Long An',          holes: 27, par: 72,  distance_km: 50,  green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
-  { id: '_wlg',  name: 'West Lakes Golf & Villas',         name_vn: 'Sân Golf West Lakes',                 province: 'Long An',          holes: 18, par: 72,  distance_km: 52,  green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
-  // ── 바리아붕따우성 (18/27/36홀) ─────────────────────────────────────────
-  { id: '_vtg',  name: 'Vung Tau Paradise Golf Resort',    name_vn: 'Sân Golf Vũng Tàu Paradise',          province: 'Ba Ria-Vung Tau',  holes: 27, par: 108, distance_km: 125, green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
-  { id: '_scg',  name: 'Sonadezi Chau Duc Golf Course',   name_vn: 'Sân Golf Sonadezi Châu Đức',          province: 'Ba Ria-Vung Tau',  holes: 36, par: 72,  distance_km: 90,  green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
-  { id: '_blf',  name: 'The Bluffs Grand Ho Tram Strip',  name_vn: 'Sân Golf The Bluffs Hồ Tràm',         province: 'Ba Ria-Vung Tau',  holes: 18, par: 71,  distance_km: 130, green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
-  // ── 빈투언성 (36홀) ─────────────────────────────────────────────────────
-  { id: '_pga',  name: 'PGA NovaWorld Phan Thiet',        name_vn: 'Sân Golf PGA NovaWorld Phan Thiết',   province: 'Binh Thuan',       holes: 36, par: 72,  distance_km: 200, green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, designer: null, description: null },
+  // ── 호치민시 ────────────────────────────────────────────────────────────
+  // Tan Son Nhat: 4×9H (A,B,C,D) — Nelson & Haworth 설계
+  { id: '_tsn',  name: 'Tan Son Nhat Golf Course',         name_vn: 'Sân Golf Tân Sơn Nhất',               province: 'Ho Chi Minh City', holes: 36, par: 144, distance_km: 6,   sub_courses: 'A코스,B코스,C코스,D코스',         green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, description: null },
+  { id: '_ssg',  name: 'Saigon South Golf Club',           name_vn: 'Sân Golf Nam Sài Gòn',                province: 'Ho Chi Minh City', holes: 9,  par: 36,  distance_km: 8,   sub_courses: null,                               green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, description: null },
+  // VGCC: 2×18H — West Course(Chen King Shih,1994) + East Course(Lee Trevino,1997)
+  { id: '_vgcc', name: 'Vietnam Golf & Country Club',      name_vn: 'Sân Golf & Country Club Việt Nam',    province: 'Ho Chi Minh City', holes: 36, par: 144, distance_km: 20,  sub_courses: 'West Course,East Course',         green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, description: null },
+  // Vinpearl Léman: 2×18H — North + South (Golf Plan 설계, 2025 오픈)
+  { id: '_vpl',  name: 'Vinpearl Golf Léman Cu Chi',       name_vn: 'Sân Golf Vinpearl Golf Léman Củ Chi', province: 'Ho Chi Minh City', holes: 36, par: 144, distance_km: 35,  sub_courses: 'North Course,South Course',       green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, description: null },
+  // ── 빈증성 ──────────────────────────────────────────────────────────────
+  // Song Be: 3×9H — Lotus + Palm(원래 18H) + Desert(2007 추가)
+  { id: '_sbg',  name: 'Song Be Golf Resort',              name_vn: 'Sân Golf Song Bé',                    province: 'Binh Duong',       holes: 27, par: 108, distance_km: 15,  sub_courses: 'Lotus,Palm,Desert',               green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, description: null },
+  // Twin Doves: 3×9H — Luna + Stella + Sole (구 Mare → Stella로 개명)
+  { id: '_tdg',  name: 'Twin Doves Golf Club',             name_vn: 'Sân Golf Twin Doves',                 province: 'Binh Duong',       holes: 27, par: 108, distance_km: 35,  sub_courses: 'Luna,Stella,Sole',                green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, description: null },
+  { id: '_hmg',  name: 'Harmonie Golf Park',               name_vn: 'Sân Golf Harmonie',                   province: 'Binh Duong',       holes: 18, par: 72,  distance_km: 35,  sub_courses: null,                               green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, description: null },
+  // ── 동나이성 ────────────────────────────────────────────────────────────
+  // Long Thanh: 2×18H — Hill Course + Lake Course (David Dale & Ron Fream, 2003)
+  { id: '_ltg',  name: 'Long Thanh Golf Club',             name_vn: 'Sân Golf Long Thành',                 province: 'Dong Nai',         holes: 36, par: 144, distance_km: 36,  sub_courses: 'Hill Course,Lake Course',         green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, description: null },
+  // Dong Nai (Bo Chang): 3×9H — 공식 이름 없음, A/B/C로만 구분
+  { id: '_dng',  name: 'Dong Nai Golf Resort',             name_vn: 'Sân Golf Đồng Nai (Bò Chang)',        province: 'Dong Nai',         holes: 27, par: 108, distance_km: 50,  sub_courses: 'A코스,B코스,C코스',               green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, description: null },
+  { id: '_ecc',  name: 'Emerald Country Club',             name_vn: 'Sân Golf Emerald Country Club',       province: 'Dong Nai',         holes: 18, par: 72,  distance_km: 40,  sub_courses: null,                               green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, description: null },
+  // ── 롱안성 ──────────────────────────────────────────────────────────────
+  // Royal Long An: 3×9H — Desert + Forest + Lake (Nick Faldo 설계, Lake코스 2025 소프트오픈)
+  { id: '_rla',  name: 'Royal Long An Golf & Country Club',name_vn: 'Sân Golf Royal Long An',              province: 'Long An',          holes: 27, par: 108, distance_km: 50,  sub_courses: 'Desert,Forest,Lake',              green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, description: null },
+  { id: '_wlg',  name: 'West Lakes Golf & Villas',         name_vn: 'Sân Golf West Lakes',                 province: 'Long An',          holes: 18, par: 72,  distance_km: 52,  sub_courses: null,                               green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, description: null },
+  // ── 바리아붕따우성 ───────────────────────────────────────────────────────
+  // Vung Tau Paradise: 3×9H — 공식 이름 없음, A/B/C로만 구분
+  { id: '_vtg',  name: 'Vung Tau Paradise Golf Resort',    name_vn: 'Sân Golf Vũng Tàu Paradise',          province: 'Ba Ria-Vung Tau',  holes: 27, par: 108, distance_km: 125, sub_courses: 'A코스,B코스,C코스',               green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, description: null },
+  // Sonadezi Chau Duc: 2×18H — Resort Course + Tournament Course (Greg Norman 설계)
+  { id: '_scg',  name: 'Sonadezi Chau Duc Golf Course',   name_vn: 'Sân Golf Sonadezi Châu Đức',          province: 'Ba Ria-Vung Tau',  holes: 36, par: 144, distance_km: 90,  sub_courses: 'Resort Course,Tournament Course', green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, description: null },
+  { id: '_blf',  name: 'The Bluffs Grand Ho Tram Strip',  name_vn: 'Sân Golf The Bluffs Hồ Tràm',         province: 'Ba Ria-Vung Tau',  holes: 18, par: 71,  distance_km: 130, sub_courses: null,                               green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, description: null },
+  // ── 빈투언성 ────────────────────────────────────────────────────────────
+  // PGA NovaWorld: 2×18H — Ocean Course + Garden Course (Greg Norman 설계)
+  { id: '_pga',  name: 'PGA NovaWorld Phan Thiet',        name_vn: 'Sân Golf PGA NovaWorld Phan Thiết',   province: 'Binh Thuan',       holes: 36, par: 144, distance_km: 200, sub_courses: 'Ocean Course,Garden Course',      green_fee_weekday_vnd: null, green_fee_weekend_vnd: null, address: null, phone: null, website: null, description: null },
 ]
 
 interface Course {
@@ -42,7 +54,7 @@ interface Course {
   address?: string | null
   phone?: string | null
   website?: string | null
-  designer?: string | null
+  sub_courses?: string | null
   description?: string | null
 }
 
@@ -93,7 +105,7 @@ export default function CourseSearchInput({
       const q = value.trim().toLowerCase()
       const { data } = await supabase
         .from('golf_courses')
-        .select('id,name,name_vn,province,holes,par,distance_km,green_fee_weekday_vnd,green_fee_weekend_vnd,address,phone,website,designer,description')
+        .select('id,name,name_vn,province,holes,par,distance_km,green_fee_weekday_vnd,green_fee_weekend_vnd,address,phone,website,sub_courses,description')
         .eq('is_active', true)
         .or(`name.ilike.%${q}%,name_vn.ilike.%${q}%,province.ilike.%${q}%`)
         .order('distance_km', { nullsFirst: false })
