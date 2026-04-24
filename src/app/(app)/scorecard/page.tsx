@@ -1,234 +1,406 @@
 'use client'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores/authStore'
 import {
-  ChevronLeft, Plus, Trash2, Save, X,
-  Flag, BarChart2, Calendar, MapPin, ChevronRight,
+  ChevronLeft, ChevronRight, Plus, Trash2, Save, X,
+  Flag, BarChart2, Calendar, Search, CheckCircle2, Pencil,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import CourseSearchInput from '@/components/ui/CourseSearchInput'
 
-// ── 기본 파 배열 ──────────────────────────────────────────────────────────
-// 72파 기준: OUT 36, IN 36
+// ── 국가 감지 ─────────────────────────────────────────────────────────────
+type CountryKey = 'Vietnam' | 'Korea' | 'Indonesia' | 'Other'
+
+// ── 하드코딩된 골프장 목록 ──────────────────────────────────────────────────
+const BUILTIN_COURSES: {
+  id: string; name: string; name_vn: string | null; province: string;
+  holes: number; par: number; distance_km: number | null; sub_courses: string | null
+}[] = [
+  { id: '_tsn',  name: 'Tan Son Nhat Golf Course',          name_vn: 'Sân Golf Tân Sơn Nhất',               province: 'Ho Chi Minh City', holes: 36, par: 144, distance_km: 6,   sub_courses: 'A코스,B코스,C코스,D코스'         },
+  { id: '_ssg',  name: 'Saigon South Golf Club',            name_vn: 'Sân Golf Nam Sài Gòn',                province: 'Ho Chi Minh City', holes: 9,  par: 36,  distance_km: 8,   sub_courses: null                              },
+  { id: '_vgcc', name: 'Vietnam Golf & Country Club',       name_vn: 'Sân Golf & Country Club Việt Nam',    province: 'Ho Chi Minh City', holes: 36, par: 144, distance_km: 20,  sub_courses: 'West Course,East Course'         },
+  { id: '_vpl',  name: 'Vinpearl Golf Léman Cu Chi',        name_vn: 'Sân Golf Vinpearl Golf Léman Củ Chi', province: 'Ho Chi Minh City', holes: 36, par: 144, distance_km: 35,  sub_courses: 'North Course,South Course'       },
+  { id: '_sbg',  name: 'Song Be Golf Resort',               name_vn: 'Sân Golf Song Bé',                    province: 'Binh Duong',       holes: 27, par: 108, distance_km: 15,  sub_courses: 'Lotus,Palm,Desert'               },
+  { id: '_tdg',  name: 'Twin Doves Golf Club',              name_vn: 'Sân Golf Twin Doves',                 province: 'Binh Duong',       holes: 27, par: 108, distance_km: 35,  sub_courses: 'Luna,Stella,Sole'                },
+  { id: '_hmg',  name: 'Harmonie Golf Park',                name_vn: 'Sân Golf Harmonie',                   province: 'Binh Duong',       holes: 18, par: 72,  distance_km: 35,  sub_courses: null                              },
+  { id: '_ltg',  name: 'Long Thanh Golf Club',              name_vn: 'Sân Golf Long Thành',                 province: 'Dong Nai',         holes: 36, par: 144, distance_km: 36,  sub_courses: 'Hill Course,Lake Course'         },
+  { id: '_dng',  name: 'Dong Nai Golf Resort',              name_vn: 'Sân Golf Đồng Nai (Bò Chang)',        province: 'Dong Nai',         holes: 27, par: 108, distance_km: 50,  sub_courses: 'A코스,B코스,C코스'               },
+  { id: '_ecc',  name: 'Emerald Country Club',              name_vn: 'Sân Golf Emerald Country Club',        province: 'Dong Nai',         holes: 18, par: 72,  distance_km: 40,  sub_courses: null                              },
+  { id: '_rla',  name: 'Royal Long An Golf & Country Club', name_vn: 'Sân Golf Royal Long An',               province: 'Long An',          holes: 27, par: 108, distance_km: 50,  sub_courses: 'Desert,Forest,Lake'              },
+  { id: '_wlg',  name: 'West Lakes Golf & Villas',          name_vn: 'Sân Golf West Lakes',                  province: 'Long An',          holes: 18, par: 72,  distance_km: 52,  sub_courses: null                              },
+  { id: '_vtg',  name: 'Vung Tau Paradise Golf Resort',     name_vn: 'Sân Golf Vũng Tàu Paradise',           province: 'Ba Ria-Vung Tau',  holes: 27, par: 108, distance_km: 125, sub_courses: 'A코스,B코스,C코스'               },
+  { id: '_scg',  name: 'Sonadezi Chau Duc Golf Course',     name_vn: 'Sân Golf Sonadezi Châu Đức',           province: 'Ba Ria-Vung Tau',  holes: 36, par: 144, distance_km: 90,  sub_courses: 'Resort Course,Tournament Course' },
+  { id: '_blf',  name: 'The Bluffs Grand Ho Tram Strip',    name_vn: 'Sân Golf The Bluffs Hồ Tràm',          province: 'Ba Ria-Vung Tau',  holes: 18, par: 71,  distance_km: 130, sub_courses: null                              },
+  { id: '_pga',  name: 'PGA NovaWorld Phan Thiet',          name_vn: 'Sân Golf PGA NovaWorld Phan Thiết',    province: 'Binh Thuan',       holes: 36, par: 144, distance_km: 200, sub_courses: 'Ocean Course,Garden Course'      },
+]
+
+function detectCountry(province: string): CountryKey {
+  if (/Ho Chi Minh|Binh Duong|Dong Nai|Long An|Ba Ria|Binh Thuan|Da Nang|Ha Noi|Hanoi|Quang Nam|Khanh Hoa|Vung Tau|Hue|Nha Trang/i.test(province)) return 'Vietnam'
+  if (/Korea|Seoul|Incheon|Jeju|Gyeong|Busan|Cheju|경기|서울|인천|제주|경상|부산/i.test(province)) return 'Korea'
+  if (/Indonesia|Bali|Jakarta|BSD|Bandung|Surabaya|Bogor|Batam/i.test(province)) return 'Indonesia'
+  return 'Other'
+}
+
+const COUNTRY_META: Record<CountryKey | 'all', { flag: string; ko: string; en: string }> = {
+  all:       { flag: '🌏', ko: '전체',       en: 'All'       },
+  Vietnam:   { flag: '🇻🇳', ko: '베트남',    en: 'Vietnam'   },
+  Korea:     { flag: '🇰🇷', ko: '한국',      en: 'Korea'     },
+  Indonesia: { flag: '🇮🇩', ko: '인도네시아', en: 'Indonesia' },
+  Other:     { flag: '🌍', ko: '기타',       en: 'Other'     },
+}
+
+// ── 서브코스 조합 ─────────────────────────────────────────────────────────
+function parseSubCourses(raw: string | null | undefined): string[] {
+  if (!raw) return []
+  return raw.split(',').map(s => s.trim()).filter(Boolean)
+}
+const CUSTOM_KEY = '__custom__'
+
+function getSubCourseCombos(courseHoles: number, playHoles: number, subCoursesRaw?: string | null) {
+  const subs = parseSubCourses(subCoursesRaw)
+  function name(i: number) { return subs[i] ?? String.fromCharCode(65 + i) + '코스' }
+  function combo2(i: number, j: number) { return `${name(i)}+${name(j)}` }
+  if (courseHoles === 27 && playHoles === 18) return [
+    { key: '01', label: combo2(0,1) }, { key: '12', label: combo2(1,2) }, { key: '20', label: combo2(2,0) },
+  ]
+  if (courseHoles === 27 && playHoles === 9) return [
+    { key: '0', label: name(0) }, { key: '1', label: name(1) }, { key: '2', label: name(2) },
+  ]
+  if (courseHoles === 36 && playHoles === 18) return [
+    { key: '01', label: combo2(0,1) }, { key: '23', label: combo2(2,3) },
+    { key: '12', label: combo2(1,2) }, { key: '03', label: combo2(0,3) },
+  ]
+  if (courseHoles === 36 && playHoles === 9) return [
+    { key: '0', label: name(0) }, { key: '1', label: name(1) },
+    { key: '2', label: name(2) }, { key: '3', label: name(3) },
+  ]
+  return []
+}
+
+// ── 기본 파 ───────────────────────────────────────────────────────────────
 const DEFAULT_PARS_18 = [4,4,3,5,4,3,4,5,4, 4,3,5,4,4,3,5,4,4]
 const DEFAULT_PARS_9  = [4,4,3,5,4,3,4,5,4]
 
 function computePars(totalPar: number, holes: number): number[] {
-  const base = holes === 9 ? [...DEFAULT_PARS_9] : [...DEFAULT_PARS_18]
+  const base    = holes === 9 ? [...DEFAULT_PARS_9] : [...DEFAULT_PARS_18]
   const baseSum = base.reduce((a, b) => a + b, 0)
-  const diff = totalPar - baseSum
-  // diff 만큼 파 5 → 4 또는 파 4 → 5 조정
-  const result = [...base]
-  if (diff > 0) {
-    let d = diff
-    for (let i = 0; i < result.length && d > 0; i++) {
-      if (result[i] < 5) { result[i]++; d-- }
-    }
-  } else if (diff < 0) {
-    let d = -diff
-    for (let i = result.length - 1; i >= 0 && d > 0; i--) {
-      if (result[i] > 3) { result[i]--; d-- }
-    }
-  }
+  const diff    = totalPar - baseSum
+  const result  = [...base]
+  if (diff > 0) { let d = diff; for (let i = 0; i < result.length && d > 0; i++) { if (result[i] < 5) { result[i]++; d-- } } }
+  else if (diff < 0) { let d = -diff; for (let i = result.length-1; i >= 0 && d > 0; i--) { if (result[i] > 3) { result[i]--; d-- } } }
   return result
 }
 
 // ── 스코어 색상 ───────────────────────────────────────────────────────────
-function scoreColor(score: number | null, par: number): string {
-  if (score === null) return 'text-gray-500 bg-gray-800'
+function scoreInfo(score: number | null, par: number) {
+  if (score === null) return { bg: 'rgba(55,65,55,0.5)', text: '#4a6a4a', border: 'transparent', label: '', shape: 'square' }
   const d = score - par
-  if (d <= -2) return 'text-yellow-200 bg-indigo-700'  // eagle+
-  if (d === -1) return 'text-white bg-blue-600'          // birdie
-  if (d === 0)  return 'text-white bg-green-700'         // par
-  if (d === 1)  return 'text-white bg-yellow-600'        // bogey
-  if (d === 2)  return 'text-white bg-orange-600'        // double
-  return 'text-white bg-red-700'                         // triple+
+  if (d <= -2) return { bg: '#3730a3', text: '#fde68a', border: '#6366f1',   label: '이글+', shape: 'circle' }
+  if (d === -1) return { bg: '#1d4ed8', text: '#fff',    border: '#3b82f6',   label: '버디',  shape: 'circle' }
+  if (d === 0)  return { bg: '#15803d', text: '#fff',    border: '#22c55e',   label: '파',    shape: 'square' }
+  if (d === 1)  return { bg: '#a16207', text: '#fff',    border: '#eab308',   label: '보기',  shape: 'square' }
+  if (d === 2)  return { bg: '#c2410c', text: '#fff',    border: '#f97316',   label: '더블',  shape: 'double-square' }
+  return           { bg: '#991b1b', text: '#fff',    border: '#ef4444',   label: '트리플+', shape: 'double-square' }
 }
 
-function scoreLabel(score: number | null, par: number, ko: boolean): string {
-  if (score === null) return ''
-  const d = score - par
-  if (d <= -2) return ko ? '이글+' : 'Eagle+'
-  if (d === -1) return ko ? '버디' : 'Birdie'
-  if (d === 0)  return ko ? '파' : 'Par'
-  if (d === 1)  return ko ? '보기' : 'Bogey'
-  if (d === 2)  return ko ? '더블' : 'Dbl'
-  return ko ? '트리플+' : 'Tri+'
-}
-
-// ── 통계 계산 ─────────────────────────────────────────────────────────────
 function calcStats(rounds: any[]) {
-  if (!rounds.length) return null
   const completed = rounds.filter(r => r.total_score)
   if (!completed.length) return null
   const scores = completed.map(r => r.total_score)
   return {
-    count: rounds.length,
-    best:  Math.min(...scores),
-    avg:   Math.round(scores.reduce((a, b) => a + b, 0) / scores.length),
-    latest: completed[0]?.total_score,
-    latestPar: completed[0]?.course_par,
+    count:  rounds.length,
+    best:   Math.min(...scores),
+    avg:    Math.round(scores.reduce((a, b) => a + b, 0) / scores.length),
   }
 }
+
+const CURRENCY_SYMBOL: Record<string, string> = { KRW: '₩', VND: '₫', IDR: 'Rp' }
 
 // ─────────────────────────────────────────────────────────────────────────
 export default function ScorecardPage() {
   const router = useRouter()
-  const { user, lang } = useAuthStore()
+  const { user, lang, currentClubId } = useAuthStore()
   const ko = lang === 'ko'
 
-  // ── views: 'list' | 'card' ────────────────────────────────────────────
-  const [view,           setView]           = useState<'list'|'card'>('list')
-  const [rounds,         setRounds]         = useState<any[]>([])
-  const [selectedRound,  setSelectedRound]  = useState<any>(null)
-  const [holeRows,       setHoleRows]       = useState<any[]>([]) // loaded hole data
-  const [loading,        setLoading]        = useState(true)
+  const [view,          setView]          = useState<'list'|'card'>('list')
+  const [rounds,        setRounds]        = useState<any[]>([])
+  const [selectedRound, setSelectedRound] = useState<any>(null)
+  const [loading,       setLoading]       = useState(true)
 
-  // ── new round sheet ───────────────────────────────────────────────────
-  const [showNew,      setShowNew]      = useState(false)
-  const [courses,      setCourses]      = useState<any[]>([])
-  const [courseSearch, setCourseSearch] = useState('')
-  const [newForm,      setNewForm]      = useState({
+  // new round
+  const [showNew,           setShowNew]           = useState(false)
+  const [courses,           setCourses]           = useState<any[]>(BUILTIN_COURSES)
+  const [newForm,           setNewForm]           = useState({
     courseName: '', courseId: '', coursePar: 72, holes: 18,
     playedAt: new Date().toISOString().split('T')[0], notes: '',
   })
-  const [pars, setPars] = useState<number[]>(DEFAULT_PARS_18)
-  const [creating,     setCreating]     = useState(false)
+  const [creating,          setCreating]          = useState(false)
+  const [createError,       setCreateError]       = useState('')
+  const [selectedCourseObj, setSelectedCourseObj] = useState<any>(null)
+  const [subCourse,         setSubCourse]         = useState<string>('')
+  const [cpSearch,          setCpSearch]          = useState('')
+  const [selCountry,        setSelCountry]        = useState<string>('all')
+  const [selProvince,       setSelProvince]       = useState<string>('all')
+  const [customSubCourse,   setCustomSubCourse]   = useState('')
 
-  // ── hole editing ──────────────────────────────────────────────────────
-  const [editHole,   setEditHole]   = useState<number | null>(null)  // 1-18
-  const [localHoles, setLocalHoles] = useState<Record<number, { score: number|null; par: number; putts: number|null }>>({})
+  // 코스명 수정
+  const [editingName,     setEditingName]     = useState(false)
+  const [editNameValue,   setEditNameValue]   = useState('')
+  const [editNameSaving,  setEditNameSaving]  = useState(false)
+  // 서브코스 조합 선택용 (코스명 수정 시트에서)
+  const [editSubCourse,   setEditSubCourse]   = useState('')
+  const [editCustomSub,   setEditCustomSub]   = useState('')
+
+  // scorecard
+  const [localHoles, setLocalHoles] = useState<Record<number, { score: number|null; par: number; putts: number|null; yardage: number|null }>>({})
+  const [editHole,   setEditHole]   = useState<number | null>(null)
   const [saving,     setSaving]     = useState(false)
-  const [showParEdit, setShowParEdit] = useState(false)
+  const [fineToast,  setFineToast]  = useState<string | null>(null)
 
-  // ── load rounds ───────────────────────────────────────────────────────
+  // ── 가로모드 감지 ──────────────────────────────────────────────────────
+  const [isLandscape, setIsLandscape] = useState(false)
+  useEffect(() => {
+    function check() {
+      setIsLandscape(window.innerWidth > window.innerHeight)
+    }
+    check()
+    window.addEventListener('resize', check)
+    // iOS는 orientationchange 직후 dimensions 미반영 → 100ms 후 체크
+    function onOrient() { setTimeout(check, 100) }
+    window.addEventListener('orientationchange', onOrient)
+    return () => {
+      window.removeEventListener('resize', check)
+      window.removeEventListener('orientationchange', onOrient)
+    }
+  }, [])
+
+  // ── filters ──────────────────────────────────────────────────────────
+  const availableCountries = useMemo(() => {
+    const keys = new Set<string>()
+    courses.forEach(c => keys.add(detectCountry(c.province)))
+    return (['Vietnam','Korea','Indonesia','Other'] as CountryKey[]).filter(k => keys.has(k))
+  }, [courses])
+
+  const availableProvinces = useMemo(() => {
+    if (selCountry === 'all') return []
+    const set = new Set<string>()
+    courses.forEach(c => { if (detectCountry(c.province) === selCountry) set.add(c.province) })
+    return [...set].sort()
+  }, [courses, selCountry])
+
+  const filteredCourses = useMemo(() => {
+    let list = courses
+    if (selCountry !== 'all') list = list.filter(c => detectCountry(c.province) === selCountry)
+    if (selProvince !== 'all') list = list.filter(c => c.province === selProvince)
+    if (cpSearch.trim()) {
+      const q = cpSearch.trim().toLowerCase()
+      list = list.filter(c =>
+        c.name.toLowerCase().includes(q) ||
+        (c.name_vn ?? '').toLowerCase().includes(q) ||
+        c.province.toLowerCase().includes(q)
+      )
+    }
+    return list
+  }, [courses, selCountry, selProvince, cpSearch])
+
+  const subCourseCombos = useMemo(() => {
+    if (!selectedCourseObj) return []
+    return getSubCourseCombos(selectedCourseObj.holes, newForm.holes, selectedCourseObj.sub_courses)
+  }, [selectedCourseObj, newForm.holes])
+
+  const needsSubCourse = subCourseCombos.length > 0
+
+  // ── loaders ───────────────────────────────────────────────────────────
   async function loadRounds() {
-    if (!user) return
+    if (!user) { setLoading(false); return }
     setLoading(true)
-    const supabase = createClient()
-    const { data } = await supabase
-      .from('personal_rounds')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('played_at', { ascending: false })
+    const { data } = await createClient().from('personal_rounds')
+      .select('*').eq('user_id', user.id).order('played_at', { ascending: false })
     setRounds(data ?? [])
     setLoading(false)
   }
 
-  async function loadHoles(roundId: string) {
-    const supabase = createClient()
-    const { data } = await supabase
-      .from('personal_round_holes')
-      .select('*')
-      .eq('round_id', roundId)
-      .order('hole_number')
-    setHoleRows(data ?? [])
-    // 로컬 상태로 변환
-    const local: Record<number, { score: number|null; par: number; putts: number|null }> = {}
-    data?.forEach(h => { local[h.hole_number] = { score: h.score, par: h.par, putts: h.putts } })
+  async function loadHoles(roundId: string, totalHoles: number, coursePar: number) {
+    const { data } = await createClient().from('personal_round_holes')
+      .select('*').eq('round_id', roundId).order('hole_number')
+    const computedPars = computePars(coursePar, totalHoles)
+    const local: Record<number, { score: number|null; par: number; putts: number|null; yardage: number|null }> = {}
+    for (let i = 1; i <= totalHoles; i++) {
+      const row = data?.find(h => h.hole_number === i)
+      local[i] = row
+        ? { score: row.score, par: row.par, putts: row.putts ?? null, yardage: row.yardage ?? null }
+        : { score: null, par: computedPars[i-1], putts: null, yardage: null }
+    }
     setLocalHoles(local)
   }
 
   async function loadCourses() {
-    if (courses.length > 0) return
-    const supabase = createClient()
-    const { data } = await supabase.from('golf_courses')
-      .select('id, name, name_vn, province, par, holes, distance_km')
-      .eq('is_active', true).order('distance_km')
-    setCourses(data ?? [])
+    if (courses.some(c => !String(c.id).startsWith('_'))) return
+    const { data } = await createClient().from('golf_courses')
+      .select('id, name, name_vn, province, par, holes, distance_km, sub_courses')
+      .eq('is_active', true).order('name')
+    if (data && data.length > 0) {
+      const dbNames = new Set(data.map((c: any) => c.name.toLowerCase()))
+      const extras = BUILTIN_COURSES.filter(b => !dbNames.has(b.name.toLowerCase()))
+      setCourses([...data, ...extras])
+    }
   }
 
   useEffect(() => { loadRounds() }, [user])
 
-  // ── open round ────────────────────────────────────────────────────────
   async function openRound(round: any) {
     setSelectedRound(round)
-    await loadHoles(round.id)
-    // init local holes for all holes in round
-    const totalHoles = round.total_holes
-    const computedPars = computePars(round.course_par, totalHoles)
-    setLocalHoles(prev => {
-      const next = { ...prev }
-      for (let i = 1; i <= totalHoles; i++) {
-        if (!next[i]) next[i] = { score: null, par: computedPars[i-1], putts: null }
-      }
-      return next
-    })
+    await loadHoles(round.id, round.total_holes, round.course_par)
     setView('card')
   }
 
-  // ── create round ──────────────────────────────────────────────────────
+  function handleSelectCourse(c: any) {
+    setSelectedCourseObj(c); setSubCourse(''); setCreateError('')
+    const adjustedPar = c.holes > newForm.holes
+      ? Math.round(c.par * newForm.holes / c.holes) : (c.par ?? 72)
+    setNewForm(f => ({ ...f, courseName: c.name, courseId: c.id, coursePar: adjustedPar }))
+    setCpSearch('')
+  }
+
   async function createRound() {
     if (!user || !newForm.courseName) return
-    setCreating(true)
+    if (needsSubCourse && !subCourse) {
+      setCreateError(ko ? '어떤 코스를 도는지 선택해주세요' : 'Please select which course to play')
+      return
+    }
+    setCreating(true); setCreateError('')
+    const subCourseLabel = subCourseCombos.find(c => c.key === subCourse)?.label ?? subCourse
+    const finalCourseName = subCourse ? `${newForm.courseName} (${subCourseLabel})` : newForm.courseName
+    const courseId = (newForm.courseId && !String(newForm.courseId).startsWith('_')) ? newForm.courseId : null
     const supabase = createClient()
     const { data: round, error } = await supabase.from('personal_rounds').insert({
-      user_id:    user.id,
-      course_id:  newForm.courseId  || null,
-      course_name: newForm.courseName,
-      course_par: newForm.coursePar,
-      total_holes: newForm.holes,
-      played_at:  newForm.playedAt,
-      notes:      newForm.notes || null,
+      user_id: user.id, course_id: courseId, course_name: finalCourseName,
+      course_par: newForm.coursePar, total_holes: newForm.holes,
+      played_at: newForm.playedAt, notes: newForm.notes || null,
     }).select().single()
-    if (!error && round) {
-      // pre-create hole rows
+    if (error) { setCreateError(error.message); setCreating(false); return }
+    if (round) {
       const computedPars = computePars(newForm.coursePar, newForm.holes)
       await supabase.from('personal_round_holes').insert(
         Array.from({ length: newForm.holes }, (_, i) => ({
-          round_id: round.id,
-          hole_number: i + 1,
-          par: computedPars[i],
-          score: null,
+          round_id: round.id, hole_number: i + 1, par: computedPars[i], score: null,
         }))
       )
-      setShowNew(false)
-      resetNewForm()
-      await loadRounds()
-      await openRound(round)
+      setShowNew(false); resetNewForm(); await loadRounds(); await openRound(round)
     }
     setCreating(false)
   }
 
   function resetNewForm() {
     setNewForm({ courseName: '', courseId: '', coursePar: 72, holes: 18, playedAt: new Date().toISOString().split('T')[0], notes: '' })
-    setPars(DEFAULT_PARS_18)
-    setCourseSearch('')
+    setCpSearch(''); setSelCountry('all'); setSelProvince('all')
+    setSelectedCourseObj(null); setSubCourse(''); setCustomSubCourse(''); setCreateError('')
   }
 
-  // ── save holes ────────────────────────────────────────────────────────
   async function saveCard() {
     if (!selectedRound) return
     setSaving(true)
     const supabase = createClient()
     const entries = Object.entries(localHoles)
     for (const [holeStr, hd] of entries) {
-      const hole = parseInt(holeStr)
-      await supabase.from('personal_round_holes').upsert({
-        round_id: selectedRound.id, hole_number: hole,
-        par: hd.par, score: hd.score, putts: hd.putts,
-      }, { onConflict: 'round_id,hole_number' })
+      await supabase.from('personal_round_holes').upsert(
+        { round_id: selectedRound.id, hole_number: parseInt(holeStr), par: hd.par, score: hd.score, putts: hd.putts, yardage: hd.yardage ?? null },
+        { onConflict: 'round_id,hole_number' }
+      )
     }
-    // 합계 업데이트
     const filled = entries.filter(([, hd]) => hd.score !== null)
-    const total  = filled.length === selectedRound.total_holes
-      ? filled.reduce((s, [, hd]) => s + (hd.score ?? 0), 0)
-      : null
+    const total = filled.length === selectedRound.total_holes
+      ? filled.reduce((s, [, hd]) => s + (hd.score ?? 0), 0) : null
     await supabase.from('personal_rounds').update({ total_score: total }).eq('id', selectedRound.id)
-    setSaving(false)
-    await loadRounds()
-    // refresh selected round
     const { data } = await supabase.from('personal_rounds').select('*').eq('id', selectedRound.id).single()
     if (data) setSelectedRound(data)
+    setSaving(false)
+    await loadRounds()
+    // 핸디오버 벌금
+    try {
+      if (total !== null && currentClubId && user) {
+        const [{ data: clubData }, { data: membership }] = await Promise.all([
+          supabase.from('clubs').select('fine_handicap_per_stroke,fine_handicap_max,currency').eq('id', currentClubId).single(),
+          supabase.from('club_memberships').select('club_handicap').eq('club_id', currentClubId).eq('user_id', user.id).maybeSingle(),
+        ])
+        const perStroke = clubData?.fine_handicap_per_stroke
+        const maxFine   = clubData?.fine_handicap_max ?? null
+        const handicap  = membership?.club_handicap ?? null
+        const currency  = clubData?.currency ?? 'KRW'
+        const sym       = CURRENCY_SYMBOL[currency] ?? '₩'
+        if (perStroke && handicap !== null) {
+          const allowed = selectedRound.course_par + handicap
+          if (total > allowed) {
+            const over = total - allowed
+            const fine = maxFine !== null ? Math.min(over * perStroke, maxFine) : over * perStroke
+            await supabase.from('finance_transactions').insert({
+              club_id: currentClubId, type: 'fine', amount: fine, currency,
+              description: ko ? `핸디오버 벌금 (+${over}타)` : `Handicap-over fine (+${over} strokes)`,
+              transaction_date: selectedRound.played_at, recorded_by: user.id, member_id: user.id,
+            })
+            setFineToast(ko ? `벌금 ${sym}${fine.toLocaleString()} 자동 부과 (+${over}타)` : `Fine ${sym}${fine.toLocaleString()} (+${over} strokes)`)
+          } else {
+            setFineToast(ko ? '핸디오버 없음 ✓' : 'No fine ✓')
+          }
+          setTimeout(() => setFineToast(null), 3000)
+        }
+      }
+    } catch { /* ignore */ }
   }
 
-  // ── delete round ──────────────────────────────────────────────────────
+  // ── 코스명(서브코스) 수정 ────────────────────────────────────────────────
+  function openEditName() {
+    setEditNameValue(selectedRound?.course_name ?? '')
+    setEditSubCourse('')
+    setEditCustomSub('')
+    setEditingName(true)
+  }
+
+  async function saveCourseName() {
+    if (!selectedRound) return
+    // 서브코스 조합이 선택된 경우 조합 라벨을 이름에 반영
+    let finalName = editNameValue.trim()
+    if (editSubCourse) {
+      // 기존 괄호 부분 제거 후 새 조합 추가
+      const baseName = finalName.replace(/\s*\(.*\)\s*$/, '').trim()
+      const subLabel = editSubCourse === CUSTOM_KEY
+        ? editCustomSub.trim()
+        : (editSubCombos.find(c => c.key === editSubCourse)?.label ?? editSubCourse)
+      finalName = subLabel ? `${baseName} (${subLabel})` : baseName
+    }
+    if (!finalName) return
+    setEditNameSaving(true)
+    const supabase = createClient()
+    const { data } = await supabase.from('personal_rounds')
+      .update({ course_name: finalName })
+      .eq('id', selectedRound.id)
+      .select().single()
+    if (data) {
+      setSelectedRound(data)
+      setRounds(prev => prev.map(r => r.id === data.id ? data : r))
+    }
+    setEditNameSaving(false)
+    setEditingName(false)
+  }
+
+  // 현재 라운드의 원본 코스 찾기 (서브코스 조합 피커용)
+  const editBaseCourse = useMemo(() => {
+    if (!selectedRound) return null
+    // course_name에서 괄호 이전 부분으로 매칭
+    const baseName = selectedRound.course_name?.replace(/\s*\(.*\)\s*$/, '').trim() ?? ''
+    return courses.find(c => c.name === baseName || c.name === selectedRound.course_name) ?? null
+  }, [selectedRound, courses])
+
+  const editSubCombos = useMemo(() => {
+    if (!editBaseCourse) return []
+    return getSubCourseCombos(editBaseCourse.holes, selectedRound?.total_holes ?? 18, editBaseCourse.sub_courses)
+  }, [editBaseCourse, selectedRound])
+
   async function deleteRound(roundId: string) {
     if (!confirm(ko ? '이 라운드를 삭제하시겠습니까?' : 'Delete this round?')) return
-    const supabase = createClient()
-    await supabase.from('personal_rounds').delete().eq('id', roundId)
-    if (view === 'card') { setView('list'); setSelectedRound(null) }
+    await createClient().from('personal_rounds').delete().eq('id', roundId)
+    if (view === 'card') { setView('list'); setSelectedRound(null); setLocalHoles({}) }
     loadRounds()
   }
 
@@ -236,463 +408,1173 @@ export default function ScorecardPage() {
   const totalHoles = selectedRound?.total_holes ?? 18
   const outHoles   = Array.from({ length: 9 }, (_, i) => i + 1)
   const inHoles    = totalHoles === 18 ? Array.from({ length: 9 }, (_, i) => i + 10) : []
-
-  function holeData(n: number) {
-    return localHoles[n] ?? { score: null, par: 4, putts: null }
-  }
-  function sumScores(hs: number[]) {
-    return hs.reduce((s, h) => s + (localHoles[h]?.score ?? 0), 0)
-  }
-  function sumPars(hs: number[]) {
-    return hs.reduce((s, h) => s + (localHoles[h]?.par ?? 4), 0)
-  }
-  const outScore  = sumScores(outHoles)
-  const inScore   = sumScores(inHoles)
-  const total     = outScore + inScore
-  const outPar    = sumPars(outHoles)
-  const inPar     = sumPars(inHoles)
-  const totalPar  = outPar + inPar
-  const filledOut = outHoles.filter(h => localHoles[h]?.score !== null).length
-  const filledIn  = inHoles.filter(h => localHoles[h]?.score !== null).length
-  const filled    = filledOut + filledIn
-
+  const holeData   = (n: number) => localHoles[n] ?? { score: null, par: 4, putts: null, yardage: null }
+  const sumScores  = (hs: number[]) => hs.reduce((s, h) => s + (localHoles[h]?.score ?? 0), 0)
+  const sumPars    = (hs: number[]) => hs.reduce((s, h) => s + (localHoles[h]?.par ?? 4), 0)
+  const outScore = sumScores(outHoles), inScore = sumScores(inHoles), total = outScore + inScore
+  const outPar   = sumPars(outHoles),   inPar   = sumPars(inHoles),   totalPar = outPar + inPar
+  const filledCount = Object.values(localHoles).filter(h => h.score !== null).length
   const stats = calcStats(rounds)
 
-  // ─────────────────────────────────────────────────────────────────────
+  // ── CARD VIEW ─────────────────────────────────────────────────────────
   if (view === 'card' && selectedRound) return (
-    <ScorecardView
-      round={selectedRound} localHoles={localHoles} setLocalHoles={setLocalHoles}
-      editHole={editHole} setEditHole={setEditHole}
-      outHoles={outHoles} inHoles={inHoles} totalHoles={totalHoles}
-      holeData={holeData} sumScores={sumScores} sumPars={sumPars}
-      outScore={outScore} inScore={inScore} total={total}
-      outPar={outPar} inPar={inPar} totalPar={totalPar}
-      filled={filled} saving={saving}
-      ko={ko} lang={lang}
-      onBack={() => { setView('list'); setSelectedRound(null); setLocalHoles({}) }}
-      onSave={saveCard}
-      onDelete={() => deleteRound(selectedRound.id)}
-      showParEdit={showParEdit} setShowParEdit={setShowParEdit}
-    />
-  )
+    <div className="min-h-screen pb-28" style={{ background: 'var(--bg)' }}>
 
-  // ── LIST VIEW ─────────────────────────────────────────────────────────
-  return (
-    <div className="px-4 py-5 pb-28 min-h-screen">
-      {/* Header */}
-      <div className="flex items-center gap-2 mb-5">
-        <button onClick={() => router.back()} className="text-gray-400 p-1"><ChevronLeft size={22} /></button>
-        <Flag size={18} className="text-green-400" />
-        <h1 className="text-base font-bold text-white flex-1">{ko ? '개인 스코어카드' : 'My Scorecard'}</h1>
-        <button
-          onClick={() => { loadCourses(); setShowNew(true) }}
-          className="flex items-center gap-1.5 bg-green-700 hover:bg-green-600 text-white text-xs font-semibold px-3 py-2 rounded-xl transition"
-        >
-          <Plus size={14} />{ko ? '새 라운드' : 'New Round'}
+      {/* ══════ 가로모드 전체화면 오버레이 (Portal → body에 직접 마운트) ══════ */}
+      {isLandscape && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[9999] flex flex-col"
+          style={{ background: 'linear-gradient(180deg,#071507 0%,#0c1a0c 100%)' }}>
+          {/* 가로 헤더 */}
+          <div className="flex items-center gap-3 px-4 py-2 flex-shrink-0"
+            style={{ borderBottom: '1px solid rgba(74,222,128,0.18)', background: 'rgba(7,21,7,0.98)' }}>
+            <button onClick={() => { setView('list'); setSelectedRound(null); setLocalHoles({}) }}
+              className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+              style={{ background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.2)' }}>
+              <ChevronLeft size={16} style={{ color: '#4ade80' }} />
+            </button>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-black truncate" style={{ color: '#f0fdf4' }}>{selectedRound.course_name}</p>
+              <p className="text-[10px]" style={{ color: '#4ade80' }}>
+                {selectedRound.played_at} · Par {selectedRound.course_par} · {totalHoles}H
+              </p>
+            </div>
+            {/* 총점 */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {filledCount > 0 && (() => {
+                const diff = (outScore + inScore) - totalPar
+                const col = diff < 0 ? '#4ade80' : diff === 0 ? '#fcd34d' : '#fca5a5'
+                return (
+                  <div className="text-right">
+                    <p className="text-xl font-black leading-none" style={{ color: '#f0fdf4' }}>{outScore + inScore || '—'}</p>
+                    <p className="text-[10px] font-bold" style={{ color: col }}>
+                      {diff > 0 ? '+' : ''}{diff || 'E'}
+                    </p>
+                  </div>
+                )
+              })()}
+              <button onClick={saveCard} disabled={saving}
+                className="h-8 px-3 rounded-lg text-xs font-black flex items-center gap-1.5 transition disabled:opacity-40"
+                style={{ background: 'linear-gradient(135deg,#16a34a,#14532d)', color: '#fff' }}>
+                {saving
+                  ? <span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                  : <><Save size={12} />{ko ? '저장' : 'Save'}</>
+                }
+              </button>
+            </div>
+          </div>
+
+          {/* 가로 스코어카드 테이블 */}
+          <div className="flex-1 overflow-auto px-2 py-2">
+            <table className="w-full text-xs border-collapse" style={{ minWidth: 700 }}>
+              <thead>
+                <tr>
+                  <th className="text-left px-3 py-2 w-14 font-bold text-[10px] sticky left-0"
+                    style={{ background: 'rgba(7,21,7,0.98)', color: '#4ade80', borderRight: '1px solid rgba(74,222,128,0.15)' }}>
+                    {ko ? '홀' : 'H'}
+                  </th>
+                  {Array.from({ length: totalHoles }, (_, i) => i + 1).map(h => (
+                    <th key={h} className="text-center py-2 font-bold"
+                      style={{ color: '#bbf7d0', minWidth: 42 }}>{h}</th>
+                  ))}
+                  <th className="text-center py-2 px-2 font-black"
+                    style={{ color: '#4ade80', borderLeft: '1px solid rgba(74,222,128,0.15)', minWidth: 44 }}>
+                    {ko ? '합' : 'TOT'}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {/* 야드 행 */}
+                {Array.from({ length: totalHoles }, (_, i) => i + 1).some(h => localHoles[h]?.yardage) && (
+                  <tr style={{ background: 'rgba(255,255,255,0.02)' }}>
+                    <td className="px-3 py-1.5 font-bold text-[10px] sticky left-0"
+                      style={{ background: 'rgba(7,21,7,0.98)', color: '#4ade80', borderRight: '1px solid rgba(74,222,128,0.12)' }}>
+                      {ko ? '야드' : 'Yds'}
+                    </td>
+                    {Array.from({ length: totalHoles }, (_, i) => i + 1).map(h => (
+                      <td key={h} className="text-center py-1.5 text-[10px]" style={{ color: '#6b9a6b' }}>
+                        {localHoles[h]?.yardage ?? ''}
+                      </td>
+                    ))}
+                    <td />
+                  </tr>
+                )}
+                {/* 파 행 */}
+                <tr style={{ background: 'rgba(74,222,128,0.04)' }}>
+                  <td className="px-3 py-1.5 font-bold text-[10px] sticky left-0"
+                    style={{ background: 'rgba(7,21,7,0.98)', color: '#4ade80', borderRight: '1px solid rgba(74,222,128,0.12)' }}>
+                    Par
+                  </td>
+                  {Array.from({ length: totalHoles }, (_, i) => i + 1).map(h => (
+                    <td key={h} className="text-center py-1.5 font-bold text-[11px]"
+                      style={{ color: '#bbf7d0' }}>
+                      {holeData(h).par}
+                    </td>
+                  ))}
+                  <td className="text-center py-1.5 font-black text-[11px]"
+                    style={{ color: '#4ade80', borderLeft: '1px solid rgba(74,222,128,0.12)' }}>
+                    {totalPar}
+                  </td>
+                </tr>
+                {/* 스코어 행 */}
+                <tr>
+                  <td className="px-3 py-1.5 font-bold text-[10px] sticky left-0"
+                    style={{ background: 'rgba(7,21,7,0.98)', color: '#4ade80', borderRight: '1px solid rgba(74,222,128,0.12)' }}>
+                    {ko ? '타수' : 'Score'}
+                  </td>
+                  {Array.from({ length: totalHoles }, (_, i) => i + 1).map(h => {
+                    const hd = holeData(h)
+                    const si = scoreInfo(hd.score, hd.par)
+                    return (
+                      <td key={h} className="text-center py-1" onClick={() => setEditHole(h)}>
+                        <div className="inline-flex items-center justify-center mx-auto cursor-pointer active:scale-90 transition-transform"
+                          style={{
+                            width: 36, height: 36,
+                            background: si.bg,
+                            color: si.text,
+                            fontWeight: 900,
+                            fontSize: 13,
+                            borderRadius: si.shape === 'circle' ? '50%' : si.shape === 'double-square' ? 6 : 8,
+                            border: `2px solid ${si.border}`,
+                            boxShadow: si.shape === 'circle' ? `0 0 8px ${si.border}60` : 'none',
+                            outline: si.shape === 'double-square' ? `2px solid ${si.border}` : 'none',
+                            outlineOffset: 2,
+                          }}>
+                          {hd.score ?? '·'}
+                        </div>
+                      </td>
+                    )
+                  })}
+                  <td className="text-center py-1.5 font-black text-base"
+                    style={{
+                      color: (() => { const d = (outScore+inScore)-totalPar; return d < 0 ? '#4ade80' : d === 0 ? '#fcd34d' : '#fca5a5' })(),
+                      borderLeft: '1px solid rgba(74,222,128,0.12)',
+                    }}>
+                    {filledCount > 0 ? (outScore + inScore) : '—'}
+                  </td>
+                </tr>
+                {/* 퍼트 행 */}
+                {Array.from({ length: totalHoles }, (_, i) => i + 1).some(h => localHoles[h]?.putts !== null) && (
+                  <tr style={{ background: 'rgba(96,165,250,0.05)' }}>
+                    <td className="px-3 py-1.5 font-bold text-[10px] sticky left-0"
+                      style={{ background: 'rgba(7,21,7,0.98)', color: '#60a5fa', borderRight: '1px solid rgba(74,222,128,0.12)' }}>
+                      {ko ? '퍼트' : 'Putts'}
+                    </td>
+                    {Array.from({ length: totalHoles }, (_, i) => i + 1).map(h => (
+                      <td key={h} className="text-center py-1.5 font-bold text-[11px]"
+                        style={{ color: localHoles[h]?.putts != null ? '#93c5fd' : '#2a3a4a' }}>
+                        {localHoles[h]?.putts ?? '·'}
+                      </td>
+                    ))}
+                    <td className="text-center py-1.5 font-black text-[11px]"
+                      style={{ color: '#60a5fa', borderLeft: '1px solid rgba(74,222,128,0.12)' }}>
+                      {Object.values(localHoles).reduce((s, h) => s + (h.putts ?? 0), 0) || '—'}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* 범례 */}
+          <div className="flex gap-1.5 justify-center px-3 pb-2 flex-shrink-0">
+            {[
+              { label: ko ? '이글+' : 'Eagle+', bg: '#3730a3', text: '#fde68a' },
+              { label: ko ? '버디'  : 'Birdie', bg: '#1d4ed8', text: '#fff' },
+              { label: ko ? '파'    : 'Par',    bg: '#15803d', text: '#fff' },
+              { label: ko ? '보기'  : 'Bogey',  bg: '#a16207', text: '#fff' },
+              { label: ko ? '더블'  : 'Double', bg: '#c2410c', text: '#fff' },
+              { label: ko ? '트리플+' : 'Tri+', bg: '#991b1b', text: '#fff' },
+            ].map(({ label, bg, text }) => (
+              <span key={label} className="text-[9px] px-2 py-0.5 rounded-full font-bold"
+                style={{ background: bg, color: text }}>{label}</span>
+            ))}
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* 세로모드 헤더 */}
+      <div className="sticky top-0 z-10 px-4 pt-5 pb-3 flex items-center gap-2"
+        style={{ background: 'rgba(7,15,7,0.97)', backdropFilter: 'blur(16px)', borderBottom: '1px solid rgba(74,222,128,0.15)' }}>
+        <button onClick={() => { setView('list'); setSelectedRound(null); setLocalHoles({}) }}
+          className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+          style={{ background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.2)' }}>
+          <ChevronLeft size={18} style={{ color: '#4ade80' }} />
+        </button>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <p className="text-sm font-black truncate leading-tight" style={{ color: '#f0fdf4' }}>{selectedRound.course_name}</p>
+            <button onClick={openEditName}
+              className="flex-shrink-0 w-6 h-6 rounded-lg flex items-center justify-center transition"
+              style={{ background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.2)' }}
+              title={ko ? '코스명 수정' : 'Edit course name'}>
+              <Pencil size={11} style={{ color: '#4ade80' }} />
+            </button>
+          </div>
+          <p className="text-[11px] font-semibold" style={{ color: '#4ade80' }}>
+            {selectedRound.played_at} · Par {selectedRound.course_par} · {totalHoles}H
+          </p>
+        </div>
+        {/* 진행도 */}
+        <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
+          <span className="text-xs font-bold" style={{ color: filledCount === totalHoles ? '#4ade80' : '#bbf7d0' }}>
+            {filledCount}/{totalHoles}
+          </span>
+          <div className="w-16 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(74,222,128,0.15)' }}>
+            <div className="h-full rounded-full transition-all duration-300"
+              style={{ width: `${(filledCount/totalHoles)*100}%`, background: 'linear-gradient(90deg,#16a34a,#4ade80)' }} />
+          </div>
+        </div>
+        <button onClick={() => deleteRound(selectedRound.id)}
+          className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+          style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.2)', color: '#fca5a5' }}>
+          <Trash2 size={15} />
         </button>
       </div>
 
-      {/* Stats strip */}
-      {stats && (
-        <div className="glass-card rounded-2xl p-4 mb-4">
-          <p className="text-xs text-green-400 font-semibold mb-3 flex items-center gap-1.5">
-            <BarChart2 size={13} />{ko ? '내 통계' : 'My Stats'}
-          </p>
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <div><p className="text-xs text-gray-500">{ko ? '라운드' : 'Rounds'}</p><p className="text-lg font-bold text-white">{stats.count}</p></div>
-            <div><p className="text-xs text-gray-500">{ko ? '최저' : 'Best'}</p><p className="text-lg font-bold text-green-300">{stats.best}</p></div>
-            <div><p className="text-xs text-gray-500">{ko ? '평균' : 'Avg'}</p><p className="text-lg font-bold text-yellow-300">{stats.avg}</p></div>
-          </div>
-        </div>
-      )}
+      <div className="px-4 pt-4 space-y-3">
+        {/* ── 스코어카드 테이블 OUT ── */}
+        <ScoreTable
+          holes={outHoles} label="OUT" localHoles={localHoles}
+          holeData={holeData} sumScores={sumScores} sumPars={sumPars}
+          onTapHole={setEditHole} ko={ko} />
+        {/* ── 스코어카드 테이블 IN ── */}
+        {inHoles.length > 0 && (
+          <ScoreTable
+            holes={inHoles} label="IN" localHoles={localHoles}
+            holeData={holeData} sumScores={sumScores} sumPars={sumPars}
+            onTapHole={setEditHole} ko={ko} />
+        )}
 
-      {/* Round list */}
-      {loading ? (
-        <p className="text-center text-gray-500 py-12">{ko ? '로딩 중...' : 'Loading...'}</p>
-      ) : rounds.length === 0 ? (
-        <div className="flex flex-col items-center gap-4 py-16 text-center">
-          <Flag size={40} className="text-gray-700" />
-          <p className="text-gray-500 text-sm">{ko ? '라운드 기록이 없습니다.\n첫 라운드를 추가해보세요!' : 'No rounds yet.\nAdd your first round!'}</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {rounds.map(r => {
-            const diff = r.total_score ? r.total_score - r.course_par : null
-            return (
-              <button key={r.id} onClick={() => openRound(r)}
-                className="glass-card rounded-xl px-4 py-3.5 flex items-center gap-3 w-full text-left active:scale-[0.98] transition-transform">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-sm font-semibold text-white truncate">{r.course_name}</p>
-                    <span className="text-xs text-gray-500">{r.total_holes}H</span>
-                  </div>
-                  <div className="flex items-center gap-3 mt-0.5">
-                    <span className="text-xs text-gray-400 flex items-center gap-1">
-                      <Calendar size={11} />{r.played_at}
-                    </span>
-                    {r.total_score ? (
-                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${diff! <= 0 ? 'bg-green-900/60 text-green-300' : diff! <= 5 ? 'bg-yellow-900/60 text-yellow-300' : 'bg-red-900/40 text-red-300'}`}>
-                        {r.total_score}타 {diff! >= 0 ? '+' : ''}{diff}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-gray-600">{ko ? '미완성' : 'In progress'}</span>
-                    )}
-                  </div>
+        {/* ── 합계 카드 ── */}
+        <div className="rounded-2xl overflow-hidden"
+          style={{ background: 'linear-gradient(135deg,rgba(74,222,128,0.08),rgba(7,15,7,0.98))', border: '1px solid rgba(74,222,128,0.25)' }}>
+          <div className="px-4 py-4">
+            {/* OUT/IN 소계 */}
+            {inHoles.length > 0 && (
+              <div className="flex gap-6 mb-3 pb-3" style={{ borderBottom: '1px solid rgba(74,222,128,0.12)' }}>
+                <div>
+                  <p className="text-[10px] font-bold mb-0.5" style={{ color: '#4ade80' }}>OUT</p>
+                  <p className="text-lg font-black" style={{ color: '#f0fdf4' }}>{sumScores(outHoles) || '—'}</p>
+                  <p className="text-[10px] font-semibold" style={{ color: '#6b9a6b' }}>Par {outPar}</p>
                 </div>
-                <ChevronRight size={16} className="text-gray-600 flex-shrink-0" />
-              </button>
-            )
-          })}
-        </div>
-      )}
-
-      {/* ── New Round Sheet ── */}
-      {showNew && (
-        <div className="fixed inset-0 z-[200]" onClick={() => setShowNew(false)}>
-          <div className="absolute inset-0 bg-black/70" />
-          <div className="absolute bottom-0 left-0 right-0 bg-gray-900 rounded-t-2xl flex flex-col" style={{ maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
-            <div className="flex justify-center pt-3 pb-1 flex-shrink-0"><div className="w-10 h-1 bg-gray-700 rounded-full" /></div>
-            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-800 flex-shrink-0">
-              <h3 className="text-base font-bold text-white">{ko ? '새 라운드 추가' : 'New Round'}</h3>
-              <button onClick={() => { setShowNew(false); resetNewForm() }} className="text-gray-400"><X size={18} /></button>
-            </div>
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-              {/* 날짜 */}
-              <div>
-                <label className="text-xs text-gray-400 block mb-1.5"><Calendar size={11} className="inline mr-1" />{ko ? '라운드 날짜' : 'Date Played'}</label>
-                <input type="date" value={newForm.playedAt} onChange={e => setNewForm(f => ({ ...f, playedAt: e.target.value }))}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm" />
-              </div>
-
-              {/* 홀 수 */}
-              <div>
-                <label className="text-xs text-gray-400 block mb-1.5">{ko ? '홀 수' : 'Holes'}</label>
-                <div className="flex gap-2">
-                  {[18, 9].map(h => (
-                    <button key={h} onClick={() => { setNewForm(f => ({ ...f, holes: h })); setPars(computePars(newForm.coursePar, h)) }}
-                      className={`flex-1 py-3 rounded-xl text-sm font-bold transition ${newForm.holes === h ? 'bg-green-700 text-white' : 'bg-gray-800 text-gray-400'}`}>
-                      {h}{ko ? '홀' : ' Holes'}
-                    </button>
-                  ))}
+                <div>
+                  <p className="text-[10px] font-bold mb-0.5" style={{ color: '#4ade80' }}>IN</p>
+                  <p className="text-lg font-black" style={{ color: '#f0fdf4' }}>{sumScores(inHoles) || '—'}</p>
+                  <p className="text-[10px] font-semibold" style={{ color: '#6b9a6b' }}>Par {inPar}</p>
+                </div>
+                {/* 퍼트 합계 */}
+                <div className="ml-auto text-right">
+                  <p className="text-[10px] font-bold mb-0.5" style={{ color: '#60a5fa' }}>{ko ? '총 퍼트' : 'Putts'}</p>
+                  <p className="text-lg font-black" style={{ color: '#93c5fd' }}>
+                    {Object.values(localHoles).reduce((s, h) => s + (h.putts ?? 0), 0) || '—'}
+                  </p>
                 </div>
               </div>
-
-              {/* 골프장 자동완성 검색 */}
+            )}
+            {/* 총점 */}
+            <div className="flex items-end justify-between">
               <div>
-                <label className="text-xs text-gray-400 block mb-1.5">
-                  <MapPin size={11} className="inline mr-1" />{ko ? '골프장' : 'Golf Course'}
-                </label>
-                <CourseSearchInput
-                  value={newForm.courseName}
-                  onChange={v => setNewForm(f => ({ ...f, courseName: v, courseId: '' }))}
-                  onSelect={c => {
-                    setNewForm(f => ({ ...f, courseName: c.name, courseId: c.id, coursePar: c.par ?? 72 }))
-                    setPars(computePars(c.par ?? 72, newForm.holes))
-                  }}
-                  placeholder={ko ? '골프장명 입력하면 자동검색...' : 'Type to search courses...'}
-                  useFixed
-                />
-                {newForm.courseName && (
-                  <div className="mt-1.5 flex items-center gap-2 rounded-xl px-3 py-2"
-                    style={{ background: 'rgba(22,163,74,0.12)', border: '1px solid rgba(34,197,94,0.2)' }}>
-                    <MapPin size={12} className="text-green-400 flex-shrink-0" />
-                    <p className="text-sm text-green-300 flex-1 truncate">{newForm.courseName}</p>
-                    <span className="text-xs" style={{ color: '#5a7a5a' }}>Par {newForm.coursePar}</span>
-                    <button onClick={() => setNewForm(f => ({ ...f, courseName: '', courseId: '' }))} style={{ color: '#5a7a5a' }}>
-                      <X size={14} />
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* 코스 파 */}
-              <div>
-                <label className="text-xs text-gray-400 block mb-1.5">{ko ? `코스 파 (${newForm.holes === 9 ? '9홀' : '18홀'})` : `Course Par (${newForm.holes} holes)`}</label>
-                <div className="flex items-center gap-3">
-                  <button onClick={() => { const p = Math.max(60, newForm.coursePar - 1); setNewForm(f => ({ ...f, coursePar: p })); setPars(computePars(p, newForm.holes)) }}
-                    className="w-10 h-10 rounded-xl bg-gray-800 text-white font-bold hover:bg-gray-700">−</button>
-                  <span className="flex-1 text-center text-xl font-bold text-white">{newForm.coursePar}</span>
-                  <button onClick={() => { const p = Math.min(80, newForm.coursePar + 1); setNewForm(f => ({ ...f, coursePar: p })); setPars(computePars(p, newForm.holes)) }}
-                    className="w-10 h-10 rounded-xl bg-gray-800 text-white font-bold hover:bg-gray-700">+</button>
-                </div>
-              </div>
-
-              {/* 메모 */}
-              <div>
-                <label className="text-xs text-gray-400 block mb-1.5">{ko ? '메모 (선택)' : 'Notes (optional)'}</label>
-                <input value={newForm.notes} onChange={e => setNewForm(f => ({ ...f, notes: e.target.value }))}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm"
-                  placeholder={ko ? '동반자, 날씨 등...' : 'Playing partners, weather...'}  />
-              </div>
-            </div>
-            {/* sticky footer */}
-            <div className="flex-shrink-0 px-5 py-4 border-t border-gray-800 flex gap-3">
-              <button onClick={() => { setShowNew(false); resetNewForm() }} className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 text-sm font-medium">{ko ? '취소' : 'Cancel'}</button>
-              <button onClick={createRound} disabled={creating || !newForm.courseName}
-                className="flex-1 py-3 rounded-xl bg-green-700 disabled:opacity-40 text-white font-bold text-sm">
-                {creating ? '...' : (ko ? '시작하기' : 'Start')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── Scorecard View Component ──────────────────────────────────────────────
-function ScorecardView({
-  round, localHoles, setLocalHoles,
-  editHole, setEditHole,
-  outHoles, inHoles, totalHoles,
-  holeData, sumScores, sumPars,
-  outScore, inScore, total, outPar, inPar, totalPar,
-  filled, saving, ko, lang,
-  onBack, onSave, onDelete,
-  showParEdit, setShowParEdit,
-}: any) {
-
-  const diff = filled === totalHoles ? total - totalPar : null
-
-  function ScoreTable({ holes, label }: { holes: number[]; label: string }) {
-    const sTotal = sumScores(holes)
-    const pTotal = sumPars(holes)
-    const filledHoles = holes.filter(h => localHoles[h]?.score !== null).length
-    return (
-      <div className="overflow-x-auto rounded-xl border border-gray-800">
-        <table className="min-w-max w-full text-xs border-collapse">
-          <thead>
-            <tr className="bg-gray-800/80">
-              <th className="sticky left-0 bg-gray-800 px-2 py-2 text-gray-400 font-semibold text-left w-12 border-r border-gray-700">
-                {ko ? '홀' : 'Hole'}
-              </th>
-              {holes.map(h => (
-                <th key={h} className="px-1.5 py-2 text-gray-400 font-semibold text-center w-9">{h}</th>
-              ))}
-              <th className="px-2 py-2 text-green-400 font-bold text-center w-12 border-l border-gray-700">{label}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {/* Par row */}
-            <tr className="bg-gray-900/60">
-              <td className="sticky left-0 bg-gray-900 px-2 py-2 text-gray-400 font-semibold border-r border-gray-700 text-left">
-                {ko ? '파' : 'Par'}
-              </td>
-              {holes.map(h => {
-                const { par } = holeData(h)
-                return (
-                  <td key={h} className="px-1.5 py-2 text-center text-gray-300 font-medium"
-                    onClick={() => showParEdit && setEditHole(-h)}> {/* negative = par edit */}
-                    {par}
-                  </td>
-                )
-              })}
-              <td className="px-2 py-2 text-center text-green-400 font-bold border-l border-gray-700">{pTotal}</td>
-            </tr>
-            {/* Score row */}
-            <tr>
-              <td className="sticky left-0 bg-gray-950 px-2 py-2 text-gray-400 font-semibold border-r border-gray-700 text-left">
-                {ko ? '타수' : 'Score'}
-              </td>
-              {holes.map(h => {
-                const { score, par } = holeData(h)
-                return (
-                  <td key={h} className="px-1 py-1.5 text-center" onClick={() => setEditHole(h)}>
-                    <span className={`inline-flex items-center justify-center w-8 h-8 rounded-lg text-xs font-bold cursor-pointer transition active:scale-95 ${scoreColor(score, par)}`}>
-                      {score ?? '—'}
-                    </span>
-                  </td>
-                )
-              })}
-              <td className="px-2 py-2 text-center border-l border-gray-700">
-                {filledHoles === holes.length ? (
-                  <span className={`text-sm font-bold ${sTotal - pTotal > 0 ? 'text-red-300' : sTotal - pTotal < 0 ? 'text-green-300' : 'text-yellow-300'}`}>
-                    {sTotal}
-                  </span>
-                ) : (
-                  <span className="text-gray-600 text-xs">{filledHoles}/{holes.length}</span>
-                )}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    )
-  }
-
-  return (
-    <div className="min-h-screen pb-28">
-      {/* Header */}
-      <div className="flex items-center gap-2 px-4 pt-5 pb-3">
-        <button onClick={onBack} className="text-gray-400 p-1"><ChevronLeft size={22} /></button>
-        <div className="flex-1 min-w-0">
-          <p className="text-base font-bold text-white truncate">{round.course_name}</p>
-          <p className="text-xs text-gray-400">{round.played_at} · Par {round.course_par} · {round.total_holes}H</p>
-        </div>
-        <button onClick={onDelete} className="text-gray-600 hover:text-red-400 p-1 transition"><Trash2 size={16} /></button>
-      </div>
-
-      <div className="px-4 space-y-4">
-        {/* OUT (1-9) */}
-        <ScoreTable holes={outHoles} label="OUT" />
-
-        {/* IN (10-18) */}
-        {inHoles.length > 0 && <ScoreTable holes={inHoles} label="IN" />}
-
-        {/* Totals */}
-        <div className={`rounded-2xl p-4 ${diff !== null ? 'bg-gradient-to-r from-green-900/30 to-blue-900/20 border border-green-800/40' : 'glass-card'}`}>
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              {inHoles.length > 0 && (
-                <div className="flex gap-4 text-xs text-gray-400">
-                  <span>OUT <span className="text-white font-semibold">{outScore || '—'}</span></span>
-                  <span>IN <span className="text-white font-semibold">{inScore || '—'}</span></span>
-                </div>
-              )}
-              <div className="flex items-center gap-3">
-                <p className="text-2xl font-black text-white">{filled === totalHoles ? total : `${filled}/${totalHoles}`}</p>
-                {diff !== null && (
-                  <span className={`text-lg font-bold ${diff > 0 ? 'text-red-300' : diff < 0 ? 'text-green-300' : 'text-yellow-300'}`}>
-                    {diff > 0 ? '+' : ''}{diff}
-                  </span>
-                )}
-              </div>
-              {diff !== null && (
-                <p className="text-xs text-gray-400">
-                  {ko ? scoreLabel(total, totalPar, ko) : scoreLabel(total, totalPar, ko)}
+                <p className="text-[10px] font-semibold mb-1" style={{ color: '#5a7a5a' }}>
+                  {ko ? '총 스코어' : 'Total Score'}
                 </p>
-              )}
-            </div>
-            <div className="text-right text-xs text-gray-500 space-y-0.5">
-              <p>Par {totalPar}</p>
-              <p>{filled}/{totalHoles} {ko ? '홀 완료' : 'holes done'}</p>
+                <div className="flex items-baseline gap-3">
+                  <span className="text-5xl font-black text-white leading-none">
+                    {filledCount === totalHoles ? total : `${filledCount}/${totalHoles}`}
+                  </span>
+                  {filledCount === totalHoles && (() => {
+                    const diff = total - totalPar
+                    const col = diff > 0 ? '#fca5a5' : diff < 0 ? '#86efac' : '#fde68a'
+                    return (
+                      <div>
+                        <span className="text-2xl font-black" style={{ color: col }}>
+                          {diff > 0 ? '+' : ''}{diff}
+                        </span>
+                        <p className="text-xs font-semibold mt-0.5" style={{ color: col }}>
+                          {(() => {
+                            if (diff <= -2) return ko ? '이글이하' : 'Eagle+'
+                            if (diff === -1) return ko ? '버디' : 'Birdie'
+                            if (diff === 0)  return ko ? '파' : 'Par'
+                            if (diff <= 5)   return ko ? `+${diff}` : `+${diff}`
+                            return ko ? `+${diff} 오버` : `+${diff} Over`
+                          })()}
+                        </p>
+                      </div>
+                    )
+                  })()}
+                </div>
+              </div>
+              <div className="text-right text-xs space-y-0.5" style={{ color: '#3a5a3a' }}>
+                <p>Par {totalPar}</p>
+                <p>{totalHoles}H</p>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Legend */}
-        <div className="flex flex-wrap gap-1.5 justify-center">
+        {/* ── 스코어 범례 ── */}
+        <div className="flex flex-wrap gap-1.5 justify-center px-2">
           {[
-            { label: ko ? '이글+' : 'Eagle+', cls: 'bg-indigo-700 text-yellow-200' },
-            { label: ko ? '버디'  : 'Birdie', cls: 'bg-blue-600 text-white' },
-            { label: ko ? '파'    : 'Par',    cls: 'bg-green-700 text-white' },
-            { label: ko ? '보기'  : 'Bogey',  cls: 'bg-yellow-600 text-white' },
-            { label: ko ? '더블'  : 'Double', cls: 'bg-orange-600 text-white' },
-            { label: ko ? '트리플+' : 'Triple+', cls: 'bg-red-700 text-white' },
-          ].map(({ label, cls }) => (
-            <span key={label} className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${cls}`}>{label}</span>
+            { label: ko ? '이글+' : 'Eagle+', bg: '#3730a3', text: '#fde68a' },
+            { label: ko ? '버디'  : 'Birdie', bg: '#1d4ed8', text: '#fff' },
+            { label: ko ? '파'    : 'Par',    bg: '#15803d', text: '#fff' },
+            { label: ko ? '보기'  : 'Bogey',  bg: '#a16207', text: '#fff' },
+            { label: ko ? '더블'  : 'Double', bg: '#c2410c', text: '#fff' },
+            { label: ko ? '트리플+' : 'Tri+', bg: '#991b1b', text: '#fff' },
+          ].map(({ label, bg, text }) => (
+            <span key={label} className="text-[10px] px-2.5 py-1 rounded-full font-bold"
+              style={{ background: bg, color: text }}>{label}</span>
           ))}
         </div>
 
-        {/* Save button */}
-        <button onClick={onSave} disabled={saving}
-          className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-green-700 hover:bg-green-600 disabled:opacity-50 text-white font-bold transition">
-          <Save size={16} />
-          {saving ? (ko ? '저장 중...' : 'Saving...') : (ko ? '스코어카드 저장' : 'Save Scorecard')}
+        {/* ── 저장 버튼 ── */}
+        <button onClick={saveCard} disabled={saving}
+          className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-black text-sm disabled:opacity-40 transition-all active:scale-[0.98]"
+          style={{ background: 'linear-gradient(135deg,#16a34a,#14532d)', color: '#fff', boxShadow: '0 4px 20px rgba(22,163,74,0.3)' }}>
+          {saving ? (
+            <>
+              <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+              {ko ? '저장 중...' : 'Saving...'}
+            </>
+          ) : (
+            <><Save size={16} />{ko ? '스코어카드 저장' : 'Save Scorecard'}</>
+          )}
         </button>
       </div>
 
-      {/* Hole edit modal */}
+      {/* ── 홀 입력 모달 ── */}
       {editHole !== null && editHole > 0 && (
         <HoleEditModal
           hole={editHole}
-          data={localHoles[editHole] ?? { score: null, par: 4, putts: null }}
+          totalHoles={totalHoles}
+          data={holeData(editHole)}
           ko={ko}
           onClose={() => setEditHole(null)}
-          onChange={(score: number|null, putts: number|null, par: number) => {
-            setLocalHoles((prev: any) => ({ ...prev, [editHole]: { score, par, putts } }))
+          onNavigate={(n) => setEditHole(n)}
+          onChange={(score, putts, par, yardage) => {
+            setLocalHoles(prev => ({ ...prev, [editHole]: { score, par, putts, yardage } }))
             setEditHole(null)
           }}
         />
       )}
+
+      {/* 벌금 토스트 */}
+      {fineToast && (
+        <div className="fixed bottom-24 inset-x-4 flex justify-center z-[300] pointer-events-none">
+          <div className="px-5 py-3 rounded-2xl text-sm font-bold text-white shadow-xl text-center"
+            style={{ background: 'rgba(22,163,74,0.95)', backdropFilter: 'blur(8px)' }}>
+            {fineToast}
+          </div>
+        </div>
+      )}
+
+      {/* ── 코스명 수정 바텀시트 ── */}
+      {editingName && (
+        <div className="fixed inset-0 z-[250]" onClick={() => setEditingName(false)}>
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+          <div
+            className="absolute bottom-0 left-0 right-0 rounded-t-3xl flex flex-col"
+            style={{ background: '#0c160c', border: '1px solid rgba(34,197,94,0.18)', borderBottom: 'none' }}
+            onClick={e => e.stopPropagation()}>
+
+            {/* 핸들 */}
+            <div className="flex justify-center pt-3 pb-2 flex-shrink-0">
+              <div className="w-10 h-1 rounded-full" style={{ background: 'rgba(34,197,94,0.25)' }} />
+            </div>
+
+            {/* 헤더 */}
+            <div className="flex items-center justify-between px-5 pb-3 flex-shrink-0"
+              style={{ borderBottom: '1px solid rgba(34,197,94,0.1)' }}>
+              <div className="flex items-center gap-2">
+                <Pencil size={14} className="text-green-400" />
+                <h3 className="text-sm font-black text-white">
+                  {ko ? '코스 정보 수정' : 'Edit Course Info'}
+                </h3>
+              </div>
+              <button onClick={() => setEditingName(false)}
+                className="w-8 h-8 rounded-full flex items-center justify-center"
+                style={{ background: 'rgba(255,255,255,0.07)' }}>
+                <X size={14} className="text-gray-400" />
+              </button>
+            </div>
+
+            <div className="px-5 py-4 space-y-4">
+              {/* 현재 코스명 직접 편집 */}
+              <div>
+                <label className="text-[11px] font-bold mb-1.5 block" style={{ color: '#5a7a5a' }}>
+                  {ko ? '코스명 (직접 수정)' : 'Course Name'}
+                </label>
+                <input
+                  value={editNameValue}
+                  onChange={e => setEditNameValue(e.target.value)}
+                  className="w-full rounded-xl px-3.5 py-2.5 text-white text-sm font-semibold"
+                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(34,197,94,0.2)', outline: 'none' }}
+                />
+              </div>
+
+              {/* 서브코스 조합 선택 (해당 코스가 27/36홀인 경우) */}
+              {editSubCombos.length > 0 && (
+                <div>
+                  <label className="text-[11px] font-bold mb-2 block" style={{ color: '#f97316' }}>
+                    {ko ? '서브코스 조합으로 변경' : 'Change sub-course combo'}
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {editSubCombos.map(combo => (
+                      <button key={combo.key}
+                        onClick={() => {
+                          setEditSubCourse(prev => prev === combo.key ? '' : combo.key)
+                          if (combo.key !== CUSTOM_KEY) setEditCustomSub('')
+                        }}
+                        className="px-3 py-2 rounded-xl text-xs font-bold transition"
+                        style={editSubCourse === combo.key
+                          ? combo.key === CUSTOM_KEY
+                            ? { background: 'linear-gradient(135deg,#7c3aed,#4c1d95)', color: '#fff' }
+                            : { background: 'linear-gradient(135deg,#d97706,#92400e)', color: '#fff' }
+                          : combo.key === CUSTOM_KEY
+                            ? { background: 'rgba(139,92,246,0.08)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.25)' }
+                            : { background: 'rgba(251,146,60,0.08)', color: '#fb923c', border: '1px solid rgba(251,146,60,0.25)' }}>
+                        {editSubCourse === combo.key && combo.key !== CUSTOM_KEY && <CheckCircle2 size={11} className="inline mr-1" />}
+                        {combo.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* 직접입력 텍스트란 */}
+                  {editSubCourse === CUSTOM_KEY && (
+                    <input
+                      autoFocus
+                      value={editCustomSub}
+                      onChange={e => setEditCustomSub(e.target.value)}
+                      placeholder={ko ? '예: 솔래+루나' : 'e.g. Sole+Luna'}
+                      className="mt-2 w-full rounded-xl px-3.5 py-2.5 text-white text-sm font-semibold"
+                      style={{ background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.35)', outline: 'none' }}
+                    />
+                  )}
+
+                  {/* 미리보기 */}
+                  {editSubCourse && editSubCourse !== CUSTOM_KEY && (
+                    <p className="text-[11px] mt-1.5 font-semibold" style={{ color: '#22c55e' }}>
+                      → {editNameValue.replace(/\s*\(.*\)\s*$/, '').trim()}
+                      {' '}({editSubCombos.find(c => c.key === editSubCourse)?.label})
+                    </p>
+                  )}
+                  {editSubCourse === CUSTOM_KEY && editCustomSub.trim() && (
+                    <p className="text-[11px] mt-1.5 font-semibold" style={{ color: '#22c55e' }}>
+                      → {editNameValue.replace(/\s*\(.*\)\s*$/, '').trim()} ({editCustomSub.trim()})
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* 저장 버튼 */}
+              <div className="flex gap-3 pt-1 pb-2">
+                <button onClick={() => setEditingName(false)}
+                  className="flex-1 py-3 rounded-xl text-sm font-bold"
+                  style={{ background: 'rgba(255,255,255,0.06)', color: '#6b7280' }}>
+                  {ko ? '취소' : 'Cancel'}
+                </button>
+                <button
+                  onClick={saveCourseName}
+                  disabled={editNameSaving || !editNameValue.trim() ||
+                    (editSubCourse === CUSTOM_KEY && !editCustomSub.trim())}
+                  className="flex-1 py-3 rounded-xl text-sm font-black disabled:opacity-40 transition flex items-center justify-center gap-2"
+                  style={{ background: 'linear-gradient(135deg,#16a34a,#14532d)', color: '#fff' }}>
+                  {editNameSaving
+                    ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />{ko ? '저장 중...' : 'Saving...'}</>
+                    : <><Save size={14} />{ko ? '저장' : 'Save'}</>
+                  }
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+
+  // ─────────────────────────────────────────────────────────────────────
+  // LIST VIEW
+  // ─────────────────────────────────────────────────────────────────────
+  return (
+    <div className="min-h-screen pb-28" style={{ background: '#060d06' }}>
+
+      {/* 헤더 */}
+      <div className="px-4 pt-5 pb-4 flex items-center gap-2">
+        <button onClick={() => router.back()}
+          className="w-9 h-9 rounded-xl flex items-center justify-center"
+          style={{ background: 'rgba(255,255,255,0.06)' }}>
+          <ChevronLeft size={18} className="text-gray-400" />
+        </button>
+        <div className="flex items-center gap-2 flex-1">
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center"
+            style={{ background: 'linear-gradient(135deg,rgba(22,163,74,0.3),rgba(14,53,29,0.5))' }}>
+            <Flag size={14} className="text-green-400" />
+          </div>
+          <h1 className="text-base font-black text-white">{ko ? '개인 스코어카드' : 'My Scorecard'}</h1>
+        </div>
+        <button
+          onClick={() => { loadCourses(); setShowNew(true) }}
+          className="flex items-center gap-1.5 text-xs font-black px-3.5 py-2.5 rounded-xl transition-all active:scale-95"
+          style={{ background: 'linear-gradient(135deg,#16a34a,#14532d)', color: '#fff', boxShadow: '0 2px 12px rgba(22,163,74,0.35)' }}>
+          <Plus size={13} />{ko ? '새 라운드' : 'New Round'}
+        </button>
+      </div>
+
+      <div className="px-4 space-y-3">
+
+        {/* 통계 카드 */}
+        {stats ? (
+          <div className="rounded-2xl p-4"
+            style={{ background: 'linear-gradient(135deg,rgba(22,163,74,0.1),rgba(6,13,6,0.98))', border: '1px solid rgba(34,197,94,0.18)' }}>
+            <p className="text-[10px] font-bold tracking-widest uppercase mb-3 flex items-center gap-1.5" style={{ color: '#22c55e' }}>
+              <BarChart2 size={11} />{ko ? '내 라운드 통계' : 'My Stats'}
+            </p>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              {[
+                { label: ko ? '라운드' : 'Rounds', val: stats.count, color: '#e5e7eb' },
+                { label: ko ? '최저타' : 'Best',   val: stats.best,  color: '#86efac' },
+                { label: ko ? '평균타' : 'Avg',    val: stats.avg,   color: '#fde68a' },
+              ].map(({ label, val, color }) => (
+                <div key={label} className="rounded-xl py-3" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                  <p className="text-[10px] mb-1" style={{ color: '#5a7a5a' }}>{label}</p>
+                  <p className="text-2xl font-black" style={{ color }}>{val}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : !loading && rounds.length === 0 && (
+          <div className="rounded-2xl p-8 text-center"
+            style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(34,197,94,0.08)' }}>
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
+              style={{ background: 'rgba(22,163,74,0.08)' }}>
+              <Flag size={32} className="text-green-900" />
+            </div>
+            <p className="text-sm font-bold text-gray-400">{ko ? '아직 라운드 기록이 없습니다' : 'No rounds yet'}</p>
+            <p className="text-xs mt-1.5" style={{ color: '#3a5a3a' }}>
+              {ko ? '"새 라운드" 버튼으로 첫 라운드를 시작하세요' : 'Tap "New Round" to start'}
+            </p>
+          </div>
+        )}
+
+        {/* 라운드 목록 */}
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <div className="w-7 h-7 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {rounds.map(r => {
+              const diff = r.total_score ? r.total_score - r.course_par : null
+              const diffColor = diff === null ? '#4a6a4a' : diff <= 0 ? '#86efac' : diff <= 5 ? '#fde68a' : '#fca5a5'
+              const bgColor   = diff === null ? 'rgba(107,114,128,0.08)' : diff <= 0 ? 'rgba(22,163,74,0.1)' : diff <= 5 ? 'rgba(234,179,8,0.1)' : 'rgba(239,68,68,0.1)'
+              return (
+                <button key={r.id} onClick={() => openRound(r)}
+                  className="w-full text-left rounded-2xl px-4 py-3.5 flex items-center gap-3 transition-all active:scale-[0.98]"
+                  style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(34,197,94,0.1)' }}>
+                  {/* 스코어 뱃지 */}
+                  <div className="w-12 h-12 rounded-xl flex flex-col items-center justify-center flex-shrink-0"
+                    style={{ background: bgColor }}>
+                    {r.total_score ? (
+                      <>
+                        <span className="text-base font-black" style={{ color: diffColor }}>{r.total_score}</span>
+                        <span className="text-[9px] font-bold" style={{ color: diffColor, opacity: 0.8 }}>
+                          {diff! >= 0 ? '+' : ''}{diff}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-[10px] font-semibold" style={{ color: '#4a6a4a' }}>
+                        {ko ? '진행' : 'WIP'}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-white truncate">{r.course_name}</p>
+                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                      <span className="text-xs flex items-center gap-0.5" style={{ color: '#5a7a5a' }}>
+                        <Calendar size={10} />{r.played_at}
+                      </span>
+                      <span className="text-xs" style={{ color: '#3a5a3a' }}>Par {r.course_par} · {r.total_holes}H</span>
+                    </div>
+                  </div>
+                  <ChevronRight size={15} style={{ color: '#3a5a3a' }} className="flex-shrink-0" />
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════════
+          새 라운드 바텀시트
+      ═══════════════════════════════════════════════════════════════ */}
+      {showNew && (
+        <div className="fixed inset-0 z-[200]" onClick={() => setShowNew(false)}>
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+          <div
+            className="absolute bottom-0 left-0 right-0 rounded-t-3xl flex flex-col"
+            style={{ maxHeight: '93vh', background: '#0c160c', border: '1px solid rgba(34,197,94,0.18)', borderBottom: 'none' }}
+            onClick={e => e.stopPropagation()}>
+            {/* 핸들 */}
+            <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
+              <div className="w-10 h-1 rounded-full" style={{ background: 'rgba(34,197,94,0.25)' }} />
+            </div>
+            {/* 헤더 */}
+            <div className="flex items-center justify-between px-5 py-3 flex-shrink-0"
+              style={{ borderBottom: '1px solid rgba(34,197,94,0.1)' }}>
+              <h3 className="text-base font-black text-white">{ko ? '새 라운드 시작' : 'New Round'}</h3>
+              <button onClick={() => { setShowNew(false); resetNewForm() }}
+                className="w-8 h-8 rounded-full flex items-center justify-center"
+                style={{ background: 'rgba(255,255,255,0.07)' }}>
+                <X size={14} className="text-gray-400" />
+              </button>
+            </div>
+
+            {/* 스크롤 영역 */}
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5 min-h-0">
+
+              {/* 날짜 + 홀 수 */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-bold mb-1.5 block" style={{ color: '#5a7a5a' }}>
+                    <Calendar size={10} className="inline mr-1" />{ko ? '라운드 날짜' : 'Date'}
+                  </label>
+                  <input type="date" value={newForm.playedAt}
+                    onChange={e => setNewForm(f => ({ ...f, playedAt: e.target.value }))}
+                    className="w-full rounded-xl px-3 py-2.5 text-white text-sm"
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(34,197,94,0.15)', colorScheme: 'dark' }} />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold mb-1.5 block" style={{ color: '#5a7a5a' }}>
+                    {ko ? '홀 수' : 'Holes'}
+                  </label>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {[9, 18, 27, 36].map(h => (
+                      <button key={h} onClick={() => {
+                        const p = selectedCourseObj
+                          ? Math.round(selectedCourseObj.par * h / selectedCourseObj.holes)
+                          : h === 9 ? 36 : h === 18 ? 72 : h === 27 ? 108 : 144
+                        setNewForm(f => ({ ...f, holes: h, coursePar: p }))
+                        setSubCourse('')
+                      }}
+                        className="py-2.5 rounded-xl text-sm font-black transition"
+                        style={newForm.holes === h
+                          ? { background: 'linear-gradient(135deg,#16a34a,#14532d)', color: '#fff' }
+                          : { background: 'rgba(255,255,255,0.05)', color: '#5a7a5a', border: '1px solid rgba(34,197,94,0.1)' }}>
+                        {h}H
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* 골프장 선택 */}
+              <div>
+                <label className="text-[11px] font-bold mb-2 block" style={{ color: '#5a7a5a' }}>
+                  {ko ? '골프장' : 'Golf Course'}
+                </label>
+
+                {selectedCourseObj ? (
+                  /* 선택된 코스 */
+                  <div className="rounded-xl p-3 flex items-center gap-3"
+                    style={{ background: 'rgba(22,163,74,0.1)', border: '1px solid rgba(34,197,94,0.25)' }}>
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{ background: 'rgba(22,163,74,0.2)' }}>
+                      <Flag size={14} className="text-green-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white text-sm font-bold truncate">{selectedCourseObj.name}</p>
+                      <p className="text-xs" style={{ color: '#5a7a5a' }}>{selectedCourseObj.province}</p>
+                    </div>
+                    <button onClick={() => { setSelectedCourseObj(null); setNewForm(f => ({ ...f, courseName: '', courseId: '' })); setSubCourse('') }}
+                      className="text-xs px-2.5 py-1.5 rounded-lg transition"
+                      style={{ background: 'rgba(255,255,255,0.07)', color: '#9ca3af' }}>
+                      {ko ? '변경' : 'Change'}
+                    </button>
+                  </div>
+                ) : (
+                  /* 코스 검색 */
+                  <>
+                    {/* 국가 필터 */}
+                    <div className="flex gap-1.5 mb-2 flex-wrap">
+                      {(['all', ...availableCountries] as const).map(k => {
+                        const m = COUNTRY_META[k as keyof typeof COUNTRY_META]
+                        return (
+                          <button key={k} onClick={() => { setSelCountry(k); setSelProvince('all') }}
+                            className="text-xs px-2.5 py-1.5 rounded-xl font-semibold transition"
+                            style={selCountry === k
+                              ? { background: 'rgba(22,163,74,0.25)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)' }
+                              : { background: 'rgba(255,255,255,0.05)', color: '#5a7a5a' }}>
+                            {m.flag} {ko ? m.ko : m.en}
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    {/* 지역 필터 */}
+                    {availableProvinces.length > 0 && (
+                      <div className="flex gap-1.5 mb-2 overflow-x-auto pb-1 scrollbar-none">
+                        <button onClick={() => setSelProvince('all')}
+                          className="flex-shrink-0 text-xs px-2.5 py-1.5 rounded-xl font-semibold transition"
+                          style={selProvince === 'all'
+                            ? { background: 'rgba(22,163,74,0.2)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.25)' }
+                            : { background: 'rgba(255,255,255,0.04)', color: '#4a6a4a' }}>
+                          {ko ? '전체' : 'All'}
+                        </button>
+                        {availableProvinces.map(p => (
+                          <button key={p} onClick={() => setSelProvince(p)}
+                            className="flex-shrink-0 text-xs px-2.5 py-1.5 rounded-xl font-semibold transition whitespace-nowrap"
+                            style={selProvince === p
+                              ? { background: 'rgba(22,163,74,0.2)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.25)' }
+                              : { background: 'rgba(255,255,255,0.04)', color: '#4a6a4a' }}>
+                            {p}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* 검색 인풋 */}
+                    <div className="relative mb-2">
+                      <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#5a7a5a' }} />
+                      <input value={cpSearch} onChange={e => setCpSearch(e.target.value)}
+                        placeholder={ko ? '골프장 검색...' : 'Search course...'}
+                        className="w-full pl-8 pr-3 py-2.5 rounded-xl text-white text-sm"
+                        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(34,197,94,0.15)' }} />
+                    </div>
+
+                    {/* 코스 목록 */}
+                    <div className="rounded-xl overflow-hidden" style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid rgba(34,197,94,0.1)' }}>
+                      {filteredCourses.map((c, i) => (
+                        <button key={c.id} onClick={() => handleSelectCourse(c)}
+                          className="w-full text-left px-3 py-3 flex items-center gap-3 transition"
+                          style={{
+                            background: i % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent',
+                            borderBottom: i < filteredCourses.length - 1 ? '1px solid rgba(34,197,94,0.06)' : 'none',
+                          }}>
+                          <div>
+                            <p className="text-sm font-semibold text-white">{c.name}</p>
+                            <p className="text-xs" style={{ color: '#5a7a5a' }}>{c.province} · {c.holes}H · Par {c.par}</p>
+                          </div>
+                        </button>
+                      ))}
+                      {filteredCourses.length === 0 && (
+                        <div className="px-3 py-6 text-center text-xs" style={{ color: '#3a5a3a' }}>
+                          {ko ? '검색 결과 없음' : 'No results'}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* 서브코스 선택 (27/36홀) */}
+              {needsSubCourse && selectedCourseObj && (
+                <div>
+                  <label className="text-[11px] font-bold mb-2 block" style={{ color: '#f97316' }}>
+                    {ko ? `어떤 코스를 도실 건가요? (${selectedCourseObj.holes}홀 코스)` : `Which courses? (${selectedCourseObj.holes}H course)`}
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {subCourseCombos.map(combo => (
+                      <button key={combo.key}
+                        onClick={() => { setSubCourse(combo.key); setCreateError('') }}
+                        className="px-3.5 py-2.5 rounded-xl text-sm font-bold transition"
+                        style={subCourse === combo.key
+                          ? { background: 'linear-gradient(135deg,#d97706,#92400e)', color: '#fff', boxShadow: '0 2px 10px rgba(234,88,12,0.3)' }
+                          : { background: 'rgba(251,146,60,0.08)', color: '#fb923c', border: '1px solid rgba(251,146,60,0.25)' }}>
+                        {subCourse === combo.key && <CheckCircle2 size={12} className="inline mr-1" />}
+                        {combo.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* 선택 완료 표시 */}
+                  {subCourse && (
+                    <p className="text-xs mt-1.5 font-semibold" style={{ color: '#22c55e' }}>
+                      ✓ {subCourseCombos.find(c => c.key === subCourse)?.label} {ko ? '선택됨' : 'selected'}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* 파 조절 */}
+              {newForm.courseName && (
+                <div>
+                  <label className="text-[11px] font-bold mb-2 block" style={{ color: '#5a7a5a' }}>Par</label>
+                  <div className="flex items-center gap-4">
+                    <button onClick={() => setNewForm(f => ({ ...f, coursePar: Math.max(54, f.coursePar - 1) }))}
+                      className="w-11 h-11 rounded-xl text-xl font-bold transition"
+                      style={{ background: 'rgba(255,255,255,0.07)', color: '#9ca3af' }}>−</button>
+                    <span className="text-2xl font-black text-white flex-1 text-center">{newForm.coursePar}</span>
+                    <button onClick={() => setNewForm(f => ({ ...f, coursePar: Math.min(80, f.coursePar + 1) }))}
+                      className="w-11 h-11 rounded-xl text-xl font-bold transition"
+                      style={{ background: 'rgba(255,255,255,0.07)', color: '#9ca3af' }}>+</button>
+                  </div>
+                </div>
+              )}
+
+              {/* 메모 */}
+              <div>
+                <label className="text-[11px] font-bold mb-1.5 block" style={{ color: '#5a7a5a' }}>
+                  {ko ? '메모 (선택)' : 'Notes (optional)'}
+                </label>
+                <textarea value={newForm.notes} onChange={e => setNewForm(f => ({ ...f, notes: e.target.value }))}
+                  rows={2} placeholder={ko ? '날씨, 동반자 등...' : 'Weather, partners...'}
+                  className="w-full rounded-xl px-3 py-2.5 text-white text-sm resize-none"
+                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(34,197,94,0.12)' }} />
+              </div>
+
+              {/* 에러 */}
+              {createError && (
+                <div className="rounded-xl px-4 py-3 text-sm font-semibold"
+                  style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', color: '#fca5a5' }}>
+                  {createError}
+                </div>
+              )}
+            </div>
+
+            {/* 액션 버튼 */}
+            <div className="flex gap-3 px-5 py-4 flex-shrink-0" style={{ borderTop: '1px solid rgba(34,197,94,0.1)' }}>
+              <button onClick={() => { setShowNew(false); resetNewForm() }}
+                className="flex-1 py-3.5 rounded-xl font-bold text-sm"
+                style={{ background: 'rgba(255,255,255,0.06)', color: '#6b7280' }}>
+                {ko ? '취소' : 'Cancel'}
+              </button>
+              <button onClick={createRound}
+                disabled={creating || !newForm.courseName || (needsSubCourse && !subCourse)}
+                className="flex-1 py-3.5 rounded-xl font-black text-sm disabled:opacity-40 transition-all active:scale-95"
+                style={{ background: 'linear-gradient(135deg,#16a34a,#14532d)', color: '#fff', boxShadow: '0 4px 14px rgba(22,163,74,0.3)' }}>
+                {creating ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    {ko ? '생성 중...' : 'Creating...'}
+                  </span>
+                ) : needsSubCourse && !subCourse ? (ko ? '코스 선택 필요' : 'Select course')
+                  : (ko ? '🏌️ 라운드 시작' : '🏌️ Start Round')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-// ── Hole Edit Modal ───────────────────────────────────────────────────────
-function HoleEditModal({ hole, data, ko, onClose, onChange }: {
-  hole: number; data: { score: number|null; par: number; putts: number|null }
-  ko: boolean; onClose: () => void
-  onChange: (score: number|null, putts: number|null, par: number) => void
+// ── 스코어카드 테이블 컴포넌트 ────────────────────────────────────────────
+function ScoreTable({ holes, label, localHoles, holeData, sumScores, sumPars, onTapHole, ko }: {
+  holes: number[]; label: string; localHoles: any
+  holeData: (n: number) => any; sumScores: (hs: number[]) => number; sumPars: (hs: number[]) => number
+  onTapHole: (h: number) => void; ko: boolean
 }) {
-  const [score, setScore] = useState<number|null>(data.score)
-  const [putts, setPutts] = useState<number|null>(data.putts)
-  const [par,   setPar]   = useState(data.par)
+  const sTotal     = sumScores(holes)
+  const pTotal     = sumPars(holes)
+  const filledHoles = holes.filter(h => localHoles[h]?.score !== null).length
+  const hasYardage  = holes.some(h => localHoles[h]?.yardage)
+  const hasPutts    = holes.some(h => localHoles[h]?.putts !== null)
+
+  return (
+    <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(34,197,94,0.15)' }}>
+      <div className="overflow-x-auto">
+        <table className="min-w-max w-full text-xs border-collapse">
+          <thead>
+            <tr style={{ background: 'rgba(22,163,74,0.1)' }}>
+              <th className="sticky left-0 px-2.5 py-2.5 text-left font-bold w-12"
+                style={{ background: 'rgba(8,18,8,0.98)', color: '#3a5a3a', borderRight: '1px solid rgba(34,197,94,0.1)', minWidth: 44 }}>
+                {ko ? '홀' : 'Hole'}
+              </th>
+              {holes.map(h => (
+                <th key={h} className="text-center font-bold" style={{ color: '#5a7a5a', width: 40, minWidth: 40 }}>{h}</th>
+              ))}
+              <th className="px-2.5 py-2.5 text-center font-black" style={{ color: '#22c55e', borderLeft: '1px solid rgba(34,197,94,0.12)', width: 44, minWidth: 44 }}>{label}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {/* 야디지 행 */}
+            {hasYardage && (
+              <tr style={{ background: 'rgba(255,255,255,0.01)' }}>
+                <td className="sticky left-0 px-2.5 py-1.5 font-bold text-[10px]"
+                  style={{ background: 'rgba(8,18,8,0.98)', color: '#3a5a3a', borderRight: '1px solid rgba(34,197,94,0.08)' }}>
+                  {ko ? '야드' : 'Yds'}
+                </td>
+                {holes.map(h => (
+                  <td key={h} className="text-center py-1.5 text-[10px]" style={{ color: '#3a5a3a' }}>
+                    {localHoles[h]?.yardage ?? ''}
+                  </td>
+                ))}
+                <td className="text-center py-1.5 text-[10px]" style={{ color: '#3a5a3a', borderLeft: '1px solid rgba(34,197,94,0.08)' }}>
+                  {holes.reduce((s, h) => s + (localHoles[h]?.yardage ?? 0), 0) || ''}
+                </td>
+              </tr>
+            )}
+            {/* 파 행 */}
+            <tr style={{ background: 'rgba(255,255,255,0.025)' }}>
+              <td className="sticky left-0 px-2.5 py-2 font-bold"
+                style={{ background: 'rgba(8,18,8,0.98)', color: '#4a6a4a', borderRight: '1px solid rgba(34,197,94,0.08)' }}>
+                {ko ? '파' : 'Par'}
+              </td>
+              {holes.map(h => (
+                <td key={h} className="text-center py-2 font-semibold" style={{ color: '#6b7280' }}>
+                  {holeData(h).par}
+                </td>
+              ))}
+              <td className="text-center py-2 font-black" style={{ color: '#22c55e', borderLeft: '1px solid rgba(34,197,94,0.08)' }}>{pTotal}</td>
+            </tr>
+            {/* 스코어 행 */}
+            <tr style={{ background: 'rgba(6,13,6,1)' }}>
+              <td className="sticky left-0 px-2.5 py-2 font-bold"
+                style={{ background: 'rgba(6,10,6,1)', color: '#4a6a4a', borderRight: '1px solid rgba(34,197,94,0.08)' }}>
+                {ko ? '타' : 'Score'}
+              </td>
+              {holes.map(h => {
+                const { score, par } = holeData(h)
+                const info = scoreInfo(score, par)
+                return (
+                  <td key={h} className="py-1.5 px-0.5" onClick={() => onTapHole(h)}>
+                    <div className="mx-auto flex items-center justify-center font-black text-xs cursor-pointer transition-all active:scale-90"
+                      style={{
+                        width: 36, height: 36,
+                        background: info.bg,
+                        color: info.text,
+                        border: `2px solid ${info.border}`,
+                        borderRadius: info.shape === 'circle' ? '50%' : 8,
+                        boxShadow: score !== null ? `0 2px 8px ${info.border}55` : 'none',
+                        outline: info.shape === 'double-square' ? `2px solid ${info.border}` : 'none',
+                        outlineOffset: info.shape === 'double-square' ? 2 : 0,
+                      }}>
+                      {score ?? '·'}
+                    </div>
+                  </td>
+                )
+              })}
+              <td className="text-center py-1.5" style={{ borderLeft: '1px solid rgba(34,197,94,0.08)' }}>
+                {filledHoles === holes.length ? (
+                  <span className="text-sm font-black"
+                    style={{ color: sTotal - pTotal > 0 ? '#fca5a5' : sTotal - pTotal < 0 ? '#86efac' : '#fde68a' }}>
+                    {sTotal}
+                  </span>
+                ) : (
+                  <span className="text-xs font-semibold" style={{ color: '#3a5a3a' }}>{filledHoles}/{holes.length}</span>
+                )}
+              </td>
+            </tr>
+            {/* 퍼트 행 */}
+            {hasPutts && (
+              <tr style={{ background: 'rgba(59,130,246,0.04)' }}>
+                <td className="sticky left-0 px-2.5 py-1.5 font-bold text-[10px]"
+                  style={{ background: 'rgba(6,10,6,0.98)', color: '#3b5f8a', borderRight: '1px solid rgba(34,197,94,0.08)' }}>
+                  {ko ? '퍼트' : 'Putts'}
+                </td>
+                {holes.map(h => (
+                  <td key={h} className="text-center py-1.5 text-xs font-bold" style={{ color: localHoles[h]?.putts != null ? '#60a5fa' : '#2a3a4a' }}
+                    onClick={() => onTapHole(h)}>
+                    {localHoles[h]?.putts ?? '·'}
+                  </td>
+                ))}
+                <td className="text-center py-1.5 text-xs font-black" style={{ color: '#60a5fa', borderLeft: '1px solid rgba(34,197,94,0.08)' }}>
+                  {holes.reduce((s, h) => s + (localHoles[h]?.putts ?? 0), 0) || ''}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+// ── 홀 입력 모달 ──────────────────────────────────────────────────────────
+function HoleEditModal({ hole, totalHoles, data, ko, onClose, onNavigate, onChange }: {
+  hole: number; totalHoles: number
+  data: { score: number|null; par: number; putts: number|null; yardage: number|null }
+  ko: boolean
+  onClose: () => void
+  onNavigate: (hole: number) => void
+  onChange: (score: number|null, putts: number|null, par: number, yardage: number|null) => void
+}) {
+  const [score,   setScore]   = useState<number|null>(data.score)
+  const [putts,   setPutts]   = useState<number|null>(data.putts)
+  const [par,     setPar]     = useState(data.par)
+  const [yardage, setYardage] = useState<string>(data.yardage != null ? String(data.yardage) : '')
+
   const diff = score !== null ? score - par : null
+  const info = scoreInfo(score, par)
+
+  // 퍼트 +/- (0~6)
+  const incPutts = () => setPutts(p => p === null ? 2 : Math.min(6, p + 1))
+  const decPutts = () => setPutts(p => p === null ? 2 : Math.max(0, p - 1))
 
   return (
     <div className="fixed inset-0 z-[200] flex items-end" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/70" />
-      <div className="relative w-full bg-gray-900 rounded-t-2xl px-5 pt-4 pb-10" onClick={e => e.stopPropagation()}>
-        <div className="flex justify-center mb-3"><div className="w-10 h-1 bg-gray-700 rounded-full" /></div>
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+      <div className="relative w-full rounded-t-3xl pb-8"
+        style={{ background: 'linear-gradient(180deg,#0e1a0e,#060d06)', border: '1px solid rgba(34,197,94,0.18)', borderBottom: 'none' }}
+        onClick={e => e.stopPropagation()}>
 
-        <div className="flex items-center justify-between mb-4">
+        {/* 핸들 */}
+        <div className="flex justify-center pt-3 pb-1">
+          <div className="w-10 h-1 rounded-full" style={{ background: 'rgba(34,197,94,0.25)' }} />
+        </div>
+
+        {/* 홀 헤더 */}
+        <div className="flex items-center justify-between px-5 py-3 mb-1">
           <div>
-            <p className="text-lg font-black text-white">{ko ? `${hole}번 홀` : `Hole ${hole}`}</p>
-            <p className="text-xs text-gray-400">Par {par}</p>
+            <p className="text-2xl font-black text-white leading-none">
+              {ko ? `${hole}번 홀` : `Hole ${hole}`}
+            </p>
+            <p className="text-xs mt-0.5 font-semibold" style={{ color: '#5a7a5a' }}>Par {par}</p>
           </div>
-          {diff !== null && (
-            <span className={`text-sm font-bold px-3 py-1 rounded-full ${scoreColor(score, par)}`}>
-              {diff === 0 ? 'Par' : diff > 0 ? `+${diff}` : diff} · {scoreLabel(score, par, ko)}
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {diff !== null && (
+              <span className="text-sm font-black px-3 py-1.5 rounded-full"
+                style={{ background: info.bg, color: info.text, border: `1px solid ${info.border}` }}>
+                {diff === 0 ? 'Par' : diff > 0 ? `+${diff}` : String(diff)} {info.label}
+              </span>
+            )}
+            <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center"
+              style={{ background: 'rgba(255,255,255,0.07)' }}>
+              <X size={14} className="text-gray-400" />
+            </button>
+          </div>
         </div>
 
-        {/* Par selector */}
-        <div className="mb-4">
-          <p className="text-xs text-gray-500 mb-2">{ko ? '파' : 'Par'}</p>
-          <div className="flex gap-2">
-            {[3,4,5].map(p => (
-              <button key={p} onClick={() => setPar(p)}
-                className={`flex-1 py-2 rounded-xl text-sm font-bold transition ${par === p ? 'bg-green-700 text-white' : 'bg-gray-800 text-gray-400'}`}>
-                {p}
-              </button>
+        <div className="px-5 space-y-4">
+          {/* 파 선택 */}
+          <div>
+            <p className="text-[11px] font-bold mb-2" style={{ color: '#5a7a5a' }}>{ko ? '파 선택' : 'Par'}</p>
+            <div className="flex gap-2">
+              {[3, 4, 5].map(p => (
+                <button key={p} onClick={() => setPar(p)}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-black transition"
+                  style={par === p
+                    ? { background: 'linear-gradient(135deg,#16a34a,#14532d)', color: '#fff', boxShadow: '0 2px 8px rgba(22,163,74,0.3)' }
+                    : { background: 'rgba(255,255,255,0.05)', color: '#5a7a5a', border: '1px solid rgba(34,197,94,0.1)' }}>
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 타수 입력 */}
+          <div>
+            <p className="text-[11px] font-bold mb-2" style={{ color: '#5a7a5a' }}>{ko ? '타수' : 'Score'}</p>
+            <div className="flex items-center gap-3 mb-3">
+              <button onClick={() => setScore(s => s !== null ? Math.max(1, s - 1) : par)}
+                className="w-14 h-14 rounded-2xl text-2xl font-black transition active:scale-90"
+                style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)' }}>−</button>
+
+              {/* 큰 스코어 디스플레이 */}
+              <div className="flex-1 flex items-center justify-center h-16 rounded-2xl"
+                style={{ background: score !== null ? info.bg : 'rgba(55,65,55,0.4)', border: `2px solid ${score !== null ? info.border : 'transparent'}` }}>
+                <span className="text-4xl font-black" style={{ color: score !== null ? info.text : '#4a6a4a' }}>
+                  {score ?? '—'}
+                </span>
+              </div>
+
+              <button onClick={() => setScore(s => s !== null ? s + 1 : par)}
+                className="w-14 h-14 rounded-2xl text-2xl font-black transition active:scale-90"
+                style={{ background: 'rgba(34,197,94,0.12)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.2)' }}>+</button>
+            </div>
+
+            {/* 빠른 선택 버튼 */}
+            <div className="flex gap-1.5 justify-center">
+              {[par-2, par-1, par, par+1, par+2, par+3].filter(v => v >= 1).map(v => {
+                const delta = v - par
+                const si = scoreInfo(v, par)
+                const isSelected = score === v
+                return (
+                  <button key={v} onClick={() => setScore(v)}
+                    className="flex-1 py-2 rounded-xl text-xs font-black transition active:scale-95"
+                    style={isSelected
+                      ? { background: si.bg, color: si.text, border: `1px solid ${si.border}` }
+                      : { background: 'rgba(255,255,255,0.05)', color: '#5a7a5a', border: '1px solid rgba(34,197,94,0.08)' }}>
+                    {delta === 0 ? 'P' : delta > 0 ? `+${delta}` : delta}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* 퍼트 + 야디지 */}
+          <div className="grid grid-cols-2 gap-3">
+            {/* 퍼트 — +/- 카운터 */}
+            <div>
+              <p className="text-[11px] font-bold mb-2" style={{ color: '#5a7a5a' }}>{ko ? '퍼트 수' : 'Putts'}</p>
+              <div className="flex items-center gap-2">
+                <button onClick={decPutts}
+                  className="w-10 h-10 rounded-xl text-lg font-black transition active:scale-90"
+                  style={{ background: 'rgba(59,130,246,0.1)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.2)' }}>−</button>
+                <div className="flex-1 h-10 rounded-xl flex items-center justify-center font-black text-lg"
+                  style={{ background: putts !== null ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.04)', color: putts !== null ? '#60a5fa' : '#3a5a3a', border: putts !== null ? '1px solid rgba(59,130,246,0.3)' : '1px solid transparent' }}>
+                  {putts ?? '—'}
+                </div>
+                <button onClick={incPutts}
+                  className="w-10 h-10 rounded-xl text-lg font-black transition active:scale-90"
+                  style={{ background: 'rgba(59,130,246,0.1)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.2)' }}>+</button>
+              </div>
+              {/* 빠른 퍼트 선택 */}
+              <div className="flex gap-1 mt-1.5">
+                {([null, 1, 2, 3] as const).map(p => (
+                  <button key={String(p)} onClick={() => setPutts(p)}
+                    className="flex-1 py-1.5 rounded-lg text-[10px] font-bold transition"
+                    style={putts === p
+                      ? { background: 'rgba(59,130,246,0.25)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.35)' }
+                      : { background: 'rgba(255,255,255,0.04)', color: '#4a6a4a' }}>
+                    {p === null ? '—' : p}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 야디지 */}
+            <div>
+              <p className="text-[11px] font-bold mb-2" style={{ color: '#5a7a5a' }}>{ko ? '야디지 (선택)' : 'Yardage (opt)'}</p>
+              <input type="number" min="50" max="999" value={yardage}
+                onChange={e => setYardage(e.target.value)}
+                placeholder={ko ? '예: 385' : 'e.g. 385'}
+                className="w-full h-10 text-center rounded-xl text-sm font-black"
+                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(34,197,94,0.15)', color: '#fff' }} />
+              <p className="text-[10px] mt-1.5 text-center" style={{ color: '#3a5a3a' }}>yards</p>
+            </div>
+          </div>
+
+          {/* 홀 네비게이션 + 확인 */}
+          <div className="flex gap-2 pt-1">
+            {/* 이전 홀 */}
+            <button
+              onClick={() => onNavigate(hole - 1)}
+              disabled={hole <= 1}
+              className="w-11 h-12 rounded-xl flex items-center justify-center font-bold transition disabled:opacity-25"
+              style={{ background: 'rgba(255,255,255,0.07)', color: '#6b7280' }}>
+              <ChevronLeft size={18} />
+            </button>
+
+            {/* 확인 */}
+            <button onClick={() => onChange(score, putts, par, yardage ? parseInt(yardage) : null)}
+              className="flex-1 py-3.5 rounded-xl font-black text-sm transition active:scale-95"
+              style={{ background: 'linear-gradient(135deg,#16a34a,#14532d)', color: '#fff', boxShadow: '0 4px 16px rgba(22,163,74,0.3)' }}>
+              {ko ? '✓ 확인' : '✓ OK'}
+            </button>
+
+            {/* 다음 홀 */}
+            <button
+              onClick={() => onNavigate(hole + 1)}
+              disabled={hole >= totalHoles}
+              className="w-11 h-12 rounded-xl flex items-center justify-center font-bold transition disabled:opacity-25"
+              style={{ background: 'rgba(255,255,255,0.07)', color: '#6b7280' }}>
+              <ChevronRight size={18} />
+            </button>
+          </div>
+
+          {/* 홀 번호 인디케이터 */}
+          <div className="flex justify-center gap-1 pb-1">
+            {Array.from({ length: totalHoles }, (_, i) => i + 1).map(h => (
+              <button key={h} onClick={() => onNavigate(h)}
+                className="transition"
+                style={{
+                  width: h === hole ? 16 : 6, height: 6,
+                  borderRadius: h === hole ? 3 : '50%',
+                  background: h === hole ? '#22c55e' : 'rgba(34,197,94,0.2)',
+                }} />
             ))}
           </div>
-        </div>
-
-        {/* Score */}
-        <div className="mb-4">
-          <p className="text-xs text-gray-500 mb-2">{ko ? '타수' : 'Score'}</p>
-          <div className="flex items-center gap-3">
-            <button onClick={() => setScore(s => s !== null ? Math.max(1, s - 1) : par - 1)}
-              className="w-12 h-12 rounded-xl bg-gray-800 text-white text-xl font-bold hover:bg-gray-700 transition">−</button>
-            <span className={`flex-1 text-center text-3xl font-black rounded-xl py-2 ${score !== null ? scoreColor(score, par) : 'text-gray-600 bg-gray-800'}`}>
-              {score ?? '—'}
-            </span>
-            <button onClick={() => setScore(s => s !== null ? s + 1 : par + 1)}
-              className="w-12 h-12 rounded-xl bg-gray-800 text-white text-xl font-bold hover:bg-gray-700 transition">+</button>
-          </div>
-          {/* Quick score buttons */}
-          <div className="flex gap-1.5 mt-2 flex-wrap justify-center">
-            {[par-2, par-1, par, par+1, par+2, par+3].filter(v => v >= 1).map(v => (
-              <button key={v} onClick={() => setScore(v)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${score === v ? scoreColor(v, par) : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
-                {v - par === 0 ? 'P' : v - par > 0 ? `+${v-par}` : v - par}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Putts */}
-        <div className="mb-5">
-          <p className="text-xs text-gray-500 mb-2">{ko ? '퍼트 수 (선택)' : 'Putts (optional)'}</p>
-          <div className="flex gap-1.5">
-            {[null, 1, 2, 3, 4].map(p => (
-              <button key={String(p)} onClick={() => setPutts(p)}
-                className={`flex-1 py-2 rounded-xl text-sm font-bold transition ${putts === p ? 'bg-blue-700 text-white' : 'bg-gray-800 text-gray-400'}`}>
-                {p === null ? '—' : p}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex gap-3">
-          <button onClick={onClose} className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 font-medium text-sm">{ko ? '취소' : 'Cancel'}</button>
-          <button onClick={() => onChange(score, putts, par)}
-            className="flex-1 py-3 rounded-xl bg-green-700 text-white font-bold text-sm">
-            {ko ? '확인' : 'OK'}
-          </button>
         </div>
       </div>
     </div>

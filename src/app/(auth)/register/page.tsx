@@ -11,7 +11,7 @@ export default function RegisterPage() {
   const ko = lang === 'ko'
 
   const [form, setForm] = useState({
-    email: '', password: '', fullName: '', fullNameEn: '', nameAbbr: '', phone: ''
+    email: '', password: '', fullName: '', fullNameEn: '', nameAbbr: '', phone: '', birthDate: ''
   })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -32,6 +32,7 @@ export default function RegisterPage() {
           full_name_en: form.fullNameEn,
           name_abbr: form.nameAbbr.toUpperCase(),
           phone: form.phone,
+          birth_date: form.birthDate || null,
         }
       }
     })
@@ -48,6 +49,7 @@ export default function RegisterPage() {
         full_name_en: form.fullNameEn || null,
         name_abbr: form.nameAbbr.toUpperCase() || null,
         phone: form.phone || null,
+        birth_date: form.birthDate || null,
       }, { onConflict: 'id' })
     }
     router.push('/dashboard')
@@ -88,6 +90,24 @@ export default function RegisterPage() {
               />
             </div>
           ))}
+
+          {/* 생년월일 (선택) */}
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">
+              {ko ? '생년월일 (선택)' : 'Date of Birth (optional)'}
+            </label>
+            <input
+              type="date"
+              value={form.birthDate}
+              onChange={(e) => update('birthDate', e.target.value)}
+              max={new Date().toISOString().split('T')[0]}
+              className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-green-500 transition"
+              style={{ colorScheme: 'dark' }}
+            />
+            <p className="text-xs text-gray-600 mt-1">
+              {ko ? '🎂 생일 알림을 위해 사용됩니다' : '🎂 Used for birthday notifications'}
+            </p>
+          </div>
           {error && <p className="text-red-400 text-sm">{error}</p>}
           <button
             type="submit"

@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores/authStore'
 import {
   ChevronLeft, Camera, Save, Check, User,
-  Phone, Mail, AtSign, Languages, Trash2,
+  Phone, Mail, AtSign, Languages, Trash2, Cake,
 } from 'lucide-react'
 
 export default function ProfilePage() {
@@ -18,6 +18,7 @@ export default function ProfilePage() {
     full_name_en: user?.full_name_en ?? '',
     name_abbr:    user?.name_abbr    ?? '',
     phone:        user?.phone        ?? '',
+    birth_date:   user?.birth_date   ?? '',
   })
 
   const [saving,        setSaving]        = useState(false)
@@ -87,7 +88,7 @@ export default function ProfilePage() {
 
     const { data, error } = await supabase
       .from('users')
-      .update({ ...form, avatar_url })
+      .update({ ...form, birth_date: form.birth_date || null, avatar_url })
       .eq('id', user.id)
       .select()
       .single()
@@ -113,7 +114,8 @@ export default function ProfilePage() {
     form.full_name    !== (user?.full_name    ?? '') ||
     form.full_name_en !== (user?.full_name_en ?? '') ||
     form.name_abbr    !== (user?.name_abbr    ?? '') ||
-    form.phone        !== (user?.phone        ?? '')
+    form.phone        !== (user?.phone        ?? '') ||
+    form.birth_date   !== (user?.birth_date   ?? '')
 
   return (
     <div className="min-h-screen pb-28">
@@ -241,6 +243,27 @@ export default function ProfilePage() {
                 className="w-full bg-transparent text-white text-sm outline-none placeholder-gray-600"
                 placeholder="+84 90 000 0000"
               />
+            </div>
+          </div>
+
+          {/* 생년월일 */}
+          <div className="flex items-center gap-3 px-4 py-3.5">
+            <Cake size={16} className="text-gray-500 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-gray-500 mb-0.5">{ko ? '생년월일' : 'Date of Birth'}</p>
+              <input
+                type="date"
+                value={form.birth_date}
+                onChange={e => setForm(f => ({ ...f, birth_date: e.target.value }))}
+                max={new Date().toISOString().split('T')[0]}
+                className="w-full bg-transparent text-white text-sm outline-none"
+                style={{ colorScheme: 'dark' }}
+              />
+              {!form.birth_date && (
+                <p className="text-[10px] text-gray-600 mt-0.5">
+                  {ko ? '🎂 생일 알림 전송에 사용됩니다' : '🎂 Used for birthday notifications'}
+                </p>
+              )}
             </div>
           </div>
         </div>

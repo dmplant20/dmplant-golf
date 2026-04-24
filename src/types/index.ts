@@ -16,6 +16,7 @@ export interface User {
   name_abbr?: string
   phone?: string
   avatar_url?: string
+  birth_date?: string | null
   created_at: string
 }
 

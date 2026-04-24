@@ -64,7 +64,7 @@ export default function LoginPage() {
             <span className="text-green-400"> GOLF</span>
           </h1>
           <p className="text-gray-400 text-sm mt-1.5">
-            {ko ? '호치민 한인 골프 클럽 관리' : 'HCMC Korean Golf Club Management'}
+            {ko ? '골프 모임 관리' : 'Golf Club Management'}
           </p>
         </div>
 
@@ -158,6 +158,14 @@ export default function LoginPage() {
                 {ko ? '+ 새 클럽 등록' : '+ Register New Club'}
               </Link>
             </p>
+          </div>
+
+          {/* 앱 설치 안내 */}
+          <div className="mt-4 text-center">
+            <Link href="/install"
+              className="inline-flex items-center gap-1.5 text-xs text-green-700 hover:text-green-500 transition border border-green-900/60 rounded-full px-3 py-1.5">
+              📲 {ko ? '앱 설치 방법' : 'Install App'}
+            </Link>
           </div>
         </div>
       </div>

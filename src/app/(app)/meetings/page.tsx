@@ -1,15 +1,33 @@
 'use client'
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores/authStore'
 import {
-  CalendarDays, Settings2, X, ChevronLeft, AlertTriangle,
+  CalendarDays, Settings2, X, ChevronLeft, ChevronRight, AlertTriangle,
   CheckCircle, XCircle, Clock, MapPin, Users, Shuffle,
   ListOrdered, Check, Ban, HelpCircle, Edit2, BarChart2,
-  TrendingDown, TrendingUp, Minus,
+  TrendingDown, TrendingUp, Minus, UtensilsCrossed, Bell,
+  BellOff, Navigation, Plus, Trash2, FileDown,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import CourseSearchInput from '@/components/ui/CourseSearchInput'
+import PlaceSearchInput  from '@/components/ui/PlaceSearchInput'
+import MapEmbed          from '@/components/ui/MapEmbed'
+
+// ── push helpers ──────────────────────────────────────────────────────────
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding   = '='.repeat((4 - base64String.length % 4) % 4)
+  const base64    = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const rawData   = atob(base64)
+  return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)))
+}
+function arrayBufferToBase64(buffer: ArrayBuffer | null): string {
+  if (!buffer) return ''
+  const bytes = new Uint8Array(buffer)
+  let binary  = ''
+  bytes.forEach(b => { binary += String.fromCharCode(b) })
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
 
 // ── helpers ────────────────────────────────────────────────────────────────
 function getNthWeekday(year: number, month: number, week: number, dow: number): Date | null {
@@ -132,12 +150,31 @@ export default function MeetingsPage() {
   const [showGroupModal,    setShowGroupModal]    = useState(false)
   const [showAnalysis,      setShowAnalysis]      = useState(false)
   const [saving,            setSaving]            = useState(false)
+  const [autoGroupLoading,  setAutoGroupLoading]  = useState(false)
+
+  // ── month navigation (과거 기록 열람) ──────────────────────────────────────
+  const [navYM, setNavYM] = useState<{ year: number; month: number } | null>(null)
+  const navLoadRef = useRef(0)  // prevent stale loads
 
   const [pForm, setPForm] = useState({ week: 3, dow: 4, time: '07:00', venue: '', notes: '' })
   const [oForm, setOForm] = useState({ status: 'cancelled', date: '', time: '', reason: '' })
   const [assign, setAssign] = useState<Record<string, number>>({})
 
-  // ── golf course picker ─────────────────────────────────────────────────
+  // ── 2차 모임 ──────────────────────────────────────────────────────────────
+  const [secondMeeting,    setSecondMeeting]    = useState<any | null>(null)
+  const [secondAtts,       setSecondAtts]       = useState<any[]>([])
+  const [showSecondModal,  setShowSecondModal]  = useState(false)
+  const [savingSecond,     setSavingSecond]     = useState(false)
+  const [sendingPush,      setSendingPush]      = useState(false)
+  const [pushResult,       setPushResult]       = useState<string | null>(null)
+  const emptySecondForm = { name: '', address: '', placeId: '', lat: '', lng: '', time: '19:00', notes: '' }
+  const [sForm, setSForm] = useState(emptySecondForm)
+
+  // ── push notification subscription ────────────────────────────────────
+  const [pushEnabled,  setPushEnabled]  = useState(false)
+  const [pushLoading,  setPushLoading]  = useState(false)
+
+  // golf course picker ─────────────────────────────────────────────────
   const [courses,          setCourses]          = useState<any[]>([])
   const [courseSearch,     setCourseSearch]     = useState('')
   const [showCoursePicker, setShowCoursePicker] = useState(false)
@@ -192,7 +229,7 @@ export default function MeetingsPage() {
   async function loadRsvp(year: number, month: number) {
     if (!currentClubId) return
     const supabase = createClient()
-    const [{ data: att }, { data: grps }, { data: sc }] = await Promise.all([
+    const [{ data: att }, { data: grps }, { data: sc }, { data: sm }] = await Promise.all([
       supabase.from('meeting_attendances')
         .select('user_id, status, users(full_name, full_name_en, name_abbr)')
         .eq('club_id', currentClubId).eq('year', year).eq('month', month),
@@ -202,10 +239,16 @@ export default function MeetingsPage() {
       supabase.from('round_scores')
         .select('user_id, gross_score, handicap_used, net_score, course_name, users(full_name, full_name_en, name_abbr)')
         .eq('club_id', currentClubId).eq('year', year).eq('month', month),
+      supabase.from('second_meetings')
+        .select('*, second_meeting_attendances(user_id, status, users(full_name, full_name_en, name_abbr))')
+        .eq('club_id', currentClubId).eq('year', year).eq('month', month).maybeSingle(),
     ])
     setAttendances(att ?? [])
     setGroups(grps ?? [])
     setScores(sc ?? [])
+    setSecondMeeting(sm ?? null)
+    setSecondAtts(sm?.second_meeting_attendances ?? [])
+    if (sm) setSForm({ name: sm.restaurant_name, address: sm.restaurant_address ?? '', placeId: sm.google_place_id ?? '', lat: sm.lat ? String(sm.lat) : '', lng: sm.lng ? String(sm.lng) : '', time: sm.time ?? '19:00', notes: sm.notes ?? '' })
     const a: Record<string, number> = {}
     ;(grps ?? []).forEach((g: any) => g.meeting_group_members?.forEach((m: any) => { a[m.user_id] = g.group_number }))
     setAssign(a)
@@ -237,9 +280,57 @@ export default function MeetingsPage() {
     if (meeting) loadRsvp(meeting.year, meeting.month)
   }, [meeting?.year, meeting?.month, currentClubId])
 
+  // ── navigation-based display meeting ──────────────────────────────────────
+  // navYM null = show current/upcoming meeting; non-null = show that specific month
+  const displayMeeting = useMemo(() => {
+    if (!navYM || !pattern) return meeting
+    const ov = overrides.find((o: any) => o.year === navYM.year && o.month === navYM.month)
+    let date: Date | null
+    if (ov?.status === 'rescheduled' && ov.override_date) {
+      date = new Date(ov.override_date + 'T00:00:00')
+    } else {
+      date = getNthWeekday(navYM.year, navYM.month, pattern.week_of_month, pattern.day_of_week)
+    }
+    return {
+      year:   navYM.year,
+      month:  navYM.month,
+      date:   date ?? new Date(navYM.year, navYM.month - 1, 1),
+      time:   ov?.override_time ?? pattern.start_time,
+      venue:  pattern.venue,
+      status: ov?.status ?? 'scheduled',
+      reason: ov?.reason ?? null,
+    }
+  }, [navYM, pattern, overrides, meeting])
+
+  // is the currently viewed month in the past?
+  const nowDate     = new Date(); nowDate.setHours(0, 0, 0, 0)
+  const viewY       = displayMeeting?.year  ?? nowDate.getFullYear()
+  const viewM       = displayMeeting?.month ?? nowDate.getMonth() + 1
+  const isPastView  = new Date(viewY, viewM - 1) < new Date(nowDate.getFullYear(), nowDate.getMonth())
+
+  // navigate to prev/next month
+  function navMonth(delta: number) {
+    const base = navYM ?? (meeting ? { year: meeting.year, month: meeting.month } : { year: nowDate.getFullYear(), month: nowDate.getMonth() + 1 })
+    let y = base.year, m = base.month + delta
+    if (m > 12) { m = 1;  y++ }
+    if (m < 1)  { m = 12; y-- }
+    // limit: 24 months back, 2 months forward
+    const targetDate = new Date(y, m - 1)
+    if (targetDate < new Date(nowDate.getFullYear(), nowDate.getMonth() - 24)) return
+    if (targetDate > new Date(nowDate.getFullYear(), nowDate.getMonth() + 2))  return
+    const token = ++navLoadRef.current
+    setNavYM({ year: y, month: m })
+    loadRsvp(y, m).then(() => { if (navLoadRef.current !== token) {} })
+  }
+
+  function navReset() {
+    setNavYM(null)
+    if (meeting) loadRsvp(meeting.year, meeting.month)
+  }
+
   const daysUntil   = meeting?.date ? getDaysUntil(meeting.date) : null
-  const isRsvpOpen  = daysUntil !== null && daysUntil <= 14 && daysUntil >= -1
-  const isScoreOpen = daysUntil !== null && daysUntil <= 1  // 당일 또는 이후
+  const isRsvpOpen  = !isPastView && daysUntil !== null && daysUntil <= 14 && daysUntil >= -1
+  const isScoreOpen = isPastView || (daysUntil !== null && daysUntil <= 1)
 
   const attending = attendances.filter(a => a.status === 'attending')
   const absent    = attendances.filter(a => a.status === 'absent')
@@ -283,21 +374,49 @@ export default function MeetingsPage() {
   }
 
   // ── auto grouping ──────────────────────────────────────────────────────
-  function buildAutoAssign(method: 'handicap' | 'random') {
+  // method 'top4'  : 전달 핸디 상위순 → 상위 4명씩 순서대로 같은 조 배정
+  // method 'random': 랜덤 셔플 후 4명씩 순서대로 배정
+  async function buildAutoAssign(method: 'top4' | 'random') {
     const pool = clubMembers.filter(m => attendances.find(a => a.user_id === m.user_id && a.status === 'attending'))
     let ordered = [...pool]
-    if (method === 'handicap') {
-      ordered.sort((a, b) => (a.club_handicap ?? 99) - (b.club_handicap ?? 99))
-      const n = Math.ceil(ordered.length / 4)
-      const rows: any[][] = Array.from({ length: n }, () => [])
-      ordered.forEach((m, i) => rows[i % n].push(m))
-      ordered = rows.flat()
-    } else {
+
+    if (method === 'random') {
+      // Fisher-Yates shuffle
       for (let i = ordered.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [ordered[i], ordered[j]] = [ordered[j], ordered[i]]
       }
+    } else {
+      // top4: 전달(이전 달) round_scores.handicap_used 기준 오름차순 정렬
+      // 데이터 없는 회원은 club_handicap → 99 순으로 후순위
+      setAutoGroupLoading(true)
+      try {
+        if (meeting) {
+          const prevMonth = meeting.month === 1 ? 12 : meeting.month - 1
+          const prevYear  = meeting.month === 1 ? meeting.year - 1 : meeting.year
+          const supabase  = createClient()
+          const { data: prevScores } = await supabase
+            .from('round_scores')
+            .select('user_id, handicap_used')
+            .eq('club_id', currentClubId)
+            .eq('year', prevYear)
+            .eq('month', prevMonth)
+          const scoreMap: Record<string, number> = {}
+          prevScores?.forEach((s: any) => {
+            if (s.handicap_used != null) scoreMap[s.user_id] = s.handicap_used
+          })
+          ordered.sort((a, b) => {
+            const ha = scoreMap[a.user_id] ?? (a.club_handicap ?? 99)
+            const hb = scoreMap[b.user_id] ?? (b.club_handicap ?? 99)
+            return ha - hb  // 낮을수록(핸디 낮을수록) 상위
+          })
+        }
+      } finally {
+        setAutoGroupLoading(false)
+      }
     }
+
+    // 4명씩 끊어서 순서대로 조 배정 (1~4번 → 1조, 5~8번 → 2조, …)
     const a: Record<string, number> = {}
     ordered.forEach((m, i) => { a[m.user_id] = Math.floor(i / 4) + 1 })
     setAssign(a)
@@ -320,6 +439,44 @@ export default function MeetingsPage() {
     setSaving(false)
     setShowGroupModal(false)
     await loadRsvp(meeting.year, meeting.month)
+  }
+
+  // ── export groups to CSV / Excel ─────────────────────────────────────────
+  function exportGroupsCSV() {
+    if (!groups.length || !meeting) return
+    const BOM = '\uFEFF'
+    const headers = ko
+      ? ['조번호', '티오프시간', '회원명', '핸디캡']
+      : ['Group', 'Tee Time', 'Member', 'Handicap']
+    const rows: string[][] = []
+    groups.forEach((g: any) => {
+      ;(g.meeting_group_members ?? []).forEach((m: any) => {
+        const name = lang === 'ko'
+          ? (m.users?.full_name ?? '')
+          : (m.users?.full_name_en || (m.users?.full_name ?? ''))
+        const hc = clubMembers.find(cm => cm.user_id === m.user_id)?.club_handicap
+        rows.push([
+          String(g.group_number),
+          g.tee_time ?? '',
+          name,
+          hc != null ? String(hc) : '',
+        ])
+      })
+    })
+    const csv = BOM + [headers, ...rows]
+      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = ko
+      ? `조편성_${meeting.year}년${meeting.month}월.csv`
+      : `groups_${meeting.year}_${String(meeting.month).padStart(2, '0')}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
   }
 
   // ── save pattern ───────────────────────────────────────────────────────
@@ -359,6 +516,132 @@ export default function MeetingsPage() {
     const supabase = createClient()
     await supabase.from('meeting_overrides').delete().eq('club_id', currentClubId).eq('year', meeting.year).eq('month', meeting.month)
     load()
+  }
+
+  // ── 2차 모임 저장/수정 ─────────────────────────────────────────────────────
+  async function saveSecondMeeting() {
+    if (!meeting || !currentClubId || !sForm.name.trim()) return
+    setSavingSecond(true)
+    const supabase = createClient()
+    const { data: { user: au } } = await supabase.auth.getUser()
+    if (!au) return
+    const payload = {
+      club_id:            currentClubId,
+      year:               meeting.year,
+      month:              meeting.month,
+      restaurant_name:    sForm.name.trim(),
+      restaurant_address: sForm.address.trim() || null,
+      google_place_id:    sForm.placeId || null,
+      lat:                sForm.lat ? parseFloat(sForm.lat) : null,
+      lng:                sForm.lng ? parseFloat(sForm.lng) : null,
+      time:               sForm.time || null,
+      notes:              sForm.notes.trim() || null,
+      confirmed_by:       au.id,
+      updated_at:         new Date().toISOString(),
+    }
+    const { data } = await supabase.from('second_meetings')
+      .upsert(payload, { onConflict: 'club_id,year,month' }).select().single()
+    setSecondMeeting(data)
+    setSavingSecond(false)
+    setShowSecondModal(false)
+    await loadRsvp(meeting.year, meeting.month)
+  }
+
+  async function deleteSecondMeeting() {
+    if (!secondMeeting) return
+    const supabase = createClient()
+    await supabase.from('second_meetings').delete().eq('id', secondMeeting.id)
+    setSecondMeeting(null)
+    setSecondAtts([])
+    setSForm(emptySecondForm)
+  }
+
+  // ── 2차 모임 RSVP ──────────────────────────────────────────────────────────
+  async function rsvpSecond(status: 'attending' | 'absent') {
+    if (!secondMeeting || !meeting || !user) return
+    const supabase = createClient()
+    await supabase.from('second_meeting_attendances').upsert(
+      { club_id: currentClubId, year: meeting.year, month: meeting.month, second_meeting_id: secondMeeting.id, user_id: user.id, status, responded_at: new Date().toISOString() },
+      { onConflict: 'second_meeting_id,user_id' }
+    )
+    await loadRsvp(meeting.year, meeting.month)
+  }
+
+  // ── Push 구독 토글 ──────────────────────────────────────────────────────────
+  const checkPushStatus = useCallback(async () => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) return
+    const reg = await navigator.serviceWorker.ready
+    const sub = await reg.pushManager.getSubscription()
+    setPushEnabled(!!sub)
+  }, [])
+
+  useEffect(() => { checkPushStatus() }, [checkPushStatus])
+
+  async function togglePush() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      alert(ko ? '이 브라우저는 알림을 지원하지 않습니다.' : 'Push not supported in this browser.')
+      return
+    }
+    setPushLoading(true)
+    try {
+      const reg = await navigator.serviceWorker.ready
+      if (pushEnabled) {
+        // 구독 해제
+        const sub = await reg.pushManager.getSubscription()
+        if (sub) {
+          await fetch('/api/push/subscribe', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ endpoint: sub.endpoint }) })
+          await sub.unsubscribe()
+        }
+        setPushEnabled(false)
+      } else {
+        // 권한 요청 & 구독
+        const permission = await Notification.requestPermission()
+        if (permission !== 'granted') {
+          alert(ko ? '알림 권한이 필요합니다. 브라우저 설정에서 허용해 주세요.' : 'Notification permission required.')
+          return
+        }
+        const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(vapidKey) as BufferSource,
+        })
+        await fetch('/api/push/subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: sub.endpoint, keys: { p256dh: arrayBufferToBase64(sub.getKey('p256dh')), auth: arrayBufferToBase64(sub.getKey('auth')) } }),
+        })
+        setPushEnabled(true)
+      }
+    } finally {
+      setPushLoading(false)
+    }
+  }
+
+  // ── 2차 모임 알림 발송 ──────────────────────────────────────────────────────
+  async function sendSecondMeetingNotification() {
+    if (!secondMeeting || !meeting || !currentClubId) return
+    setSendingPush(true)
+    setPushResult(null)
+    try {
+      const timeStr = secondMeeting.time ? ` ${secondMeeting.time}` : ''
+      const res = await fetch('/api/push/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          club_id: currentClubId,
+          title:   ko ? `🍽️ ${meeting.month}월 2차 모임 안내` : `🍽️ After-party ${meeting.date.toLocaleDateString('en-US', { month: 'short' })}`,
+          body:    `📍 ${secondMeeting.restaurant_name}${timeStr}${secondMeeting.restaurant_address ? `\n${secondMeeting.restaurant_address}` : ''}`,
+          url:     '/meetings',
+        }),
+      })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      setPushResult(ko ? `${data.sent}명에게 알림 발송 완료` : `Sent to ${data.sent} members`)
+    } catch (e: any) {
+      setPushResult(ko ? `발송 실패: ${e.message}` : `Failed: ${e.message}`)
+    } finally {
+      setSendingPush(false)
+    }
   }
 
   // ── save scores ────────────────────────────────────────────────────────
@@ -464,6 +747,32 @@ export default function MeetingsPage() {
         )}
       </div>
 
+      {/* ── Month navigation ── */}
+      {pattern && !loading && (
+        <div className="flex items-center gap-2 mb-2">
+          <button onClick={() => navMonth(-1)}
+            className="w-10 h-10 flex items-center justify-center rounded-xl bg-gray-800/80 text-gray-400 hover:text-white hover:bg-gray-700 transition flex-shrink-0">
+            <ChevronLeft size={18} />
+          </button>
+          <div className="flex-1 text-center">
+            <p className="text-white font-bold text-sm">
+              {ko ? `${viewY}년 ${viewM}월` : new Date(viewY, viewM - 1).toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}
+            </p>
+            {isPastView ? (
+              <button onClick={navReset} className="text-[10px] text-amber-400 underline decoration-dotted">
+                📁 {ko ? '과거 기록 · 현재로 돌아가기' : 'Past record · Back to current'}
+              </button>
+            ) : (
+              <p className="text-[10px] text-green-400">{ko ? '현재 모임' : 'Current meeting'}</p>
+            )}
+          </div>
+          <button onClick={() => navMonth(1)}
+            className="w-10 h-10 flex items-center justify-center rounded-xl bg-gray-800/80 text-gray-400 hover:text-white hover:bg-gray-700 transition flex-shrink-0">
+            <ChevronRight size={18} />
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <p className="text-center text-gray-500 py-16">{ko ? '로딩 중...' : 'Loading...'}</p>
       ) : !pattern ? (
@@ -480,45 +789,60 @@ export default function MeetingsPage() {
             </button>
           )}
         </div>
-      ) : !meeting ? (
+      ) : !displayMeeting ? (
         <div className="glass-card rounded-2xl p-8 text-center">
           <p className="text-gray-400 text-sm">{ko ? '예정된 모임이 없습니다.' : 'No upcoming meetings.'}</p>
         </div>
       ) : (
         <div className="space-y-4">
 
+          {/* ── 과거 기록 배너 ── */}
+          {isPastView && (
+            <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-amber-900/20 border border-amber-700/30">
+              <span className="text-base">📁</span>
+              <div className="flex-1">
+                <p className="text-xs font-semibold text-amber-300">{ko ? '과거 기록 보기' : 'Viewing past record'}</p>
+                <p className="text-[10px] text-amber-500/70">{ko ? '저장된 기록을 열람 중입니다. 편집 기능은 비활성화됩니다.' : 'Browsing archived data. Editing is disabled.'}</p>
+              </div>
+              <button onClick={navReset} className="text-[10px] text-amber-400 border border-amber-700/40 rounded-lg px-2 py-1">
+                {ko ? '현재로' : 'Current'}
+              </button>
+            </div>
+          )}
+
           {/* ── Meeting card ── */}
-          <div className={`glass-card rounded-2xl p-4 space-y-2 ${meeting.status === 'cancelled' ? 'opacity-60' : ''}`}>
+          <div className={`glass-card rounded-2xl p-4 space-y-2 ${displayMeeting.status === 'cancelled' ? 'opacity-60' : ''}`}>
             <div className="flex items-start justify-between gap-2">
               <div>
-                <p className="text-xs text-gray-400">{ko ? `${meeting.year}년 ${meeting.month}월 정기모임` : `${meeting.date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} Meeting`}</p>
+                <p className="text-xs text-gray-400">{ko ? `${displayMeeting.year}년 ${displayMeeting.month}월 정기모임` : `${displayMeeting.date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} Meeting`}</p>
                 <div className="flex items-center gap-2 mt-1">
-                  <p className="text-white font-bold text-lg">{fmtDate(meeting.date, ko)}</p>
-                  {dDayBadge()}
+                  <p className="text-white font-bold text-lg">{fmtDate(displayMeeting.date, ko)}</p>
+                  {!isPastView && dDayBadge()}
+                  {isPastView && <span className="bg-gray-800 text-gray-400 text-xs px-2 py-0.5 rounded-full">{ko ? '완료' : 'Done'}</span>}
                 </div>
               </div>
-              {meeting.status === 'cancelled'   && <XCircle size={20} className="text-red-400 flex-shrink-0 mt-1" />}
-              {meeting.status === 'rescheduled' && <AlertTriangle size={20} className="text-yellow-400 flex-shrink-0 mt-1" />}
-              {meeting.status === 'scheduled'   && <CheckCircle size={20} className="text-green-500 flex-shrink-0 mt-1" />}
+              {displayMeeting.status === 'cancelled'   && <XCircle size={20} className="text-red-400 flex-shrink-0 mt-1" />}
+              {displayMeeting.status === 'rescheduled' && <AlertTriangle size={20} className="text-yellow-400 flex-shrink-0 mt-1" />}
+              {displayMeeting.status === 'scheduled'   && <CheckCircle size={20} className="text-green-500 flex-shrink-0 mt-1" />}
             </div>
             <div className="flex items-center gap-4 text-xs text-gray-400">
-              {meeting.time  && <span className="flex items-center gap-1"><Clock size={12} />{fmtTime(meeting.time.slice(0,5), ko)}</span>}
-              {meeting.venue && <span className="flex items-center gap-1"><MapPin size={12} />{meeting.venue}</span>}
+              {displayMeeting.time  && <span className="flex items-center gap-1"><Clock size={12} />{fmtTime(displayMeeting.time.slice(0,5), ko)}</span>}
+              {displayMeeting.venue && <span className="flex items-center gap-1"><MapPin size={12} />{displayMeeting.venue}</span>}
             </div>
-            {meeting.reason && <p className="text-xs text-yellow-400">{meeting.reason}</p>}
+            {displayMeeting.reason && <p className="text-xs text-yellow-400">{displayMeeting.reason}</p>}
             {noticeSent && isRsvpOpen && (
               <p className="text-xs text-green-500 flex items-center gap-1"><CheckCircle size={11} />{ko ? '공지 자동 발송됨' : 'Notice sent'}</p>
             )}
-            {canManage && meeting.status !== 'cancelled' && (
+            {!isPastView && canManage && displayMeeting.status !== 'cancelled' && (
               <div className="flex gap-2 pt-1">
                 <button onClick={() => {
-                  const ds = `${meeting.date.getFullYear()}-${String(meeting.date.getMonth()+1).padStart(2,'0')}-${String(meeting.date.getDate()).padStart(2,'0')}`
+                  const ds = `${displayMeeting.date.getFullYear()}-${String(displayMeeting.date.getMonth()+1).padStart(2,'0')}-${String(displayMeeting.date.getDate()).padStart(2,'0')}`
                   setOForm({ status: 'cancelled', date: ds, time: '', reason: '' })
                   setShowOverrideModal(true)
                 }} className="flex-1 text-xs border border-gray-700 rounded-lg py-2 text-gray-400 hover:border-yellow-700 hover:text-yellow-400 transition">
                   {ko ? '일정 조정' : 'Adjust'}
                 </button>
-                {meeting.status !== 'scheduled' && (
+                {displayMeeting.status !== 'scheduled' && (
                   <button onClick={removeOverride} className="flex-1 text-xs border border-gray-700 rounded-lg py-2 text-gray-400 hover:border-green-800 hover:text-green-400 transition">
                     {ko ? '원복' : 'Reset'}
                   </button>
@@ -528,7 +852,7 @@ export default function MeetingsPage() {
           </div>
 
           {/* ── RSVP ── */}
-          {isRsvpOpen && meeting.status !== 'cancelled' && (
+          {isRsvpOpen && displayMeeting.status !== 'cancelled' && (
             <div className="glass-card rounded-2xl p-4 space-y-4">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold text-white">{ko ? '참석 여부' : 'RSVP'}</p>
@@ -590,33 +914,63 @@ export default function MeetingsPage() {
           )}
 
           {/* ── Groups ── */}
-          {(groups.length > 0 || (canManage && isRsvpOpen && attending.length > 0)) && (
+          {(groups.length > 0 || (canManage && !isPastView && isRsvpOpen && attending.length > 0)) && (
             <div className="glass-card rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-white flex items-center gap-2">
+                <p className="text-sm font-bold text-white flex items-center gap-2">
                   <Users size={15} className="text-green-400" />{ko ? '조 편성' : 'Groups'}
+                  {groups.length > 0 && <span className="text-[10px] text-green-500 font-normal bg-green-900/30 px-1.5 py-0.5 rounded-full">{groups.length}{ko ? '조' : ' groups'}</span>}
                 </p>
-                {canManage && (
-                  <button onClick={() => setShowGroupModal(true)} className="text-xs text-green-400 border border-green-800 rounded-full px-3 py-1">
-                    <Edit2 size={11} className="inline mr-1" />{ko ? '편집' : 'Edit'}
-                  </button>
-                )}
+                <div className="flex items-center gap-2">
+                  {groups.length > 0 && (
+                    <button onClick={exportGroupsCSV}
+                      className="text-xs text-blue-400 border border-blue-800/60 rounded-full px-3 py-1.5 flex items-center gap-1 hover:bg-blue-900/20 transition"
+                      title={ko ? 'CSV(엑셀)로 내보내기' : 'Export to CSV/Excel'}>
+                      <FileDown size={11} />{ko ? '엑셀' : 'Export'}
+                    </button>
+                  )}
+                  {canManage && !isPastView && (
+                    <button onClick={() => setShowGroupModal(true)}
+                      className="text-xs text-white bg-green-700 hover:bg-green-600 rounded-full px-3 py-1.5 flex items-center gap-1 transition font-semibold">
+                      <Edit2 size={11} />{ko ? (groups.length > 0 ? '편집' : '조편성') : (groups.length > 0 ? 'Edit' : 'Assign')}
+                    </button>
+                  )}
+                </div>
               </div>
               {groups.length === 0 ? (
-                <p className="text-xs text-gray-500">{ko ? '아직 조 편성이 없습니다.' : 'No groups yet.'}</p>
+                <div className="text-center py-3">
+                  <p className="text-xs text-gray-500">{ko ? '아직 조 편성이 없습니다.' : 'No groups yet.'}</p>
+                  {canManage && !isPastView && (
+                    <p className="text-[10px] text-gray-600 mt-1">{ko ? '위 "조편성" 버튼을 눌러 자동/수동으로 배정하세요.' : 'Use the "Assign" button above to set groups.'}</p>
+                  )}
+                </div>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-2.5">
                   {groups.map((g: any) => (
-                    <div key={g.group_number} className="bg-gray-800/60 rounded-xl p-3">
-                      <p className="text-xs font-semibold text-green-400 mb-2">
-                        {g.group_number}조{g.tee_time ? ` · ${g.tee_time}` : ''}
-                      </p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {(g.meeting_group_members ?? []).map((m: any) => (
-                          <span key={m.user_id} className="bg-gray-700 text-gray-200 text-xs px-2.5 py-1 rounded-full">
-                            {lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}
+                    <div key={g.group_number}
+                      className="rounded-xl p-3"
+                      style={{ background: 'rgba(22,163,74,0.07)', border: '1px solid rgba(34,197,94,0.15)' }}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xs font-black text-green-400 bg-green-900/40 border border-green-800/40 rounded-lg px-2 py-0.5">
+                          {g.group_number}조
+                        </span>
+                        {g.tee_time && (
+                          <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
+                            <Clock size={10} />{g.tee_time}
                           </span>
-                        ))}
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(g.meeting_group_members ?? []).map((m: any) => {
+                          const nm = lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)
+                          const isMe = m.user_id === user?.id
+                          return (
+                            <span key={m.user_id}
+                              className={`text-xs px-2.5 py-1 rounded-full font-medium ${isMe ? 'bg-green-600 text-white' : 'bg-gray-700/80 text-gray-200'}`}>
+                              {nm}{isMe ? (ko ? ' (나)' : ' (me)') : ''}
+                            </span>
+                          )
+                        })}
                       </div>
                     </div>
                   ))}
@@ -626,12 +980,13 @@ export default function MeetingsPage() {
           )}
 
           {/* ── Score Section ── */}
-          {isScoreOpen && meeting.status !== 'cancelled' && attending.length > 0 && (
+          {isScoreOpen && displayMeeting.status !== 'cancelled' && attending.length > 0 && (
             <div className="glass-card rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold text-white flex items-center gap-2">
                   <BarChart2 size={15} className="text-yellow-400" />
-                  {ko ? `${meeting.month}월 스코어` : `${meeting.date.toLocaleDateString('en-US',{month:'short'})} Scores`}
+                  {ko ? `${displayMeeting.month}월 스코어` : `${displayMeeting.date.toLocaleDateString('en-US',{month:'short'})} Scores`}
+                  {isPastView && <span className="text-[10px] text-gray-500 font-normal">{ko ? '(기록)' : '(archived)'}</span>}
                 </p>
                 <div className="flex items-center gap-2">
                   {scores.length > 0 && (
@@ -667,7 +1022,7 @@ export default function MeetingsPage() {
                 {attending.map((att: any) => {
                   const name = lang === 'ko' ? att.users?.full_name : (att.users?.full_name_en || att.users?.full_name)
                   const abbr = att.users?.name_abbr
-                  const canEdit = canManage || att.user_id === user?.id
+                  const canEdit = !isPastView && (canManage || att.user_id === user?.id)
                   const existing = scores.find(s => s.user_id === att.user_id)
                   const hcInfo = clubMembers.find(m => m.user_id === att.user_id)?.club_handicap
                   return (
@@ -708,6 +1063,161 @@ export default function MeetingsPage() {
                 <BarChart2 size={15} />
                 {savingScores ? (ko ? '저장 중...' : 'Saving...') : (ko ? '스코어 저장' : 'Save Scores')}
               </button>
+            </div>
+          )}
+
+          {/* ── 2차 모임 ── */}
+          {displayMeeting.status !== 'cancelled' && (daysUntil !== null && daysUntil >= -3 && daysUntil <= 14) && (
+            <div className="rounded-2xl overflow-hidden"
+              style={{ background: 'linear-gradient(135deg,rgba(251,146,60,0.07),rgba(6,13,6,0.98))', border: '1px solid rgba(251,146,60,0.2)' }}>
+              {/* 헤더 */}
+              <div className="flex items-center justify-between px-4 py-3"
+                style={{ borderBottom: '1px solid rgba(251,146,60,0.12)' }}>
+                <div className="flex items-center gap-2">
+                  <UtensilsCrossed size={14} style={{ color: '#fb923c' }} />
+                  <span className="text-sm font-bold text-white">
+                    {ko ? `${displayMeeting.month}월 2차 모임` : `After-party`}
+                  </span>
+                  {secondMeeting && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
+                      style={{ background: 'rgba(251,146,60,0.15)', color: '#fb923c', border: '1px solid rgba(251,146,60,0.25)' }}>
+                      {ko ? '확정' : 'Set'}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {/* 알림 구독 토글 */}
+                  <button
+                    onClick={togglePush}
+                    disabled={pushLoading}
+                    title={ko ? (pushEnabled ? '알림 해제' : '알림 받기') : (pushEnabled ? 'Unsubscribe' : 'Get notified')}
+                    className="p-1.5 rounded-lg transition"
+                    style={{ background: pushEnabled ? 'rgba(251,146,60,0.15)' : 'rgba(255,255,255,0.04)' }}>
+                    {pushEnabled
+                      ? <Bell size={13} style={{ color: '#fb923c' }} />
+                      : <BellOff size={13} style={{ color: '#5a7a5a' }} />}
+                  </button>
+                  {canManage && (
+                    <button onClick={() => { setSForm(secondMeeting ? { name: secondMeeting.restaurant_name, address: secondMeeting.restaurant_address ?? '', placeId: secondMeeting.google_place_id ?? '', lat: secondMeeting.lat ? String(secondMeeting.lat) : '', lng: secondMeeting.lng ? String(secondMeeting.lng) : '', time: secondMeeting.time ?? '19:00', notes: secondMeeting.notes ?? '' } : emptySecondForm); setShowSecondModal(true) }}
+                      className="flex items-center gap-1 text-xs rounded-full px-2.5 py-1 transition"
+                      style={{ background: secondMeeting ? 'rgba(251,146,60,0.12)' : 'rgba(251,146,60,0.2)', color: '#fb923c', border: '1px solid rgba(251,146,60,0.3)' }}>
+                      {secondMeeting ? <Edit2 size={11} /> : <Plus size={11} />}
+                      {secondMeeting ? (ko ? '수정' : 'Edit') : (ko ? '등록' : 'Add')}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* 내용 */}
+              {!secondMeeting ? (
+                <div className="px-4 py-6 text-center">
+                  <p className="text-sm" style={{ color: '#5a7a5a' }}>
+                    {canManage
+                      ? (ko ? '2차 모임 장소를 등록해 주세요' : 'Add an after-party venue')
+                      : (ko ? '2차 모임 장소가 아직 미정입니다' : 'After-party venue TBD')}
+                  </p>
+                </div>
+              ) : (
+                <div className="p-4 space-y-3">
+                  {/* 장소 정보 */}
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{ background: 'rgba(251,146,60,0.15)' }}>
+                      <UtensilsCrossed size={14} style={{ color: '#fb923c' }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-white">{secondMeeting.restaurant_name}</p>
+                      {secondMeeting.time && (
+                        <p className="text-xs mt-0.5 flex items-center gap-1" style={{ color: '#fb923c' }}>
+                          <Clock size={10} />{secondMeeting.time.slice(0, 5)}
+                        </p>
+                      )}
+                      {secondMeeting.restaurant_address && (
+                        <p className="text-xs mt-0.5" style={{ color: '#5a7a5a' }}>{secondMeeting.restaurant_address}</p>
+                      )}
+                    </div>
+                    {(secondMeeting.lat && secondMeeting.lng) && (
+                      <a href={`https://www.google.com/maps?q=${secondMeeting.lat},${secondMeeting.lng}`}
+                        target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg flex-shrink-0"
+                        style={{ background: 'rgba(34,197,94,0.1)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.2)' }}>
+                        <Navigation size={11} />
+                        {ko ? '길찾기' : 'Directions'}
+                      </a>
+                    )}
+                  </div>
+
+                  {/* 지도 */}
+                  {(secondMeeting.lat || secondMeeting.google_place_id || secondMeeting.restaurant_address) && (
+                    <MapEmbed
+                      name={secondMeeting.restaurant_name}
+                      address={secondMeeting.restaurant_address}
+                      lat={secondMeeting.lat}
+                      lng={secondMeeting.lng}
+                      placeId={secondMeeting.google_place_id}
+                      height={180}
+                      className="w-full"
+                    />
+                  )}
+
+                  {/* RSVP */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-semibold" style={{ color: '#fb923c' }}>
+                        {ko ? '2차 참석 여부' : '2nd RSVP'}
+                      </p>
+                      <span className="text-xs" style={{ color: '#5a7a5a' }}>
+                        {secondAtts.filter((a: any) => a.status === 'attending').length}{ko ? '명 참석' : ' going'}
+                      </span>
+                    </div>
+                    <div className="flex gap-2 mb-2">
+                      {(['attending', 'absent'] as const).map(s => {
+                        const myAtt2 = secondAtts.find((a: any) => a.user_id === user?.id)
+                        const active = myAtt2?.status === s
+                        return (
+                          <button key={s} onClick={() => rsvpSecond(s)}
+                            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium transition ${active ? (s === 'attending' ? 'bg-orange-700 text-white' : 'bg-red-800 text-white') : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+                            {s === 'attending' ? <Check size={14} /> : <Ban size={14} />}
+                            {s === 'attending' ? (ko ? '참석' : 'Going') : (ko ? '불참' : 'Skip')}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    {secondAtts.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {secondAtts.filter((a: any) => a.status === 'attending').map((a: any) => (
+                          <span key={a.user_id} className="text-xs px-2.5 py-0.5 rounded-full"
+                            style={{ background: 'rgba(251,146,60,0.12)', color: '#fb923c', border: '1px solid rgba(251,146,60,0.2)' }}>
+                            {ko ? a.users?.full_name : (a.users?.full_name_en || a.users?.full_name)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 알림 발송 */}
+                  {canManage && (
+                    <div className="pt-1">
+                      <button onClick={sendSecondMeetingNotification} disabled={sendingPush}
+                        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition disabled:opacity-50"
+                        style={{ background: 'linear-gradient(135deg,rgba(251,146,60,0.25),rgba(251,146,60,0.1))', color: '#fb923c', border: '1px solid rgba(251,146,60,0.3)' }}>
+                        <Bell size={14} />
+                        {sendingPush ? (ko ? '발송 중...' : 'Sending...') : (ko ? '전 회원 알림 발송' : 'Notify All Members')}
+                      </button>
+                      {pushResult && (
+                        <p className="text-center text-xs mt-1.5" style={{ color: pushResult.includes('실패') || pushResult.includes('Failed') ? '#f87171' : '#22c55e' }}>
+                          {pushResult}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {secondMeeting.notes && (
+                    <p className="text-xs px-3 py-2 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', color: '#6b7280' }}>
+                      {secondMeeting.notes}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -832,15 +1342,28 @@ export default function MeetingsPage() {
         }
       >
         <div>
-          <label className="text-xs text-gray-400 block mb-2">{ko ? '자동 조편성' : 'Auto grouping'}</label>
+          <label className="text-xs text-gray-400 block mb-1">{ko ? '자동 조편성' : 'Auto grouping'}</label>
+          <p className="text-[10px] text-gray-500 mb-2">
+            {ko ? '4명씩 같은 조로 순서대로 배정됩니다' : 'Players are cut into groups of 4 in order'}
+          </p>
           <div className="flex gap-2">
-            <button onClick={() => buildAutoAssign('handicap')}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-200 text-sm transition">
-              <ListOrdered size={14} />{ko ? '핸디순' : 'By handicap'}
+            <button onClick={() => buildAutoAssign('top4')} disabled={autoGroupLoading}
+              className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl bg-emerald-900/60 hover:bg-emerald-800/60 border border-emerald-700/40 text-emerald-300 text-sm font-medium transition disabled:opacity-50">
+              {autoGroupLoading
+                ? <span className="animate-spin text-base">⏳</span>
+                : <ListOrdered size={14} />}
+              <span>
+                <span className="block text-xs font-bold">{ko ? '전달핸디 상위순' : 'Prev Handicap'}</span>
+                <span className="block text-[10px] text-emerald-500/80">{ko ? '전달 스코어 기준' : 'by last month score'}</span>
+              </span>
             </button>
-            <button onClick={() => buildAutoAssign('random')}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-200 text-sm transition">
-              <Shuffle size={14} />{ko ? '랜덤' : 'Random'}
+            <button onClick={() => buildAutoAssign('random')} disabled={autoGroupLoading}
+              className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-700/50 text-gray-200 text-sm font-medium transition disabled:opacity-50">
+              <Shuffle size={14} />
+              <span>
+                <span className="block text-xs font-bold">{ko ? '랜덤' : 'Random'}</span>
+                <span className="block text-[10px] text-gray-500">{ko ? '무작위 배정' : 'shuffle'}</span>
+              </span>
             </button>
           </div>
         </div>
@@ -853,15 +1376,24 @@ export default function MeetingsPage() {
                 const cur = assign[att.user_id]
                 const maxGroup = Math.max(0, ...(Object.values(assign) as number[]))
                 const numButtons = Math.min(6, Math.max(maxGroup + 1, (cur ?? 0) + 1, 4))
+                const hc = clubMembers.find(cm => cm.user_id === att.user_id)?.club_handicap
                 return (
                   <div key={att.user_id} className="flex items-center justify-between gap-3 bg-gray-800 rounded-xl px-3 py-2.5">
-                    <span className="text-sm text-white flex-1 truncate">{name}</span>
-                    <div className="flex gap-1 flex-shrink-0">
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm text-white block truncate">{name}</span>
+                      {hc != null && (
+                        <span className="text-[10px] text-gray-500">HC {hc}</span>
+                      )}
+                    </div>
+                    <div className="flex gap-1 flex-shrink-0 items-center">
+                      {cur == null && (
+                        <span className="text-[10px] text-amber-500 mr-1">미배정</span>
+                      )}
                       {Array.from({ length: numButtons }, (_, i) => i + 1).map(n => (
                         <button key={n}
                           onClick={() => setAssign(prev => ({ ...prev, [att.user_id]: n }))}
-                          className={`w-7 h-7 rounded-lg text-xs font-bold transition ${cur === n ? 'bg-green-700 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}>
-                          {n}
+                          className={`w-7 h-7 rounded-lg text-xs font-bold transition ${cur === n ? 'bg-green-600 text-white shadow-lg shadow-green-900/40' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}>
+                          {n}조
                         </button>
                       ))}
                     </div>
@@ -873,15 +1405,31 @@ export default function MeetingsPage() {
         ) : (
           <p className="text-xs text-gray-500 text-center py-4">{ko ? '참석자가 없습니다.' : 'No attendees yet.'}</p>
         )}
+        {/* 미배정 경고 */}
+        {attending.length > 0 && attending.some((a: any) => assign[a.user_id] == null) && (
+          <p className="text-[11px] text-amber-400 bg-amber-900/20 border border-amber-700/30 rounded-lg px-3 py-2">
+            ⚠️ {ko ? `미배정 ${attending.filter((a: any) => assign[a.user_id] == null).length}명이 있습니다` : `${attending.filter((a: any) => assign[a.user_id] == null).length} members not yet assigned`}
+          </p>
+        )}
         {assignedGroupNums.length > 0 && (
           <div className="space-y-2">
             <label className="text-xs text-gray-400 block">{ko ? '편성 미리보기' : 'Preview'}</label>
             {assignedGroupNums.map(gn => {
               const gMembers = attending.filter((a: any) => assign[a.user_id] === gn)
               return (
-                <div key={gn} className="bg-green-900/20 border border-green-800/40 rounded-xl px-3 py-2">
-                  <p className="text-xs font-semibold text-green-400 mb-1">{gn}조 ({gMembers.length}{ko ? '명' : ''})</p>
-                  <p className="text-xs text-gray-300">{gMembers.map((a: any) => lang === 'ko' ? a.users?.full_name : (a.users?.full_name_en || a.users?.full_name)).join(', ')}</p>
+                <div key={gn} className="bg-green-900/20 border border-green-800/40 rounded-xl px-3 py-2.5">
+                  <p className="text-xs font-bold text-green-400 mb-1.5">{gn}조 ({gMembers.length}{ko ? '명' : ''})</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {gMembers.map((a: any) => {
+                      const nm = lang === 'ko' ? a.users?.full_name : (a.users?.full_name_en || a.users?.full_name)
+                      const hc = clubMembers.find(cm => cm.user_id === a.user_id)?.club_handicap
+                      return (
+                        <span key={a.user_id} className="text-xs bg-green-900/40 border border-green-800/30 rounded-lg px-2 py-0.5 text-gray-200">
+                          {nm}{hc != null ? <span className="text-green-500 ml-1 text-[10px]">HC{hc}</span> : ''}
+                        </span>
+                      )
+                    })}
+                  </div>
                 </div>
               )
             })}
@@ -967,6 +1515,116 @@ export default function MeetingsPage() {
             )}
           </>
         )}
+      </BottomSheet>
+
+      {/* ── 2차 모임 등록/수정 Modal ── */}
+      <BottomSheet
+        open={showSecondModal}
+        onClose={() => setShowSecondModal(false)}
+        title={secondMeeting ? (ko ? '2차 모임 수정' : 'Edit After-party') : (ko ? '2차 모임 등록' : 'Add After-party')}
+        footer={
+          <div className="flex gap-3">
+            {secondMeeting && canManage && (
+              <button onClick={() => { deleteSecondMeeting(); setShowSecondModal(false) }}
+                className="p-3 rounded-xl text-red-400 hover:bg-red-900/30 transition">
+                <Trash2 size={16} />
+              </button>
+            )}
+            <button onClick={() => setShowSecondModal(false)} className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 text-sm font-medium">
+              {ko ? '취소' : 'Cancel'}
+            </button>
+            <button onClick={saveSecondMeeting} disabled={savingSecond || !sForm.name.trim()}
+              className="flex-1 py-3 rounded-xl font-bold text-sm disabled:opacity-50 transition"
+              style={{ background: 'linear-gradient(135deg,#fb923c,#ea580c)', color: '#fff' }}>
+              {savingSecond ? '...' : (ko ? '저장' : 'Save')}
+            </button>
+          </div>
+        }
+      >
+        {/* 레스토랑 검색 */}
+        <div>
+          <label className="text-xs mb-1.5 block" style={{ color: '#9ca3af' }}>
+            {ko ? '🍽️ 레스토랑 / 장소 검색' : '🍽️ Search Restaurant / Venue'}
+          </label>
+          <PlaceSearchInput
+            value={sForm.name}
+            onChange={v => setSForm(f => ({ ...f, name: v }))}
+            onSelect={p => setSForm(f => ({
+              ...f,
+              name:    p.name,
+              address: p.address ?? f.address,
+              placeId: p.place_id ?? f.placeId,
+              lat:     p.lat != null ? String(p.lat) : f.lat,
+              lng:     p.lng != null ? String(p.lng) : f.lng,
+            }))}
+            placeholder={ko ? '레스토랑 이름 검색...' : 'Search restaurant name...'}
+            useFixed
+          />
+        </div>
+
+        {/* 주소 */}
+        <div>
+          <label className="text-xs mb-1.5 block" style={{ color: '#9ca3af' }}>
+            {ko ? '📍 주소' : '📍 Address'}
+          </label>
+          <input
+            value={sForm.address}
+            onChange={e => setSForm(f => ({ ...f, address: e.target.value }))}
+            placeholder={ko ? '주소 (레스토랑 검색 시 자동 입력)' : 'Address (auto-filled from search)'}
+            className="input-field text-sm w-full"
+          />
+        </div>
+
+        {/* 지도 미리보기 */}
+        {(sForm.lat || sForm.placeId || sForm.address) && (
+          <MapEmbed
+            name={sForm.name}
+            address={sForm.address}
+            lat={sForm.lat ? parseFloat(sForm.lat) : null}
+            lng={sForm.lng ? parseFloat(sForm.lng) : null}
+            placeId={sForm.placeId}
+            height={160}
+            className="w-full"
+          />
+        )}
+
+        {/* 시간 */}
+        <div>
+          <label className="text-xs mb-1.5 block" style={{ color: '#9ca3af' }}>
+            {ko ? '🕐 시간' : '🕐 Time'}
+          </label>
+          <input
+            type="time"
+            value={sForm.time}
+            onChange={e => setSForm(f => ({ ...f, time: e.target.value }))}
+            className="input-field text-sm w-full"
+          />
+        </div>
+
+        {/* 메모 */}
+        <div>
+          <label className="text-xs mb-1.5 block" style={{ color: '#9ca3af' }}>
+            {ko ? '📝 메모 (선택)' : '📝 Notes (optional)'}
+          </label>
+          <textarea
+            rows={2}
+            value={sForm.notes}
+            onChange={e => setSForm(f => ({ ...f, notes: e.target.value }))}
+            placeholder={ko ? '복장규정, 주차정보 등...' : 'Dress code, parking info...'}
+            className="input-field text-sm w-full resize-none"
+          />
+        </div>
+
+        {/* 알림 발송 안내 */}
+        <div className="rounded-xl px-3 py-2.5 flex items-start gap-2"
+          style={{ background: 'rgba(251,146,60,0.06)', border: '1px solid rgba(251,146,60,0.15)' }}>
+          <Bell size={12} className="flex-shrink-0 mt-0.5" style={{ color: '#fb923c' }} />
+          <p className="text-xs" style={{ color: '#9ca3af' }}>
+            {ko
+              ? '저장 후 "전 회원 알림 발송" 버튼으로 푸시 알림을 보낼 수 있습니다.'
+              : 'After saving, use "Notify All Members" to send push notifications.'}
+          </p>
+        </div>
       </BottomSheet>
 
     </div>

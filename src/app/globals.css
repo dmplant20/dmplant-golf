@@ -1,28 +1,36 @@
 @import "tailwindcss";
 
 :root {
-  --bg:        #060d06;
-  --bg-2:      #0c160c;
-  --bg-3:      #111e11;
-  --surface:   #141f14;
-  --surface-2: #1a2b1a;
-  --border:    rgba(34, 197, 94, 0.12);
-  --border-2:  rgba(34, 197, 94, 0.22);
+  --bg:        #070f07;
+  --bg-2:      #0c1a0c;
+  --bg-3:      #111f11;
+  --surface:   #142014;
+  --surface-2: #1b2e1b;
+  --border:    rgba(74, 222, 128, 0.15);
+  --border-2:  rgba(74, 222, 128, 0.28);
   --green:     #16a34a;
-  --green-l:   #22c55e;
+  --green-l:   #4ade80;
+  --green-m:   #22c55e;
   --green-d:   #14532d;
-  --gold:      #d4af37;
-  --gold-l:    #f0d060;
+  --gold:      #f59e0b;
+  --gold-l:    #fcd34d;
   --text:      #f0fdf4;
-  --text-2:    #a3b8a3;
-  --text-3:    #5a7a5a;
+  --text-2:    #bbf7d0;
+  --text-3:    #4ade80;
+  --text-muted:#6b9a6b;
   --radius:    16px;
 }
 
+/* ── 시스템 폰트 스택 (Google Fonts 의존성 없음) ────────────────────────
+   iOS:     Apple SD Gothic Neo → Helvetica Neue
+   Android: Noto Sans KR (기본 내장) → Roboto
+   Windows: Malgun Gothic → Segoe UI
+──────────────────────────────────────────────────────────────────────── */
 @theme inline {
   --color-background: var(--bg);
   --color-foreground: var(--text);
-  --font-sans: var(--font-noto), var(--font-inter), system-ui, sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
+    'Noto Sans KR', 'Malgun Gothic', Roboto, 'Helvetica Neue', sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -30,7 +38,8 @@
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font-noto), var(--font-inter), system-ui, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
+    'Noto Sans KR', 'Malgun Gothic', Roboto, 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overscroll-behavior: none;
@@ -49,24 +58,29 @@ body {
    glass-card  : 기본 유리 효과
    premium-card: 그라디언트 테두리 + 글로우
    stat-card   : 통계 숫자 카드
+   pro-card    : 프로 스탯 표시 (흰 텍스트, 고대비)
 ──────────────────────────────────────────────────────────────────────── */
 .glass-card {
-  background: linear-gradient(135deg, rgba(20,40,20,0.7) 0%, rgba(12,22,12,0.9) 100%);
+  background: linear-gradient(135deg, rgba(27,46,27,0.85) 0%, rgba(12,26,12,0.95) 100%);
   border: 1px solid var(--border);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 2px 16px rgba(0,0,0,0.35);
 }
 
 .premium-card {
-  background: linear-gradient(145deg, rgba(22,163,74,0.08) 0%, rgba(6,13,6,0.95) 60%);
+  background: linear-gradient(145deg, rgba(74,222,128,0.10) 0%, rgba(7,15,7,0.97) 60%);
   border: 1px solid var(--border-2);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  box-shadow: 0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(34,197,94,0.08);
+  box-shadow:
+    0 4px 32px rgba(0,0,0,0.5),
+    inset 0 1px 0 rgba(74,222,128,0.14),
+    0 0 0 1px rgba(74,222,128,0.06);
 }
 
 .stat-card {
-  background: linear-gradient(145deg, rgba(22,163,74,0.12) 0%, rgba(10,18,10,0.98) 100%);
+  background: linear-gradient(145deg, rgba(74,222,128,0.14) 0%, rgba(11,20,11,0.98) 100%);
   border: 1px solid var(--border-2);
   position: relative;
   overflow: hidden;
@@ -75,16 +89,33 @@ body {
   content: '';
   position: absolute;
   top: -20px; right: -20px;
-  width: 80px; height: 80px;
+  width: 90px; height: 90px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(22,163,74,0.15) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(74,222,128,0.18) 0%, transparent 70%);
+}
+
+.pro-card {
+  background: linear-gradient(145deg, rgba(27,46,27,0.98) 0%, rgba(7,15,7,1) 100%);
+  border: 1px solid var(--border-2);
+  position: relative;
+  overflow: hidden;
+  box-shadow:
+    0 8px 32px rgba(0,0,0,0.6),
+    inset 0 1px 0 rgba(74,222,128,0.18);
+}
+.pro-card::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(74,222,128,0.5), transparent);
 }
 
 /* ── 입력 필드 ────────────────────────────────────────────────────────── */
 .input-field {
   width: 100%;
-  background: rgba(10,18,10,0.8);
-  border: 1px solid rgba(34,197,94,0.18);
+  background: rgba(11,20,11,0.85);
+  border: 1px solid rgba(74,222,128,0.25);
   border-radius: 14px;
   padding: 12px 16px;
   color: var(--text);
@@ -93,10 +124,10 @@ body {
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 .input-field:focus {
-  border-color: rgba(34,197,94,0.5);
-  box-shadow: 0 0 0 3px rgba(22,163,74,0.1);
+  border-color: rgba(74,222,128,0.6);
+  box-shadow: 0 0 0 3px rgba(74,222,128,0.12), 0 0 12px rgba(74,222,128,0.08);
 }
-.input-field::placeholder { color: var(--text-3); }
+.input-field::placeholder { color: var(--text-muted); }
 
 /* ── 버튼 ─────────────────────────────────────────────────────────────── */
 .btn-primary {
@@ -108,7 +139,7 @@ body {
   border: none;
   cursor: pointer;
   transition: opacity 0.15s, transform 0.1s;
-  box-shadow: 0 4px 16px rgba(22,163,74,0.3);
+  box-shadow: 0 4px 20px rgba(22,163,74,0.4), inset 0 1px 0 rgba(255,255,255,0.1);
   font-size: 0.875rem;
 }
 .btn-primary:hover  { opacity: 0.9; }
@@ -116,8 +147,8 @@ body {
 .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .btn-ghost {
-  background: rgba(34,197,94,0.08);
-  border: 1px solid rgba(34,197,94,0.2);
+  background: rgba(74,222,128,0.1);
+  border: 1px solid rgba(74,222,128,0.28);
   color: #86efac;
   border-radius: 12px;
   padding: 10px 16px;
@@ -125,7 +156,45 @@ body {
   cursor: pointer;
   transition: background 0.15s;
 }
-.btn-ghost:hover { background: rgba(34,197,94,0.14); }
+.btn-ghost:hover { background: rgba(74,222,128,0.18); }
+
+/* ── 내비 필 ──────────────────────────────────────────────────────────── */
+.nav-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 99px;
+  background: rgba(74,222,128,0.12);
+  border: 1px solid rgba(74,222,128,0.25);
+  color: var(--green-l);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  transition: background 0.15s, border-color 0.15s;
+}
+.nav-pill:hover {
+  background: rgba(74,222,128,0.2);
+  border-color: rgba(74,222,128,0.4);
+}
+.nav-pill.active {
+  background: rgba(74,222,128,0.22);
+  border-color: rgba(74,222,128,0.5);
+  box-shadow: 0 0 12px rgba(74,222,128,0.15);
+}
+
+/* ── 스코어 뱃지 ──────────────────────────────────────────────────────── */
+.score-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+}
 
 /* ── 뱃지 ─────────────────────────────────────────────────────────────── */
 .badge {
@@ -151,7 +220,7 @@ body {
 /* ── 구분선 ───────────────────────────────────────────────────────────── */
 .divider {
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(34,197,94,0.2), transparent);
+  background: linear-gradient(90deg, transparent, rgba(74,222,128,0.25), transparent);
 }
 
 /* ── 스코어 컬러 ──────────────────────────────────────────────────────── */
@@ -161,6 +230,30 @@ body {
 .score-bogey  { background: #a16207; color: #fff; }
 .score-double { background: #c2410c; color: #fff; }
 .score-triple { background: #b91c1c; color: #fff; }
+
+/* ── 랜드스케이프 테이블 ──────────────────────────────────────────────── */
+.landscape-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.8125rem;
+}
+.landscape-table th,
+.landscape-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(74,222,128,0.1);
+  text-align: center;
+  white-space: nowrap;
+}
+.landscape-table th {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  background: rgba(27,46,27,0.6);
+}
+.landscape-table tr:last-child td { border-bottom: none; }
 
 /* ── 애니메이션 ───────────────────────────────────────────────────────── */
 @keyframes fadeIn {
@@ -172,20 +265,25 @@ body {
   to   { transform: translateY(0); }
 }
 @keyframes pulse-green {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(22,163,74,0.4); }
-  50%       { box-shadow: 0 0 0 8px rgba(22,163,74,0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(74,222,128,0.4); }
+  50%       { box-shadow: 0 0 0 8px rgba(74,222,128,0); }
+}
+@keyframes landscapeLabelIn {
+  0%   { opacity: 0; transform: translateX(-8px) rotate(-90deg); }
+  100% { opacity: 1; transform: translateX(0)    rotate(-90deg); }
 }
 
-.animate-fade-in  { animation: fadeIn  0.25s ease both; }
-.animate-slide-up { animation: slideUp 0.3s cubic-bezier(0.32,0.72,0,1) both; }
-.pulse-green      { animation: pulse-green 2s infinite; }
+.animate-fade-in    { animation: fadeIn  0.25s ease both; }
+.animate-slide-up   { animation: slideUp 0.3s cubic-bezier(0.32,0.72,0,1) both; }
+.pulse-green        { animation: pulse-green 2s infinite; }
+.landscape-label-in { animation: landscapeLabelIn 0.3s ease both; }
 
 /* ── 골프 코스 자동완성 드롭다운 ─────────────────────────────────────── */
 .course-dropdown {
   position: absolute;
   top: calc(100% + 6px);
   left: 0; right: 0;
-  background: #0c160c;
+  background: #0c1a0c;
   border: 1px solid var(--border-2);
   border-radius: 14px;
   overflow: hidden;
@@ -198,10 +296,10 @@ body {
   padding: 10px 14px;
   cursor: pointer;
   transition: background 0.12s;
-  border-bottom: 1px solid rgba(34,197,94,0.06);
+  border-bottom: 1px solid rgba(74,222,128,0.08);
 }
 .course-item:last-child { border-bottom: none; }
-.course-item:hover, .course-item:focus { background: rgba(22,163,74,0.12); }
+.course-item:hover, .course-item:focus { background: rgba(74,222,128,0.12); }
 
 /* ── 메뉴 아이템 ──────────────────────────────────────────────────────── */
 .menu-item {
@@ -213,5 +311,5 @@ body {
   transition: background 0.15s;
   cursor: pointer;
 }
-.menu-item:hover { background: rgba(34,197,94,0.06); }
-.menu-item:active { background: rgba(34,197,94,0.12); }
+.menu-item:hover  { background: rgba(74,222,128,0.08); }
+.menu-item:active { background: rgba(74,222,128,0.14); }
