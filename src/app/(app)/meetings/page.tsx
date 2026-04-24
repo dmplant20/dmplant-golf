@@ -150,6 +150,7 @@ export default function MeetingsPage() {
   const [showGroupModal,    setShowGroupModal]    = useState(false)
   const [showAnalysis,      setShowAnalysis]      = useState(false)
   const [saving,            setSaving]            = useState(false)
+  const [autoGroupLoading,  setAutoGroupLoading]  = useState(false)
 
   const [pForm, setPForm] = useState({ week: 3, dow: 4, time: '07:00', venue: '', notes: '' })
   const [oForm, setOForm] = useState({ status: 'cancelled', date: '', time: '', reason: '' })
@@ -321,21 +322,49 @@ export default function MeetingsPage() {
   }
 
   // ── auto grouping ──────────────────────────────────────────────────────
-  function buildAutoAssign(method: 'handicap' | 'random') {
+  // method 'top4'  : 전달 핸디 상위순 → 상위 4명씩 순서대로 같은 조 배정
+  // method 'random': 랜덤 셔플 후 4명씩 순서대로 배정
+  async function buildAutoAssign(method: 'top4' | 'random') {
     const pool = clubMembers.filter(m => attendances.find(a => a.user_id === m.user_id && a.status === 'attending'))
     let ordered = [...pool]
-    if (method === 'handicap') {
-      ordered.sort((a, b) => (a.club_handicap ?? 99) - (b.club_handicap ?? 99))
-      const n = Math.ceil(ordered.length / 4)
-      const rows: any[][] = Array.from({ length: n }, () => [])
-      ordered.forEach((m, i) => rows[i % n].push(m))
-      ordered = rows.flat()
-    } else {
+
+    if (method === 'random') {
+      // Fisher-Yates shuffle
       for (let i = ordered.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [ordered[i], ordered[j]] = [ordered[j], ordered[i]]
       }
+    } else {
+      // top4: 전달(이전 달) round_scores.handicap_used 기준 오름차순 정렬
+      // 데이터 없는 회원은 club_handicap → 99 순으로 후순위
+      setAutoGroupLoading(true)
+      try {
+        if (meeting) {
+          const prevMonth = meeting.month === 1 ? 12 : meeting.month - 1
+          const prevYear  = meeting.month === 1 ? meeting.year - 1 : meeting.year
+          const supabase  = createClient()
+          const { data: prevScores } = await supabase
+            .from('round_scores')
+            .select('user_id, handicap_used')
+            .eq('club_id', currentClubId)
+            .eq('year', prevYear)
+            .eq('month', prevMonth)
+          const scoreMap: Record<string, number> = {}
+          prevScores?.forEach((s: any) => {
+            if (s.handicap_used != null) scoreMap[s.user_id] = s.handicap_used
+          })
+          ordered.sort((a, b) => {
+            const ha = scoreMap[a.user_id] ?? (a.club_handicap ?? 99)
+            const hb = scoreMap[b.user_id] ?? (b.club_handicap ?? 99)
+            return ha - hb  // 낮을수록(핸디 낮을수록) 상위
+          })
+        }
+      } finally {
+        setAutoGroupLoading(false)
+      }
     }
+
+    // 4명씩 끊어서 순서대로 조 배정 (1~4번 → 1조, 5~8번 → 2조, …)
     const a: Record<string, number> = {}
     ordered.forEach((m, i) => { a[m.user_id] = Math.floor(i / 4) + 1 })
     setAssign(a)
@@ -1198,15 +1227,28 @@ export default function MeetingsPage() {
         }
       >
         <div>
-          <label className="text-xs text-gray-400 block mb-2">{ko ? '자동 조편성' : 'Auto grouping'}</label>
+          <label className="text-xs text-gray-400 block mb-1">{ko ? '자동 조편성' : 'Auto grouping'}</label>
+          <p className="text-[10px] text-gray-500 mb-2">
+            {ko ? '4명씩 같은 조로 순서대로 배정됩니다' : 'Players are cut into groups of 4 in order'}
+          </p>
           <div className="flex gap-2">
-            <button onClick={() => buildAutoAssign('handicap')}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-200 text-sm transition">
-              <ListOrdered size={14} />{ko ? '핸디순' : 'By handicap'}
+            <button onClick={() => buildAutoAssign('top4')} disabled={autoGroupLoading}
+              className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl bg-emerald-900/60 hover:bg-emerald-800/60 border border-emerald-700/40 text-emerald-300 text-sm font-medium transition disabled:opacity-50">
+              {autoGroupLoading
+                ? <span className="animate-spin text-base">⏳</span>
+                : <ListOrdered size={14} />}
+              <span>
+                <span className="block text-xs font-bold">{ko ? '전달핸디 상위순' : 'Prev Handicap'}</span>
+                <span className="block text-[10px] text-emerald-500/80">{ko ? '전달 스코어 기준' : 'by last month score'}</span>
+              </span>
             </button>
-            <button onClick={() => buildAutoAssign('random')}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-200 text-sm transition">
-              <Shuffle size={14} />{ko ? '랜덤' : 'Random'}
+            <button onClick={() => buildAutoAssign('random')} disabled={autoGroupLoading}
+              className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-700/50 text-gray-200 text-sm font-medium transition disabled:opacity-50">
+              <Shuffle size={14} />
+              <span>
+                <span className="block text-xs font-bold">{ko ? '랜덤' : 'Random'}</span>
+                <span className="block text-[10px] text-gray-500">{ko ? '무작위 배정' : 'shuffle'}</span>
+              </span>
             </button>
           </div>
         </div>
@@ -1219,15 +1261,24 @@ export default function MeetingsPage() {
                 const cur = assign[att.user_id]
                 const maxGroup = Math.max(0, ...(Object.values(assign) as number[]))
                 const numButtons = Math.min(6, Math.max(maxGroup + 1, (cur ?? 0) + 1, 4))
+                const hc = clubMembers.find(cm => cm.user_id === att.user_id)?.club_handicap
                 return (
                   <div key={att.user_id} className="flex items-center justify-between gap-3 bg-gray-800 rounded-xl px-3 py-2.5">
-                    <span className="text-sm text-white flex-1 truncate">{name}</span>
-                    <div className="flex gap-1 flex-shrink-0">
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm text-white block truncate">{name}</span>
+                      {hc != null && (
+                        <span className="text-[10px] text-gray-500">HC {hc}</span>
+                      )}
+                    </div>
+                    <div className="flex gap-1 flex-shrink-0 items-center">
+                      {cur == null && (
+                        <span className="text-[10px] text-amber-500 mr-1">미배정</span>
+                      )}
                       {Array.from({ length: numButtons }, (_, i) => i + 1).map(n => (
                         <button key={n}
                           onClick={() => setAssign(prev => ({ ...prev, [att.user_id]: n }))}
-                          className={`w-7 h-7 rounded-lg text-xs font-bold transition ${cur === n ? 'bg-green-700 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}>
-                          {n}
+                          className={`w-7 h-7 rounded-lg text-xs font-bold transition ${cur === n ? 'bg-green-600 text-white shadow-lg shadow-green-900/40' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}>
+                          {n}조
                         </button>
                       ))}
                     </div>
@@ -1239,15 +1290,31 @@ export default function MeetingsPage() {
         ) : (
           <p className="text-xs text-gray-500 text-center py-4">{ko ? '참석자가 없습니다.' : 'No attendees yet.'}</p>
         )}
+        {/* 미배정 경고 */}
+        {attending.length > 0 && attending.some((a: any) => assign[a.user_id] == null) && (
+          <p className="text-[11px] text-amber-400 bg-amber-900/20 border border-amber-700/30 rounded-lg px-3 py-2">
+            ⚠️ {ko ? `미배정 ${attending.filter((a: any) => assign[a.user_id] == null).length}명이 있습니다` : `${attending.filter((a: any) => assign[a.user_id] == null).length} members not yet assigned`}
+          </p>
+        )}
         {assignedGroupNums.length > 0 && (
           <div className="space-y-2">
             <label className="text-xs text-gray-400 block">{ko ? '편성 미리보기' : 'Preview'}</label>
             {assignedGroupNums.map(gn => {
               const gMembers = attending.filter((a: any) => assign[a.user_id] === gn)
               return (
-                <div key={gn} className="bg-green-900/20 border border-green-800/40 rounded-xl px-3 py-2">
-                  <p className="text-xs font-semibold text-green-400 mb-1">{gn}조 ({gMembers.length}{ko ? '명' : ''})</p>
-                  <p className="text-xs text-gray-300">{gMembers.map((a: any) => lang === 'ko' ? a.users?.full_name : (a.users?.full_name_en || a.users?.full_name)).join(', ')}</p>
+                <div key={gn} className="bg-green-900/20 border border-green-800/40 rounded-xl px-3 py-2.5">
+                  <p className="text-xs font-bold text-green-400 mb-1.5">{gn}조 ({gMembers.length}{ko ? '명' : ''})</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {gMembers.map((a: any) => {
+                      const nm = lang === 'ko' ? a.users?.full_name : (a.users?.full_name_en || a.users?.full_name)
+                      const hc = clubMembers.find(cm => cm.user_id === a.user_id)?.club_handicap
+                      return (
+                        <span key={a.user_id} className="text-xs bg-green-900/40 border border-green-800/30 rounded-lg px-2 py-0.5 text-gray-200">
+                          {nm}{hc != null ? <span className="text-green-500 ml-1 text-[10px]">HC{hc}</span> : ''}
+                        </span>
+                      )
+                    })}
+                  </div>
                 </div>
               )
             })}
