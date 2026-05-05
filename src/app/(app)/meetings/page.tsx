@@ -745,12 +745,13 @@ export default function MeetingsPage() {
 
       {/* Header */}
       <div className="flex items-center gap-2 mb-4">
-        <button onClick={() => router.back()} className="text-gray-400 p-1"><ChevronLeft size={20} /></button>
-        <CalendarDays size={18} className="text-green-400" />
-        <h1 className="text-base font-bold text-white flex-1">{ko ? '정기모임 일정' : 'Regular Meetings'}</h1>
+        <button onClick={() => router.back()} style={{ color: 'var(--silver)' }} className="p-1"><ChevronLeft size={20} /></button>
+        <CalendarDays size={18} style={{ color: 'var(--gold-l)' }} />
+        <h1 className="text-base font-bold flex-1" style={{ color: 'var(--text)' }}>{ko ? '정기모임 일정' : 'Regular Meetings'}</h1>
         {canManage && (
           <button onClick={() => { loadCourses(); setShowPatternModal(true) }}
-            className="flex items-center gap-1 text-xs text-green-400 border border-green-800 rounded-full px-3 py-1.5">
+            className="flex items-center gap-1 text-xs rounded-full px-3 py-1.5"
+            style={{ color: 'var(--gold-l)', border: '1px solid rgba(201,168,76,0.35)' }}>
             <Settings2 size={12} />{ko ? '패턴 설정' : 'Pattern'}
           </button>
         )}
@@ -772,7 +773,7 @@ export default function MeetingsPage() {
                 📁 {ko ? '과거 기록 · 현재로 돌아가기' : 'Past record · Back to current'}
               </button>
             ) : (
-              <p className="text-[10px] text-green-400">{ko ? '현재 모임' : 'Current meeting'}</p>
+              <p className="text-[10px]" style={{ color: 'var(--gold-l)' }}>{ko ? '현재 모임' : 'Current meeting'}</p>
             )}
           </div>
           <button onClick={() => navMonth(1)}
@@ -793,7 +794,7 @@ export default function MeetingsPage() {
           </div>
           {canManage && (
             <button onClick={() => { loadCourses(); setShowPatternModal(true) }}
-              className="bg-green-700 hover:bg-green-600 text-white text-sm px-5 py-2.5 rounded-xl font-semibold transition">
+              className="text-white text-sm px-5 py-2.5 rounded-xl font-semibold transition btn-primary">
               {ko ? '패턴 설정하기' : 'Set Pattern'}
             </button>
           )}
@@ -852,7 +853,7 @@ export default function MeetingsPage() {
                   {ko ? '일정 조정' : 'Adjust'}
                 </button>
                 {displayMeeting.status !== 'scheduled' && (
-                  <button onClick={removeOverride} className="flex-1 text-xs border border-gray-700 rounded-lg py-2 text-gray-400 hover:border-green-800 hover:text-green-400 transition">
+                  <button onClick={removeOverride} className="flex-1 text-xs border border-gray-700 rounded-lg py-2 text-gray-400 transition" style={{ '--tw-border-opacity': 1 } as any} onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(201,168,76,0.5)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--gold-l)' }} onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = ''; (e.currentTarget as HTMLButtonElement).style.color = '' }}>
                     {ko ? '원복' : 'Reset'}
                   </button>
                 )}
@@ -926,9 +927,9 @@ export default function MeetingsPage() {
           {(groups.length > 0 || (canManage && !isPastView && isRsvpOpen && attending.length > 0)) && (
             <div className="glass-card rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <p className="text-sm font-bold text-white flex items-center gap-2">
-                  <Users size={15} className="text-green-400" />{ko ? '조 편성' : 'Groups'}
-                  {groups.length > 0 && <span className="text-[10px] text-green-500 font-normal bg-green-900/30 px-1.5 py-0.5 rounded-full">{groups.length}{ko ? '조' : ' groups'}</span>}
+                <p className="text-sm font-bold flex items-center gap-2" style={{ color: 'var(--text)' }}>
+                  <Users size={15} style={{ color: 'var(--gold-l)' }} />{ko ? '조 편성' : 'Groups'}
+                  {groups.length > 0 && <span className="text-[10px] font-normal px-1.5 py-0.5 rounded-full" style={{ color: 'var(--gold-l)', background: 'rgba(201,168,76,0.12)' }}>{groups.length}{ko ? '조' : ' groups'}</span>}
                 </p>
                 <div className="flex items-center gap-2">
                   {groups.length > 0 && (
@@ -940,7 +941,8 @@ export default function MeetingsPage() {
                   )}
                   {canManage && !isPastView && (
                     <button onClick={() => setShowGroupModal(true)}
-                      className="text-xs text-white bg-green-700 hover:bg-green-600 rounded-full px-3 py-1.5 flex items-center gap-1 transition font-semibold">
+                      className="text-xs rounded-full px-3 py-1.5 flex items-center gap-1 transition font-semibold"
+                      style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)', color: '#fff' }}>
                       <Edit2 size={11} />{ko ? (groups.length > 0 ? '편집' : '조편성') : (groups.length > 0 ? 'Edit' : 'Assign')}
                     </button>
                   )}
@@ -958,9 +960,9 @@ export default function MeetingsPage() {
                   {groups.map((g: any) => (
                     <div key={g.group_number}
                       className="rounded-xl p-3"
-                      style={{ background: 'rgba(22,163,74,0.07)', border: '1px solid rgba(34,197,94,0.15)' }}>
+                      style={{ background: 'rgba(201,168,76,0.05)', border: '1px solid rgba(201,168,76,0.18)' }}>
                       <div className="flex items-center gap-2 mb-2">
-                        <span className="text-xs font-black text-green-400 bg-green-900/40 border border-green-800/40 rounded-lg px-2 py-0.5">
+                        <span className="text-xs font-black rounded-lg px-2 py-0.5" style={{ color: 'var(--gold-l)', background: 'rgba(201,168,76,0.15)', border: '1px solid rgba(201,168,76,0.3)' }}>
                           {g.group_number}조
                         </span>
                         {g.tee_time && (
@@ -975,7 +977,8 @@ export default function MeetingsPage() {
                           const isMe = m.user_id === user?.id
                           return (
                             <span key={m.user_id}
-                              className={`text-xs px-2.5 py-1 rounded-full font-medium ${isMe ? 'bg-green-600 text-white' : 'bg-gray-700/80 text-gray-200'}`}>
+                              className="text-xs px-2.5 py-1 rounded-full font-medium"
+                              style={isMe ? { background: 'linear-gradient(135deg,#c9a84c,#a07830)', color: '#fff' } : { background: 'rgba(255,255,255,0.07)', color: 'var(--text-2)' }}>
                               {nm}{isMe ? (ko ? ' (나)' : ' (me)') : ''}
                             </span>
                           )
@@ -1149,7 +1152,7 @@ export default function MeetingsPage() {
                       <a href={`https://www.google.com/maps?q=${secondMeeting.lat},${secondMeeting.lng}`}
                         target="_blank" rel="noopener noreferrer"
                         className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg flex-shrink-0"
-                        style={{ background: 'rgba(34,197,94,0.1)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.2)' }}>
+                        style={{ background: 'rgba(200,200,222,0.1)', color: 'var(--silver-l)', border: '1px solid rgba(200,200,222,0.2)' }}>
                         <Navigation size={11} />
                         {ko ? '길찾기' : 'Directions'}
                       </a>
@@ -1241,7 +1244,7 @@ export default function MeetingsPage() {
         footer={
           <div className="flex gap-3">
             <button onClick={closePatternModal} className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 text-sm font-medium">{ko ? '취소' : 'Cancel'}</button>
-            <button onClick={savePattern} disabled={saving} className="flex-1 py-3 rounded-xl bg-green-700 disabled:opacity-50 text-white font-bold text-sm">{saving ? '...' : (ko ? '저장' : 'Save')}</button>
+            <button onClick={savePattern} disabled={saving} className="flex-1 py-3 rounded-xl disabled:opacity-50 text-white font-bold text-sm" style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)' }}>{saving ? '...' : (ko ? '저장' : 'Save')}</button>
           </div>
         }
       >
@@ -1250,7 +1253,8 @@ export default function MeetingsPage() {
           <div className="grid grid-cols-5 gap-1.5">
             {[1,2,3,4,5].map(w => (
               <button key={w} type="button" onClick={() => setPForm(f => ({ ...f, week: w }))}
-                className={`py-2.5 rounded-xl text-sm font-medium transition ${pForm.week === w ? 'bg-green-700 text-white' : 'bg-gray-800 text-gray-400'}`}>
+                style={pForm.week === w ? { background: 'linear-gradient(135deg,#c9a84c,#a07830)', color: '#fff' } : undefined}
+                className={`py-2.5 rounded-xl text-sm font-medium transition ${pForm.week === w ? '' : 'bg-gray-800 text-gray-400'}`}>
                 {ko ? WEEK_KO[w-1] : WEEK_EN[w-1]}
               </button>
             ))}
@@ -1261,14 +1265,15 @@ export default function MeetingsPage() {
           <div className="grid grid-cols-7 gap-1">
             {[0,1,2,3,4,5,6].map(d => (
               <button key={d} type="button" onClick={() => setPForm(f => ({ ...f, dow: d }))}
-                className={`py-2.5 rounded-xl text-xs font-medium transition ${pForm.dow === d ? 'bg-green-700 text-white' : 'bg-gray-800 text-gray-400'}`}>
+                style={pForm.dow === d ? { background: 'linear-gradient(135deg,#c9a84c,#a07830)', color: '#fff' } : undefined}
+                className={`py-2.5 rounded-xl text-xs font-medium transition ${pForm.dow === d ? '' : 'bg-gray-800 text-gray-400'}`}>
                 {ko ? DOW_KO[d] : DOW_EN[d]}
               </button>
             ))}
           </div>
         </div>
-        <div className="bg-green-900/20 border border-green-800/40 rounded-xl p-3">
-          <p className="text-green-300 text-sm font-semibold">
+        <div className="rounded-xl p-3" style={{ background: 'rgba(201,168,76,0.08)', border: '1px solid rgba(201,168,76,0.25)' }}>
+          <p className="text-sm font-semibold" style={{ color: 'var(--gold-l)' }}>
             {ko ? `매월 ${WEEK_KO[pForm.week-1]}주 ${DOW_KO[pForm.dow]}요일` : `Every ${WEEK_EN[pForm.week-1]} ${DOW_EN[pForm.dow]}`}
           </p>
         </div>
@@ -1302,7 +1307,7 @@ export default function MeetingsPage() {
           <div className="flex gap-3">
             <button onClick={() => setShowOverrideModal(false)} className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 text-sm font-medium">{ko ? '취소' : 'Cancel'}</button>
             <button onClick={saveOverride} disabled={saving || (oForm.status === 'rescheduled' && !oForm.date)}
-              className="flex-1 py-3 rounded-xl bg-green-700 disabled:opacity-50 text-white font-bold text-sm">{saving ? '...' : (ko ? '저장' : 'Save')}</button>
+              className="flex-1 py-3 rounded-xl disabled:opacity-50 text-white font-bold text-sm" style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)' }}>{saving ? '...' : (ko ? '저장' : 'Save')}</button>
           </div>
         }
       >
@@ -1346,7 +1351,7 @@ export default function MeetingsPage() {
           <div className="flex gap-3">
             <button onClick={() => setShowGroupModal(false)} className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 text-sm font-medium">{ko ? '취소' : 'Cancel'}</button>
             <button onClick={saveGroups} disabled={saving || assignedGroupNums.length === 0}
-              className="flex-1 py-3 rounded-xl bg-green-700 disabled:opacity-50 text-white font-bold text-sm">{saving ? '...' : (ko ? '저장' : 'Save')}</button>
+              className="flex-1 py-3 rounded-xl disabled:opacity-50 text-white font-bold text-sm" style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)' }}>{saving ? '...' : (ko ? '저장' : 'Save')}</button>
           </div>
         }
       >
@@ -1401,7 +1406,8 @@ export default function MeetingsPage() {
                       {Array.from({ length: numButtons }, (_, i) => i + 1).map(n => (
                         <button key={n}
                           onClick={() => setAssign(prev => ({ ...prev, [att.user_id]: n }))}
-                          className={`w-7 h-7 rounded-lg text-xs font-bold transition ${cur === n ? 'bg-green-600 text-white shadow-lg shadow-green-900/40' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}>
+                          style={cur === n ? { background: 'linear-gradient(135deg,#c9a84c,#a07830)', color: '#fff' } : undefined}
+                          className={`w-7 h-7 rounded-lg text-xs font-bold transition ${cur === n ? '' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}>
                           {n}조
                         </button>
                       ))}
@@ -1426,15 +1432,15 @@ export default function MeetingsPage() {
             {assignedGroupNums.map(gn => {
               const gMembers = attending.filter((a: any) => assign[a.user_id] === gn)
               return (
-                <div key={gn} className="bg-green-900/20 border border-green-800/40 rounded-xl px-3 py-2.5">
-                  <p className="text-xs font-bold text-green-400 mb-1.5">{gn}조 ({gMembers.length}{ko ? '명' : ''})</p>
+                <div key={gn} className="rounded-xl px-3 py-2.5" style={{ background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.2)' }}>
+                  <p className="text-xs font-bold mb-1.5" style={{ color: 'var(--gold-l)' }}>{gn}조 ({gMembers.length}{ko ? '명' : ''})</p>
                   <div className="flex flex-wrap gap-1.5">
                     {gMembers.map((a: any) => {
                       const nm = lang === 'ko' ? a.users?.full_name : (a.users?.full_name_en || a.users?.full_name)
                       const hc = clubMembers.find(cm => cm.user_id === a.user_id)?.club_handicap
                       return (
-                        <span key={a.user_id} className="text-xs bg-green-900/40 border border-green-800/30 rounded-lg px-2 py-0.5 text-gray-200">
-                          {nm}{hc != null ? <span className="text-green-500 ml-1 text-[10px]">HC{hc}</span> : ''}
+                        <span key={a.user_id} className="text-xs rounded-lg px-2 py-0.5" style={{ background: 'rgba(201,168,76,0.1)', border: '1px solid rgba(201,168,76,0.2)', color: 'var(--text-2)' }}>
+                          {nm}{hc != null ? <span className="ml-1 text-[10px]" style={{ color: 'var(--gold)' }}>HC{hc}</span> : ''}
                         </span>
                       )
                     })}

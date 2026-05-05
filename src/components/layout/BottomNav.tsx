@@ -24,7 +24,7 @@ export default function BottomNav() {
         style={{
           background: 'var(--bg-2)',
           border: '1px solid var(--border)',
-          boxShadow: '0 -1px 24px rgba(0,0,0,0.5)',
+          boxShadow: '0 -1px 0 rgba(201,168,76,0.08), 0 -8px 32px rgba(0,0,0,0.6)',
         }}
       >
         {NAV.map(({ href, icon: Icon, ko, en }) => {
@@ -34,17 +34,17 @@ export default function BottomNav() {
               key={href}
               onClick={() => router.push(href)}
               className="relative flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-all duration-150"
-              style={active ? { background: 'rgba(34,197,94,0.10)' } : undefined}
+              style={active ? { background: 'rgba(201,168,76,0.10)' } : undefined}
             >
-              {/* active indicator line */}
+              {/* 활성 인디케이터 라인 — 골드 */}
               {active && (
                 <span
                   className="absolute top-0 left-1/2"
                   style={{
-                    width: 20,
+                    width: 22,
                     height: 2,
                     borderRadius: 1,
-                    background: 'var(--green-l)',
+                    background: 'linear-gradient(90deg, transparent, #e8c96d, transparent)',
                     transform: 'translateX(-50%)',
                   }}
                 />
@@ -54,14 +54,14 @@ export default function BottomNav() {
                 size={22}
                 strokeWidth={active ? 2.5 : 1.6}
                 style={{
-                  color: active ? 'var(--green-l)' : 'var(--text-3)',
+                  color: active ? '#e8c96d' : '#9090a8',
                   transition: 'color 0.15s',
                 }}
               />
 
               <span
                 className="text-[10px] font-semibold transition-colors duration-150"
-                style={{ color: active ? 'var(--green-l)' : 'var(--text-3)' }}
+                style={{ color: active ? '#e8c96d' : '#9090a8' }}
               >
                 {lang === 'ko' ? ko : en}
               </span>

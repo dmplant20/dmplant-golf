@@ -474,21 +474,21 @@ export default function ScorecardPage() {
           style={{ background: 'linear-gradient(180deg,#071507 0%,#0c1a0c 100%)' }}>
           {/* 가로 헤더 */}
           <div className="flex items-center gap-3 px-4 py-2 flex-shrink-0"
-            style={{ borderBottom: '1px solid rgba(74,222,128,0.18)', background: 'rgba(7,21,7,0.98)' }}>
+            style={{ borderBottom: '1px solid rgba(201,168,76,0.2)', background: 'var(--bg-2)' }}>
             <button onClick={() => { setView('list'); setSelectedRound(null); setLocalHoles({}) }}
               className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-              style={{ background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.2)' }}>
-              <ChevronLeft size={16} style={{ color: '#4ade80' }} />
+              style={{ background: 'rgba(201,168,76,0.08)', border: '1px solid rgba(201,168,76,0.2)' }}>
+              <ChevronLeft size={16} style={{ color: 'var(--gold-l)' }} />
             </button>
             <div className="flex-1 min-w-0">
               {(() => {
                 const { base, sub } = parseCourseName(selectedRound.course_name)
                 return (
                   <>
-                    <p className="text-xs font-black truncate leading-tight" style={{ color: '#f0fdf4' }}>
+                    <p className="text-xs font-black truncate leading-tight" style={{ color: 'var(--text)' }}>
                       {base}{sub ? ` · ${sub}` : ''}
                     </p>
-                    <p className="text-[10px]" style={{ color: '#4ade80' }}>
+                    <p className="text-[10px]" style={{ color: 'var(--gold)' }}>
                       {selectedRound.played_at} · Par {selectedRound.course_par} · {totalHoles}H
                     </p>
                   </>
@@ -502,7 +502,7 @@ export default function ScorecardPage() {
                 const col = diff < 0 ? '#4ade80' : diff === 0 ? '#fcd34d' : '#fca5a5'
                 return (
                   <div className="text-right">
-                    <p className="text-xl font-black leading-none" style={{ color: '#f0fdf4' }}>{outScore + inScore || '—'}</p>
+                    <p className="text-xl font-black leading-none" style={{ color: 'var(--text)' }}>{outScore + inScore || '—'}</p>
                     <p className="text-[10px] font-bold" style={{ color: col }}>
                       {diff > 0 ? '+' : ''}{diff || 'E'}
                     </p>
@@ -511,7 +511,7 @@ export default function ScorecardPage() {
               })()}
               <button onClick={saveCard} disabled={saving}
                 className="h-8 px-3 rounded-lg text-xs font-black flex items-center gap-1.5 transition disabled:opacity-40"
-                style={{ background: 'linear-gradient(135deg,#16a34a,#14532d)', color: '#fff' }}>
+                style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)', color: '#fff' }}>
                 {saving
                   ? <span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />
                   : <><Save size={12} />{ko ? '저장' : 'Save'}</>
@@ -526,7 +526,7 @@ export default function ScorecardPage() {
               <thead>
                 <tr>
                   <th className="text-left px-3 py-2 w-14 font-bold text-[10px] sticky left-0"
-                    style={{ background: 'rgba(7,21,7,0.98)', color: '#4ade80', borderRight: '1px solid rgba(74,222,128,0.15)' }}>
+                    style={{ background: 'var(--bg-2)', color: 'var(--gold-l)', borderRight: '1px solid rgba(201,168,76,0.15)' }}>
                     {ko ? '홀' : 'H'}
                   </th>
                   {Array.from({ length: totalHoles }, (_, i) => i + 1).map(h => (
@@ -534,7 +534,7 @@ export default function ScorecardPage() {
                       style={{ color: '#bbf7d0', minWidth: 42 }}>{h}</th>
                   ))}
                   <th className="text-center py-2 px-2 font-black"
-                    style={{ color: '#4ade80', borderLeft: '1px solid rgba(74,222,128,0.15)', minWidth: 44 }}>
+                    style={{ color: 'var(--gold-l)', borderLeft: '1px solid rgba(201,168,76,0.15)', minWidth: 44 }}>
                     {ko ? '합' : 'TOT'}
                   </th>
                 </tr>
@@ -544,11 +544,11 @@ export default function ScorecardPage() {
                 {Array.from({ length: totalHoles }, (_, i) => i + 1).some(h => localHoles[h]?.yardage) && (
                   <tr style={{ background: 'rgba(255,255,255,0.02)' }}>
                     <td className="px-3 py-1.5 font-bold text-[10px] sticky left-0"
-                      style={{ background: 'rgba(7,21,7,0.98)', color: '#4ade80', borderRight: '1px solid rgba(74,222,128,0.12)' }}>
+                      style={{ background: 'var(--bg-2)', color: 'var(--gold-l)', borderRight: '1px solid rgba(201,168,76,0.12)' }}>
                       {ko ? '야드' : 'Yds'}
                     </td>
                     {Array.from({ length: totalHoles }, (_, i) => i + 1).map(h => (
-                      <td key={h} className="text-center py-1.5 text-[10px]" style={{ color: '#6b9a6b' }}>
+                      <td key={h} className="text-center py-1.5 text-[10px]" style={{ color: 'var(--text-3)' }}>
                         {localHoles[h]?.yardage ?? ''}
                       </td>
                     ))}
@@ -556,9 +556,9 @@ export default function ScorecardPage() {
                   </tr>
                 )}
                 {/* 파 행 */}
-                <tr style={{ background: 'rgba(74,222,128,0.04)' }}>
+                <tr style={{ background: 'rgba(201,168,76,0.04)' }}>
                   <td className="px-3 py-1.5 font-bold text-[10px] sticky left-0"
-                    style={{ background: 'rgba(7,21,7,0.98)', color: '#4ade80', borderRight: '1px solid rgba(74,222,128,0.12)' }}>
+                    style={{ background: 'var(--bg-2)', color: 'var(--gold-l)', borderRight: '1px solid rgba(201,168,76,0.12)' }}>
                     Par
                   </td>
                   {Array.from({ length: totalHoles }, (_, i) => i + 1).map(h => (
@@ -568,14 +568,14 @@ export default function ScorecardPage() {
                     </td>
                   ))}
                   <td className="text-center py-1.5 font-black text-[11px]"
-                    style={{ color: '#4ade80', borderLeft: '1px solid rgba(74,222,128,0.12)' }}>
+                    style={{ color: 'var(--gold-l)', borderLeft: '1px solid rgba(201,168,76,0.12)' }}>
                     {totalPar}
                   </td>
                 </tr>
                 {/* 스코어 행 */}
                 <tr>
                   <td className="px-3 py-1.5 font-bold text-[10px] sticky left-0"
-                    style={{ background: 'rgba(7,21,7,0.98)', color: '#4ade80', borderRight: '1px solid rgba(74,222,128,0.12)' }}>
+                    style={{ background: 'var(--bg-2)', color: 'var(--gold-l)', borderRight: '1px solid rgba(201,168,76,0.12)' }}>
                     {ko ? '타수' : 'Score'}
                   </td>
                   {Array.from({ length: totalHoles }, (_, i) => i + 1).map(h => {
@@ -652,11 +652,11 @@ export default function ScorecardPage() {
 
       {/* 세로모드 헤더 */}
       <div className="sticky top-0 z-10 px-4 pt-5 pb-3 flex items-center gap-2"
-        style={{ background: 'rgba(7,15,7,0.97)', backdropFilter: 'blur(16px)', borderBottom: '1px solid rgba(74,222,128,0.15)' }}>
+        style={{ background: 'var(--bg-2)', backdropFilter: 'blur(16px)', borderBottom: '1px solid rgba(201,168,76,0.15)' }}>
         <button onClick={() => { setView('list'); setSelectedRound(null); setLocalHoles({}) }}
           className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-          style={{ background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.2)' }}>
-          <ChevronLeft size={18} style={{ color: '#4ade80' }} />
+          style={{ background: 'rgba(201,168,76,0.08)', border: '1px solid rgba(201,168,76,0.2)' }}>
+          <ChevronLeft size={18} style={{ color: 'var(--gold-l)' }} />
         </button>
         <div className="flex-1 min-w-0">
           {(() => {
@@ -664,11 +664,11 @@ export default function ScorecardPage() {
             return (
               <div className="flex items-start gap-1.5">
                 <div className="min-w-0">
-                  <p className="text-sm font-black truncate leading-tight" style={{ color: '#f0fdf4' }}>{base}</p>
+                  <p className="text-sm font-black truncate leading-tight" style={{ color: 'var(--text)' }}>{base}</p>
                   {sub && (
-                    <p className="text-[11px] font-bold leading-tight" style={{ color: '#4ade80' }}>{sub}</p>
+                    <p className="text-[11px] font-bold leading-tight" style={{ color: 'var(--gold-l)' }}>{sub}</p>
                   )}
-                  <p className="text-[10px] font-semibold mt-0.5" style={{ color: '#5a7a5a' }}>
+                  <p className="text-[10px] font-semibold mt-0.5" style={{ color: 'var(--text-3)' }}>
                     {selectedRound.played_at} · Par {selectedRound.course_par} · {totalHoles}H
                   </p>
                 </div>
@@ -676,7 +676,7 @@ export default function ScorecardPage() {
                   className="flex-shrink-0 w-6 h-6 rounded-lg flex items-center justify-center transition mt-0.5"
                   style={{ background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.2)' }}
                   title={ko ? '코스명 수정' : 'Edit course name'}>
-                  <Pencil size={11} style={{ color: '#4ade80' }} />
+                  <Pencil size={11} style={{ color: 'var(--gold-l)' }} />
                 </button>
               </div>
             )
@@ -684,12 +684,12 @@ export default function ScorecardPage() {
         </div>
         {/* 진행도 */}
         <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
-          <span className="text-xs font-bold" style={{ color: filledCount === totalHoles ? '#4ade80' : '#bbf7d0' }}>
+          <span className="text-xs font-bold" style={{ color: filledCount === totalHoles ? 'var(--gold-l)' : 'var(--gold)' }}>
             {filledCount}/{totalHoles}
           </span>
-          <div className="w-16 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(74,222,128,0.15)' }}>
+          <div className="w-16 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(201,168,76,0.15)' }}>
             <div className="h-full rounded-full transition-all duration-300"
-              style={{ width: `${(filledCount/totalHoles)*100}%`, background: 'linear-gradient(90deg,#16a34a,#4ade80)' }} />
+              style={{ width: `${(filledCount/totalHoles)*100}%`, background: 'linear-gradient(90deg,#c9a84c,#e8c96d)' }} />
           </div>
         </div>
         <button onClick={() => deleteRound(selectedRound.id)}
@@ -715,20 +715,20 @@ export default function ScorecardPage() {
 
         {/* ── 합계 카드 ── */}
         <div className="rounded-2xl overflow-hidden"
-          style={{ background: 'linear-gradient(135deg,rgba(74,222,128,0.08),rgba(7,15,7,0.98))', border: '1px solid rgba(74,222,128,0.25)' }}>
+          style={{ background: 'linear-gradient(135deg,rgba(201,168,76,0.06),rgba(14,14,14,0.98))', border: '1px solid rgba(201,168,76,0.22)' }}>
           <div className="px-4 py-4">
             {/* OUT/IN 소계 */}
             {inHoles.length > 0 && (
-              <div className="flex gap-6 mb-3 pb-3" style={{ borderBottom: '1px solid rgba(74,222,128,0.12)' }}>
+              <div className="flex gap-6 mb-3 pb-3" style={{ borderBottom: '1px solid rgba(201,168,76,0.12)' }}>
                 <div>
-                  <p className="text-[10px] font-bold mb-0.5" style={{ color: '#4ade80' }}>OUT</p>
-                  <p className="text-lg font-black" style={{ color: '#f0fdf4' }}>{sumScores(outHoles) || '—'}</p>
-                  <p className="text-[10px] font-semibold" style={{ color: '#6b9a6b' }}>Par {outPar}</p>
+                  <p className="text-[10px] font-bold mb-0.5" style={{ color: 'var(--gold-l)' }}>OUT</p>
+                  <p className="text-lg font-black" style={{ color: 'var(--text)' }}>{sumScores(outHoles) || '—'}</p>
+                  <p className="text-[10px] font-semibold" style={{ color: 'var(--text-3)' }}>Par {outPar}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] font-bold mb-0.5" style={{ color: '#4ade80' }}>IN</p>
-                  <p className="text-lg font-black" style={{ color: '#f0fdf4' }}>{sumScores(inHoles) || '—'}</p>
-                  <p className="text-[10px] font-semibold" style={{ color: '#6b9a6b' }}>Par {inPar}</p>
+                  <p className="text-[10px] font-bold mb-0.5" style={{ color: 'var(--gold-l)' }}>IN</p>
+                  <p className="text-lg font-black" style={{ color: 'var(--text)' }}>{sumScores(inHoles) || '—'}</p>
+                  <p className="text-[10px] font-semibold" style={{ color: 'var(--text-3)' }}>Par {inPar}</p>
                 </div>
                 {/* 퍼트 합계 */}
                 <div className="ml-auto text-right">
@@ -742,7 +742,7 @@ export default function ScorecardPage() {
             {/* 총점 */}
             <div className="flex items-end justify-between">
               <div>
-                <p className="text-[10px] font-semibold mb-1" style={{ color: '#5a7a5a' }}>
+                <p className="text-[10px] font-semibold mb-1" style={{ color: 'var(--text-3)' }}>
                   {ko ? '총 스코어' : 'Total Score'}
                 </p>
                 <div className="flex items-baseline gap-3">
@@ -771,7 +771,7 @@ export default function ScorecardPage() {
                   })()}
                 </div>
               </div>
-              <div className="text-right text-xs space-y-0.5" style={{ color: '#3a5a3a' }}>
+              <div className="text-right text-xs space-y-0.5" style={{ color: 'var(--text-3)' }}>
                 <p>Par {totalPar}</p>
                 <p>{totalHoles}H</p>
               </div>
@@ -797,7 +797,7 @@ export default function ScorecardPage() {
         {/* ── 저장 버튼 ── */}
         <button onClick={saveCard} disabled={saving}
           className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-black text-sm disabled:opacity-40 transition-all active:scale-[0.98]"
-          style={{ background: 'linear-gradient(135deg,#16a34a,#14532d)', color: '#fff', boxShadow: '0 4px 20px rgba(22,163,74,0.3)' }}>
+          style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)', color: '#fff', boxShadow: '0 4px 20px rgba(201,168,76,0.3)' }}>
           {saving ? (
             <>
               <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
@@ -829,7 +829,7 @@ export default function ScorecardPage() {
       {fineToast && (
         <div className="fixed bottom-24 inset-x-4 flex justify-center z-[300] pointer-events-none">
           <div className="px-5 py-3 rounded-2xl text-sm font-bold text-white shadow-xl text-center"
-            style={{ background: 'rgba(22,163,74,0.95)', backdropFilter: 'blur(8px)' }}>
+            style={{ background: 'rgba(201,168,76,0.95)', backdropFilter: 'blur(8px)' }}>
             {fineToast}
           </div>
         </div>
@@ -841,19 +841,19 @@ export default function ScorecardPage() {
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
           <div
             className="absolute bottom-0 left-0 right-0 rounded-t-3xl flex flex-col"
-            style={{ background: '#0c160c', border: '1px solid rgba(34,197,94,0.18)', borderBottom: 'none' }}
+            style={{ background: 'var(--surface)', border: '1px solid rgba(201,168,76,0.18)', borderBottom: 'none' }}
             onClick={e => e.stopPropagation()}>
 
             {/* 핸들 */}
             <div className="flex justify-center pt-3 pb-2 flex-shrink-0">
-              <div className="w-10 h-1 rounded-full" style={{ background: 'rgba(34,197,94,0.25)' }} />
+              <div className="w-10 h-1 rounded-full" style={{ background: 'rgba(201,168,76,0.25)' }} />
             </div>
 
             {/* 헤더 */}
             <div className="flex items-center justify-between px-5 pb-3 flex-shrink-0"
-              style={{ borderBottom: '1px solid rgba(34,197,94,0.1)' }}>
+              style={{ borderBottom: '1px solid rgba(201,168,76,0.12)' }}>
               <div className="flex items-center gap-2">
-                <Pencil size={14} className="text-green-400" />
+                <Pencil size={14} style={{ color: 'var(--gold-l)' }} />
                 <h3 className="text-sm font-black text-white">
                   {ko ? '코스 정보 수정' : 'Edit Course Info'}
                 </h3>
@@ -868,14 +868,14 @@ export default function ScorecardPage() {
             <div className="px-5 py-4 space-y-4">
               {/* 현재 코스명 직접 편집 */}
               <div>
-                <label className="text-[11px] font-bold mb-1.5 block" style={{ color: '#5a7a5a' }}>
+                <label className="text-[11px] font-bold mb-1.5 block" style={{ color: 'var(--text-3)' }}>
                   {ko ? '코스명 (직접 수정)' : 'Course Name'}
                 </label>
                 <input
                   value={editNameValue}
                   onChange={e => setEditNameValue(e.target.value)}
                   className="w-full rounded-xl px-3.5 py-2.5 text-white text-sm font-semibold"
-                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(34,197,94,0.2)', outline: 'none' }}
+                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(201,168,76,0.2)', outline: 'none' }}
                 />
               </div>
 
@@ -920,13 +920,13 @@ export default function ScorecardPage() {
 
                   {/* 미리보기 */}
                   {editSubCourse && editSubCourse !== CUSTOM_KEY && (
-                    <p className="text-[11px] mt-1.5 font-semibold" style={{ color: '#22c55e' }}>
+                    <p className="text-[11px] mt-1.5 font-semibold" style={{ color: 'var(--gold-l)' }}>
                       → {editNameValue.replace(/\s*\(.*\)\s*$/, '').trim()}
                       {' '}({editSubCombos.find(c => c.key === editSubCourse)?.label})
                     </p>
                   )}
                   {editSubCourse === CUSTOM_KEY && editCustomSub.trim() && (
-                    <p className="text-[11px] mt-1.5 font-semibold" style={{ color: '#22c55e' }}>
+                    <p className="text-[11px] mt-1.5 font-semibold" style={{ color: 'var(--gold-l)' }}>
                       → {editNameValue.replace(/\s*\(.*\)\s*$/, '').trim()} ({editCustomSub.trim()})
                     </p>
                   )}
@@ -945,7 +945,7 @@ export default function ScorecardPage() {
                   disabled={editNameSaving || !editNameValue.trim() ||
                     (editSubCourse === CUSTOM_KEY && !editCustomSub.trim())}
                   className="flex-1 py-3 rounded-xl text-sm font-black disabled:opacity-40 transition flex items-center justify-center gap-2"
-                  style={{ background: 'linear-gradient(135deg,#16a34a,#14532d)', color: '#fff' }}>
+                  style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)', color: '#fff' }}>
                   {editNameSaving
                     ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />{ko ? '저장 중...' : 'Saving...'}</>
                     : <><Save size={14} />{ko ? '저장' : 'Save'}</>
@@ -974,15 +974,15 @@ export default function ScorecardPage() {
         </button>
         <div className="flex items-center gap-2 flex-1">
           <div className="w-7 h-7 rounded-lg flex items-center justify-center"
-            style={{ background: 'linear-gradient(135deg,rgba(22,163,74,0.3),rgba(14,53,29,0.5))' }}>
-            <Flag size={14} className="text-green-400" />
+            style={{ background: 'linear-gradient(135deg,rgba(201,168,76,0.2),rgba(14,14,14,0.95))' }}>
+            <Flag size={14} style={{ color: 'var(--gold-l)' }} />
           </div>
           <h1 className="text-base font-black text-white">{ko ? '개인 스코어카드' : 'My Scorecard'}</h1>
         </div>
         <button
           onClick={() => { loadCourses(); setShowNew(true) }}
           className="flex items-center gap-1.5 text-xs font-black px-3.5 py-2.5 rounded-xl transition-all active:scale-95"
-          style={{ background: 'linear-gradient(135deg,#16a34a,#14532d)', color: '#fff', boxShadow: '0 2px 12px rgba(22,163,74,0.35)' }}>
+          style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)', color: '#fff', boxShadow: '0 2px 12px rgba(201,168,76,0.3)' }}>
           <Plus size={13} />{ko ? '새 라운드' : 'New Round'}
         </button>
       </div>
@@ -992,8 +992,8 @@ export default function ScorecardPage() {
         {/* 통계 카드 */}
         {stats ? (
           <div className="rounded-2xl p-4"
-            style={{ background: 'linear-gradient(135deg,rgba(22,163,74,0.1),rgba(6,13,6,0.98))', border: '1px solid rgba(34,197,94,0.18)' }}>
-            <p className="text-[10px] font-bold tracking-widest uppercase mb-3 flex items-center gap-1.5" style={{ color: '#22c55e' }}>
+            style={{ background: 'linear-gradient(135deg,rgba(201,168,76,0.07),rgba(14,14,14,0.98))', border: '1px solid rgba(201,168,76,0.18)' }}>
+            <p className="text-[10px] font-bold tracking-widest uppercase mb-3 flex items-center gap-1.5" style={{ color: 'var(--gold-l)' }}>
               <BarChart2 size={11} />{ko ? '내 라운드 통계' : 'My Stats'}
             </p>
             <div className="grid grid-cols-3 gap-2 text-center">
@@ -1003,7 +1003,7 @@ export default function ScorecardPage() {
                 { label: ko ? '평균타' : 'Avg',    val: stats.avg,   color: '#fde68a' },
               ].map(({ label, val, color }) => (
                 <div key={label} className="rounded-xl py-3" style={{ background: 'rgba(255,255,255,0.03)' }}>
-                  <p className="text-[10px] mb-1" style={{ color: '#5a7a5a' }}>{label}</p>
+                  <p className="text-[10px] mb-1" style={{ color: 'var(--text-3)' }}>{label}</p>
                   <p className="text-2xl font-black" style={{ color }}>{val}</p>
                 </div>
               ))}
@@ -1011,13 +1011,13 @@ export default function ScorecardPage() {
           </div>
         ) : !loading && rounds.length === 0 && (
           <div className="rounded-2xl p-8 text-center"
-            style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(34,197,94,0.08)' }}>
+            style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(201,168,76,0.10)' }}>
             <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
-              style={{ background: 'rgba(22,163,74,0.08)' }}>
-              <Flag size={32} className="text-green-900" />
+              style={{ background: 'rgba(201,168,76,0.08)' }}>
+              <Flag size={32} style={{ color: 'rgba(201,168,76,0.25)' }} />
             </div>
             <p className="text-sm font-bold text-gray-400">{ko ? '아직 라운드 기록이 없습니다' : 'No rounds yet'}</p>
-            <p className="text-xs mt-1.5" style={{ color: '#3a5a3a' }}>
+            <p className="text-xs mt-1.5" style={{ color: 'var(--text-3)' }}>
               {ko ? '"새 라운드" 버튼으로 첫 라운드를 시작하세요' : 'Tap "New Round" to start'}
             </p>
           </div>
@@ -1039,8 +1039,8 @@ export default function ScorecardPage() {
                 <div key={r.id}
                   className="w-full rounded-2xl flex items-center overflow-hidden transition-all"
                   style={{
-                    background: justSaved ? 'rgba(22,163,74,0.12)' : 'rgba(255,255,255,0.03)',
-                    border: justSaved ? '1px solid rgba(34,197,94,0.45)' : '1px solid rgba(255,255,255,0.07)',
+                    background: justSaved ? 'rgba(201,168,76,0.12)' : 'rgba(255,255,255,0.03)',
+                    border: justSaved ? '1px solid rgba(201,168,76,0.45)' : '1px solid rgba(255,255,255,0.07)',
                   }}>
 
                   {/* ── 메인 클릭 영역 (라운드 열기) ── */}
@@ -1057,7 +1057,7 @@ export default function ScorecardPage() {
                           </span>
                         </>
                       ) : (
-                        <span className="text-[10px] font-semibold" style={{ color: '#4a6a4a' }}>
+                        <span className="text-[10px] font-semibold" style={{ color: 'var(--text-3)' }}>
                           {ko ? '진행' : 'WIP'}
                         </span>
                       )}
@@ -1067,19 +1067,19 @@ export default function ScorecardPage() {
                         <p className="text-sm font-bold text-white truncate">{r.course_name}</p>
                         {justSaved && (
                           <span className="flex-shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded-full"
-                            style={{ background: 'rgba(34,197,94,0.2)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.3)' }}>
+                            style={{ background: 'rgba(201,168,76,0.15)', color: 'var(--gold-l)', border: '1px solid rgba(201,168,76,0.3)' }}>
                             ✓ {ko ? '저장됨' : 'Saved'}
                           </span>
                         )}
                       </div>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-xs flex items-center gap-0.5" style={{ color: '#5a7a5a' }}>
+                        <span className="text-xs flex items-center gap-0.5" style={{ color: 'var(--text-3)' }}>
                           <Calendar size={10} />{r.played_at}
                         </span>
                         <span className="text-xs" style={{ color: '#4a5a4a' }}>Par {r.course_par} · {r.total_holes}H</span>
                       </div>
                     </div>
-                    <ChevronRight size={15} style={{ color: justSaved ? '#22c55e' : '#3a5a3a', flexShrink: 0 }} />
+                    <ChevronRight size={15} style={{ color: justSaved ? 'var(--gold-l)' : 'var(--text-3)', flexShrink: 0 }} />
                   </button>
 
                   {/* ── 삭제 버튼 ── */}
@@ -1105,15 +1105,15 @@ export default function ScorecardPage() {
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
           <div
             className="absolute bottom-0 left-0 right-0 rounded-t-3xl flex flex-col"
-            style={{ maxHeight: '93vh', background: '#0c160c', border: '1px solid rgba(34,197,94,0.18)', borderBottom: 'none' }}
+            style={{ maxHeight: '93vh', background: 'var(--surface)', border: '1px solid rgba(201,168,76,0.18)', borderBottom: 'none' }}
             onClick={e => e.stopPropagation()}>
             {/* 핸들 */}
             <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
-              <div className="w-10 h-1 rounded-full" style={{ background: 'rgba(34,197,94,0.25)' }} />
+              <div className="w-10 h-1 rounded-full" style={{ background: 'rgba(201,168,76,0.25)' }} />
             </div>
             {/* 헤더 */}
             <div className="flex items-center justify-between px-5 py-3 flex-shrink-0"
-              style={{ borderBottom: '1px solid rgba(34,197,94,0.1)' }}>
+              style={{ borderBottom: '1px solid rgba(201,168,76,0.12)' }}>
               <h3 className="text-base font-black text-white">{ko ? '새 라운드 시작' : 'New Round'}</h3>
               <button onClick={() => { setShowNew(false); resetNewForm() }}
                 className="w-8 h-8 rounded-full flex items-center justify-center"
@@ -1128,16 +1128,16 @@ export default function ScorecardPage() {
               {/* 날짜 + 홀 수 */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[11px] font-bold mb-1.5 block" style={{ color: '#5a7a5a' }}>
+                  <label className="text-[11px] font-bold mb-1.5 block" style={{ color: 'var(--text-3)' }}>
                     <Calendar size={10} className="inline mr-1" />{ko ? '라운드 날짜' : 'Date'}
                   </label>
                   <input type="date" value={newForm.playedAt}
                     onChange={e => setNewForm(f => ({ ...f, playedAt: e.target.value }))}
                     className="w-full rounded-xl px-3 py-2.5 text-white text-sm"
-                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(34,197,94,0.15)', colorScheme: 'dark' }} />
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(201,168,76,0.18)', colorScheme: 'dark' }} />
                 </div>
                 <div>
-                  <label className="text-[11px] font-bold mb-1.5 block" style={{ color: '#5a7a5a' }}>
+                  <label className="text-[11px] font-bold mb-1.5 block" style={{ color: 'var(--text-3)' }}>
                     {ko ? '홀 수' : 'Holes'}
                   </label>
                   <div className="grid grid-cols-4 gap-1.5">
@@ -1151,8 +1151,8 @@ export default function ScorecardPage() {
                       }}
                         className="py-2.5 rounded-xl text-sm font-black transition"
                         style={newForm.holes === h
-                          ? { background: 'linear-gradient(135deg,#16a34a,#14532d)', color: '#fff' }
-                          : { background: 'rgba(255,255,255,0.05)', color: '#5a7a5a', border: '1px solid rgba(34,197,94,0.1)' }}>
+                          ? { background: 'linear-gradient(135deg,#c9a84c,#a07830)', color: '#fff' }
+                          : { background: 'rgba(255,255,255,0.05)', color: 'var(--text-3)', border: '1px solid rgba(201,168,76,0.10)' }}>
                         {h}H
                       </button>
                     ))}
@@ -1162,21 +1162,21 @@ export default function ScorecardPage() {
 
               {/* 골프장 선택 */}
               <div>
-                <label className="text-[11px] font-bold mb-2 block" style={{ color: '#5a7a5a' }}>
+                <label className="text-[11px] font-bold mb-2 block" style={{ color: 'var(--text-3)' }}>
                   {ko ? '골프장' : 'Golf Course'}
                 </label>
 
                 {selectedCourseObj ? (
                   /* 선택된 코스 */
                   <div className="rounded-xl p-3 flex items-center gap-3"
-                    style={{ background: 'rgba(22,163,74,0.1)', border: '1px solid rgba(34,197,94,0.25)' }}>
+                    style={{ background: 'rgba(201,168,76,0.07)', border: '1px solid rgba(201,168,76,0.28)' }}>
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{ background: 'rgba(22,163,74,0.2)' }}>
-                      <Flag size={14} className="text-green-400" />
+                      style={{ background: 'rgba(201,168,76,0.15)' }}>
+                      <Flag size={14} style={{ color: 'var(--gold-l)' }} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-white text-sm font-bold truncate">{selectedCourseObj.name}</p>
-                      <p className="text-xs" style={{ color: '#5a7a5a' }}>{selectedCourseObj.province}</p>
+                      <p className="text-xs" style={{ color: 'var(--text-3)' }}>{selectedCourseObj.province}</p>
                     </div>
                     <button onClick={() => { setSelectedCourseObj(null); setNewForm(f => ({ ...f, courseName: '', courseId: '' })); setSubCourse('') }}
                       className="text-xs px-2.5 py-1.5 rounded-lg transition"
@@ -1195,8 +1195,8 @@ export default function ScorecardPage() {
                           <button key={k} onClick={() => { setSelCountry(k); setSelProvince('all') }}
                             className="text-xs px-2.5 py-1.5 rounded-xl font-semibold transition"
                             style={selCountry === k
-                              ? { background: 'rgba(22,163,74,0.25)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)' }
-                              : { background: 'rgba(255,255,255,0.05)', color: '#5a7a5a' }}>
+                              ? { background: 'rgba(201,168,76,0.18)', color: 'var(--gold-l)', border: '1px solid rgba(201,168,76,0.3)' }
+                              : { background: 'rgba(255,255,255,0.05)', color: 'var(--text-3)' }}>
                             {m.flag} {ko ? m.ko : m.en}
                           </button>
                         )
@@ -1209,16 +1209,16 @@ export default function ScorecardPage() {
                         <button onClick={() => setSelProvince('all')}
                           className="flex-shrink-0 text-xs px-2.5 py-1.5 rounded-xl font-semibold transition"
                           style={selProvince === 'all'
-                            ? { background: 'rgba(22,163,74,0.2)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.25)' }
-                            : { background: 'rgba(255,255,255,0.04)', color: '#4a6a4a' }}>
+                            ? { background: 'rgba(201,168,76,0.15)', color: 'var(--gold-l)', border: '1px solid rgba(201,168,76,0.28)' }
+                            : { background: 'rgba(255,255,255,0.04)', color: 'var(--text-3)' }}>
                           {ko ? '전체' : 'All'}
                         </button>
                         {availableProvinces.map(p => (
                           <button key={p} onClick={() => setSelProvince(p)}
                             className="flex-shrink-0 text-xs px-2.5 py-1.5 rounded-xl font-semibold transition whitespace-nowrap"
                             style={selProvince === p
-                              ? { background: 'rgba(22,163,74,0.2)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.25)' }
-                              : { background: 'rgba(255,255,255,0.04)', color: '#4a6a4a' }}>
+                              ? { background: 'rgba(201,168,76,0.15)', color: 'var(--gold-l)', border: '1px solid rgba(201,168,76,0.28)' }
+                              : { background: 'rgba(255,255,255,0.04)', color: 'var(--text-3)' }}>
                             {p}
                           </button>
                         ))}
@@ -1227,30 +1227,30 @@ export default function ScorecardPage() {
 
                     {/* 검색 인풋 */}
                     <div className="relative mb-2">
-                      <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#5a7a5a' }} />
+                      <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-3)' }} />
                       <input value={cpSearch} onChange={e => setCpSearch(e.target.value)}
                         placeholder={ko ? '골프장 검색...' : 'Search course...'}
                         className="w-full pl-8 pr-3 py-2.5 rounded-xl text-white text-sm"
-                        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(34,197,94,0.15)' }} />
+                        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(201,168,76,0.18)' }} />
                     </div>
 
                     {/* 코스 목록 */}
-                    <div className="rounded-xl overflow-hidden" style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid rgba(34,197,94,0.1)' }}>
+                    <div className="rounded-xl overflow-hidden" style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid rgba(201,168,76,0.10)' }}>
                       {filteredCourses.map((c, i) => (
                         <button key={c.id} onClick={() => handleSelectCourse(c)}
                           className="w-full text-left px-3 py-3 flex items-center gap-3 transition"
                           style={{
                             background: i % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent',
-                            borderBottom: i < filteredCourses.length - 1 ? '1px solid rgba(34,197,94,0.06)' : 'none',
+                            borderBottom: i < filteredCourses.length - 1 ? '1px solid rgba(201,168,76,0.08)' : 'none',
                           }}>
                           <div>
                             <p className="text-sm font-semibold text-white">{c.name}</p>
-                            <p className="text-xs" style={{ color: '#5a7a5a' }}>{c.province} · {c.holes}H · Par {c.par}</p>
+                            <p className="text-xs" style={{ color: 'var(--text-3)' }}>{c.province} · {c.holes}H · Par {c.par}</p>
                           </div>
                         </button>
                       ))}
                       {filteredCourses.length === 0 && (
-                        <div className="px-3 py-6 text-center text-xs" style={{ color: '#3a5a3a' }}>
+                        <div className="px-3 py-6 text-center text-xs" style={{ color: 'var(--text-3)' }}>
                           {ko ? '검색 결과 없음' : 'No results'}
                         </div>
                       )}
@@ -1281,7 +1281,7 @@ export default function ScorecardPage() {
 
                   {/* 선택 완료 표시 */}
                   {subCourse && (
-                    <p className="text-xs mt-1.5 font-semibold" style={{ color: '#22c55e' }}>
+                    <p className="text-xs mt-1.5 font-semibold" style={{ color: 'var(--gold-l)' }}>
                       ✓ {subCourseCombos.find(c => c.key === subCourse)?.label} {ko ? '선택됨' : 'selected'}
                     </p>
                   )}
@@ -1291,7 +1291,7 @@ export default function ScorecardPage() {
               {/* 파 조절 */}
               {newForm.courseName && (
                 <div>
-                  <label className="text-[11px] font-bold mb-2 block" style={{ color: '#5a7a5a' }}>Par</label>
+                  <label className="text-[11px] font-bold mb-2 block" style={{ color: 'var(--text-3)' }}>Par</label>
                   <div className="flex items-center gap-4">
                     <button onClick={() => setNewForm(f => ({ ...f, coursePar: Math.max(54, f.coursePar - 1) }))}
                       className="w-11 h-11 rounded-xl text-xl font-bold transition"
@@ -1306,13 +1306,13 @@ export default function ScorecardPage() {
 
               {/* 메모 */}
               <div>
-                <label className="text-[11px] font-bold mb-1.5 block" style={{ color: '#5a7a5a' }}>
+                <label className="text-[11px] font-bold mb-1.5 block" style={{ color: 'var(--text-3)' }}>
                   {ko ? '메모 (선택)' : 'Notes (optional)'}
                 </label>
                 <textarea value={newForm.notes} onChange={e => setNewForm(f => ({ ...f, notes: e.target.value }))}
                   rows={2} placeholder={ko ? '날씨, 동반자 등...' : 'Weather, partners...'}
                   className="w-full rounded-xl px-3 py-2.5 text-white text-sm resize-none"
-                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(34,197,94,0.12)' }} />
+                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(201,168,76,0.12)' }} />
               </div>
 
               {/* 에러 */}
@@ -1325,7 +1325,7 @@ export default function ScorecardPage() {
             </div>
 
             {/* 액션 버튼 */}
-            <div className="flex gap-3 px-5 py-4 flex-shrink-0" style={{ borderTop: '1px solid rgba(34,197,94,0.1)' }}>
+            <div className="flex gap-3 px-5 py-4 flex-shrink-0" style={{ borderTop: '1px solid rgba(201,168,76,0.12)' }}>
               <button onClick={() => { setShowNew(false); resetNewForm() }}
                 className="flex-1 py-3.5 rounded-xl font-bold text-sm"
                 style={{ background: 'rgba(255,255,255,0.06)', color: '#6b7280' }}>
@@ -1334,7 +1334,7 @@ export default function ScorecardPage() {
               <button onClick={createRound}
                 disabled={creating || !newForm.courseName || (needsSubCourse && !subCourse)}
                 className="flex-1 py-3.5 rounded-xl font-black text-sm disabled:opacity-40 transition-all active:scale-95"
-                style={{ background: 'linear-gradient(135deg,#16a34a,#14532d)', color: '#fff', boxShadow: '0 4px 14px rgba(22,163,74,0.3)' }}>
+                style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)', color: '#fff', boxShadow: '0 4px 14px rgba(201,168,76,0.3)' }}>
                 {creating ? (
                   <span className="flex items-center justify-center gap-2">
                     <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
@@ -1364,19 +1364,19 @@ function ScoreTable({ holes, label, localHoles, holeData, sumScores, sumPars, on
   const hasPutts    = holes.some(h => localHoles[h]?.putts !== null)
 
   return (
-    <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(34,197,94,0.15)' }}>
+    <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(201,168,76,0.18)' }}>
       <div className="overflow-x-auto">
         <table className="min-w-max w-full text-xs border-collapse">
           <thead>
-            <tr style={{ background: 'rgba(22,163,74,0.1)' }}>
+            <tr style={{ background: 'rgba(201,168,76,0.06)' }}>
               <th className="sticky left-0 px-2.5 py-2.5 text-left font-bold w-12"
-                style={{ background: 'rgba(8,18,8,0.98)', color: '#3a5a3a', borderRight: '1px solid rgba(34,197,94,0.1)', minWidth: 44 }}>
+                style={{ background: 'var(--bg-2)', color: 'var(--text-3)', borderRight: '1px solid rgba(201,168,76,0.12)', minWidth: 44 }}>
                 {ko ? '홀' : 'Hole'}
               </th>
               {holes.map(h => (
-                <th key={h} className="text-center font-bold" style={{ color: '#5a7a5a', width: 40, minWidth: 40 }}>{h}</th>
+                <th key={h} className="text-center font-bold" style={{ color: 'var(--text-3)', width: 40, minWidth: 40 }}>{h}</th>
               ))}
-              <th className="px-2.5 py-2.5 text-center font-black" style={{ color: '#22c55e', borderLeft: '1px solid rgba(34,197,94,0.12)', width: 44, minWidth: 44 }}>{label}</th>
+              <th className="px-2.5 py-2.5 text-center font-black" style={{ color: 'var(--gold-l)', borderLeft: '1px solid rgba(201,168,76,0.12)', width: 44, minWidth: 44 }}>{label}</th>
             </tr>
           </thead>
           <tbody>
@@ -1384,15 +1384,15 @@ function ScoreTable({ holes, label, localHoles, holeData, sumScores, sumPars, on
             {hasYardage && (
               <tr style={{ background: 'rgba(255,255,255,0.01)' }}>
                 <td className="sticky left-0 px-2.5 py-1.5 font-bold text-[10px]"
-                  style={{ background: 'rgba(8,18,8,0.98)', color: '#3a5a3a', borderRight: '1px solid rgba(34,197,94,0.08)' }}>
+                  style={{ background: 'var(--bg-2)', color: 'var(--text-3)', borderRight: '1px solid rgba(201,168,76,0.10)' }}>
                   {ko ? '야드' : 'Yds'}
                 </td>
                 {holes.map(h => (
-                  <td key={h} className="text-center py-1.5 text-[10px]" style={{ color: '#3a5a3a' }}>
+                  <td key={h} className="text-center py-1.5 text-[10px]" style={{ color: 'var(--text-3)' }}>
                     {localHoles[h]?.yardage ?? ''}
                   </td>
                 ))}
-                <td className="text-center py-1.5 text-[10px]" style={{ color: '#3a5a3a', borderLeft: '1px solid rgba(34,197,94,0.08)' }}>
+                <td className="text-center py-1.5 text-[10px]" style={{ color: 'var(--text-3)', borderLeft: '1px solid rgba(201,168,76,0.10)' }}>
                   {holes.reduce((s, h) => s + (localHoles[h]?.yardage ?? 0), 0) || ''}
                 </td>
               </tr>
@@ -1400,7 +1400,7 @@ function ScoreTable({ holes, label, localHoles, holeData, sumScores, sumPars, on
             {/* 파 행 */}
             <tr style={{ background: 'rgba(255,255,255,0.025)' }}>
               <td className="sticky left-0 px-2.5 py-2 font-bold"
-                style={{ background: 'rgba(8,18,8,0.98)', color: '#4a6a4a', borderRight: '1px solid rgba(34,197,94,0.08)' }}>
+                style={{ background: 'var(--bg-2)', color: 'var(--text-3)', borderRight: '1px solid rgba(201,168,76,0.10)' }}>
                 {ko ? '파' : 'Par'}
               </td>
               {holes.map(h => (
@@ -1408,12 +1408,12 @@ function ScoreTable({ holes, label, localHoles, holeData, sumScores, sumPars, on
                   {holeData(h).par}
                 </td>
               ))}
-              <td className="text-center py-2 font-black" style={{ color: '#22c55e', borderLeft: '1px solid rgba(34,197,94,0.08)' }}>{pTotal}</td>
+              <td className="text-center py-2 font-black" style={{ color: 'var(--gold-l)', borderLeft: '1px solid rgba(201,168,76,0.10)' }}>{pTotal}</td>
             </tr>
             {/* 스코어 행 */}
-            <tr style={{ background: 'rgba(6,13,6,1)' }}>
+            <tr style={{ background: 'rgba(8,8,8,1)' }}>
               <td className="sticky left-0 px-2.5 py-2 font-bold"
-                style={{ background: 'rgba(6,10,6,1)', color: '#4a6a4a', borderRight: '1px solid rgba(34,197,94,0.08)' }}>
+                style={{ background: 'var(--bg-2)', color: 'var(--text-3)', borderRight: '1px solid rgba(201,168,76,0.10)' }}>
                 {ko ? '타' : 'Score'}
               </td>
               {holes.map(h => {
@@ -1437,14 +1437,14 @@ function ScoreTable({ holes, label, localHoles, holeData, sumScores, sumPars, on
                   </td>
                 )
               })}
-              <td className="text-center py-1.5" style={{ borderLeft: '1px solid rgba(34,197,94,0.08)' }}>
+              <td className="text-center py-1.5" style={{ borderLeft: '1px solid rgba(201,168,76,0.10)' }}>
                 {filledHoles === holes.length ? (
                   <span className="text-sm font-black"
                     style={{ color: sTotal - pTotal > 0 ? '#fca5a5' : sTotal - pTotal < 0 ? '#86efac' : '#fde68a' }}>
                     {sTotal}
                   </span>
                 ) : (
-                  <span className="text-xs font-semibold" style={{ color: '#3a5a3a' }}>{filledHoles}/{holes.length}</span>
+                  <span className="text-xs font-semibold" style={{ color: 'var(--text-3)' }}>{filledHoles}/{holes.length}</span>
                 )}
               </td>
             </tr>
@@ -1452,7 +1452,7 @@ function ScoreTable({ holes, label, localHoles, holeData, sumScores, sumPars, on
             {hasPutts && (
               <tr style={{ background: 'rgba(59,130,246,0.04)' }}>
                 <td className="sticky left-0 px-2.5 py-1.5 font-bold text-[10px]"
-                  style={{ background: 'rgba(6,10,6,0.98)', color: '#3b5f8a', borderRight: '1px solid rgba(34,197,94,0.08)' }}>
+                  style={{ background: 'var(--bg-2)', color: '#3b5f8a', borderRight: '1px solid rgba(201,168,76,0.10)' }}>
                   {ko ? '퍼트' : 'Putts'}
                 </td>
                 {holes.map(h => (
@@ -1461,7 +1461,7 @@ function ScoreTable({ holes, label, localHoles, holeData, sumScores, sumPars, on
                     {localHoles[h]?.putts ?? '·'}
                   </td>
                 ))}
-                <td className="text-center py-1.5 text-xs font-black" style={{ color: '#60a5fa', borderLeft: '1px solid rgba(34,197,94,0.08)' }}>
+                <td className="text-center py-1.5 text-xs font-black" style={{ color: '#60a5fa', borderLeft: '1px solid rgba(201,168,76,0.10)' }}>
                   {holes.reduce((s, h) => s + (localHoles[h]?.putts ?? 0), 0) || ''}
                 </td>
               </tr>
@@ -1503,12 +1503,12 @@ function HoleEditModal({ hole, totalHoles, data, ko, onClose, onNavigate, onChan
     <div className="fixed inset-0 z-[200] flex items-end" onClick={onClose}>
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
       <div className="relative w-full rounded-t-3xl pb-8"
-        style={{ background: 'linear-gradient(180deg,#0e1a0e,#060d06)', border: '1px solid rgba(34,197,94,0.18)', borderBottom: 'none' }}
+        style={{ background: 'linear-gradient(180deg,#0e1a0e,#060d06)', border: '1px solid rgba(201,168,76,0.18)', borderBottom: 'none' }}
         onClick={e => e.stopPropagation()}>
 
         {/* 핸들 */}
         <div className="flex justify-center pt-3 pb-1">
-          <div className="w-10 h-1 rounded-full" style={{ background: 'rgba(34,197,94,0.25)' }} />
+          <div className="w-10 h-1 rounded-full" style={{ background: 'rgba(201,168,76,0.25)' }} />
         </div>
 
         {/* 홀 헤더 */}
@@ -1517,7 +1517,7 @@ function HoleEditModal({ hole, totalHoles, data, ko, onClose, onNavigate, onChan
             <p className="text-2xl font-black text-white leading-none">
               {ko ? `${hole}번 홀` : `Hole ${hole}`}
             </p>
-            <p className="text-xs mt-0.5 font-semibold" style={{ color: '#5a7a5a' }}>Par {par}</p>
+            <p className="text-xs mt-0.5 font-semibold" style={{ color: 'var(--text-3)' }}>Par {par}</p>
           </div>
           <div className="flex items-center gap-2">
             {diff !== null && (
@@ -1536,7 +1536,7 @@ function HoleEditModal({ hole, totalHoles, data, ko, onClose, onNavigate, onChan
         <div className="px-5 space-y-4">
           {/* 파 선택 — 탭하면 파+스코어(파) 즉시 저장 */}
           <div>
-            <p className="text-[11px] font-bold mb-2" style={{ color: '#5a7a5a' }}>
+            <p className="text-[11px] font-bold mb-2" style={{ color: 'var(--text-3)' }}>
               {ko ? '파 선택 (탭하면 파로 바로 저장)' : 'Par (tap to save as Par)'}
             </p>
             <div className="flex gap-2">
@@ -1544,7 +1544,7 @@ function HoleEditModal({ hole, totalHoles, data, ko, onClose, onNavigate, onChan
                 <button key={p} onClick={() => confirm(p, p)}
                   className="flex-1 py-3 rounded-xl text-base font-black transition active:scale-95"
                   style={par === p && score === p
-                    ? { background: 'linear-gradient(135deg,#16a34a,#14532d)', color: '#fff', boxShadow: '0 2px 12px rgba(22,163,74,0.4)', fontSize: '1.1rem' }
+                    ? { background: 'linear-gradient(135deg,#c9a84c,#a07830)', color: '#fff', boxShadow: '0 2px 12px rgba(201,168,76,0.35)', fontSize: '1.1rem' }
                     : { background: 'rgba(255,255,255,0.06)', color: '#d1d5db', border: '1px solid rgba(255,255,255,0.1)', fontSize: '1.1rem' }}>
                   {p}
                 </button>
@@ -1554,7 +1554,7 @@ function HoleEditModal({ hole, totalHoles, data, ko, onClose, onNavigate, onChan
 
           {/* 타수 입력 */}
           <div>
-            <p className="text-[11px] font-bold mb-2" style={{ color: '#5a7a5a' }}>
+            <p className="text-[11px] font-bold mb-2" style={{ color: 'var(--text-3)' }}>
               {ko ? '타수 (탭하면 바로 저장)' : 'Score (tap to save instantly)'}
             </p>
             <div className="flex items-center gap-3 mb-3">
@@ -1580,7 +1580,7 @@ function HoleEditModal({ hole, totalHoles, data, ko, onClose, onNavigate, onChan
                   confirm(next)
                 }}
                 className="w-14 h-14 rounded-2xl text-2xl font-black transition active:scale-90"
-                style={{ background: 'rgba(34,197,94,0.12)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.2)' }}>+</button>
+                style={{ background: 'rgba(201,168,76,0.12)', color: 'var(--gold-l)', border: '1px solid rgba(201,168,76,0.2)' }}>+</button>
             </div>
 
             {/* 빠른 선택 — 탭하면 즉시 저장 */}
@@ -1606,7 +1606,7 @@ function HoleEditModal({ hole, totalHoles, data, ko, onClose, onNavigate, onChan
           <div className="grid grid-cols-2 gap-3">
             {/* 퍼트 — +/- 카운터 */}
             <div>
-              <p className="text-[11px] font-bold mb-2" style={{ color: '#5a7a5a' }}>{ko ? '퍼트 수' : 'Putts'}</p>
+              <p className="text-[11px] font-bold mb-2" style={{ color: 'var(--text-3)' }}>{ko ? '퍼트 수' : 'Putts'}</p>
               <div className="flex items-center gap-2">
                 <button onClick={decPutts}
                   className="w-10 h-10 rounded-xl text-lg font-black transition active:scale-90"
@@ -1635,13 +1635,13 @@ function HoleEditModal({ hole, totalHoles, data, ko, onClose, onNavigate, onChan
 
             {/* 야디지 */}
             <div>
-              <p className="text-[11px] font-bold mb-2" style={{ color: '#5a7a5a' }}>{ko ? '야디지 (선택)' : 'Yardage (opt)'}</p>
+              <p className="text-[11px] font-bold mb-2" style={{ color: 'var(--text-3)' }}>{ko ? '야디지 (선택)' : 'Yardage (opt)'}</p>
               <input type="number" min="50" max="999" value={yardage}
                 onChange={e => setYardage(e.target.value)}
                 placeholder={ko ? '예: 385' : 'e.g. 385'}
                 className="w-full h-10 text-center rounded-xl text-sm font-black"
-                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(34,197,94,0.15)', color: '#fff' }} />
-              <p className="text-[10px] mt-1.5 text-center" style={{ color: '#3a5a3a' }}>yards</p>
+                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(201,168,76,0.18)', color: '#fff' }} />
+              <p className="text-[10px] mt-1.5 text-center" style={{ color: 'var(--text-3)' }}>yards</p>
             </div>
           </div>
 
@@ -1659,7 +1659,7 @@ function HoleEditModal({ hole, totalHoles, data, ko, onClose, onNavigate, onChan
             {/* 확인 */}
             <button onClick={() => onChange(score, putts ?? 2, par, yardage ? parseInt(yardage) : null)}
               className="flex-1 py-3.5 rounded-xl font-black text-sm transition active:scale-95"
-              style={{ background: 'linear-gradient(135deg,#16a34a,#14532d)', color: '#fff', boxShadow: '0 4px 16px rgba(22,163,74,0.3)' }}>
+              style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)', color: '#fff', boxShadow: '0 4px 16px rgba(201,168,76,0.3)' }}>
               {ko ? '✓ 확인' : '✓ OK'}
             </button>
 
@@ -1681,7 +1681,7 @@ function HoleEditModal({ hole, totalHoles, data, ko, onClose, onNavigate, onChan
                 style={{
                   width: h === hole ? 16 : 6, height: 6,
                   borderRadius: h === hole ? 3 : '50%',
-                  background: h === hole ? '#22c55e' : 'rgba(34,197,94,0.2)',
+                  background: h === hole ? '#c9a84c' : 'rgba(201,168,76,0.15)',
                 }} />
             ))}
           </div>

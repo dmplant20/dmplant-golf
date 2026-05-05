@@ -1,34 +1,41 @@
 @import "tailwindcss";
 
 /* ══════════════════════════════════════════════════════════
-   INTER STELLAR GOLF — Design System v2
-   Premium minimal dark. One accent. No glow.
+   INTER STELLAR GOLF — Premium Gold & Silver Design System
+   Deep black · Antique gold accent · Cool silver secondary
 ══════════════════════════════════════════════════════════ */
 
 :root {
   /* ── Backgrounds ─────────────────────────────────────── */
-  --bg:       #0a0a0a;   /* true dark charcoal               */
-  --bg-2:     #111111;   /* slightly lighter                  */
-  --bg-3:     #181818;   /* card background                  */
-  --surface:  #1c1c1c;   /* elevated surface                 */
-  --surface-2:#242424;   /* secondary surface / input field  */
+  --bg:       #080808;   /* near-black                      */
+  --bg-2:     #0e0e0e;   /* slightly lighter                */
+  --bg-3:     #161616;   /* card background                 */
+  --surface:  #1e1e1e;   /* elevated surface                */
+  --surface-2:#272727;   /* secondary surface / input       */
 
-  /* ── Borders ─────────────────────────────────────────── */
-  --border:   rgba(255,255,255,0.07);   /* default subtle   */
-  --border-2: rgba(255,255,255,0.12);   /* emphasized       */
+  /* ── Borders — warm gold tint ────────────────────────── */
+  --border:   rgba(201,168,76,0.12);   /* subtle gold       */
+  --border-2: rgba(201,168,76,0.24);   /* emphasized gold   */
 
-  /* ── Accent (single source of truth) ────────────────── */
-  --green:    #18a34a;   /* primary action green             */
-  --green-l:  #22c55e;   /* lighter variant (text on dark)   */
-  --green-d:  #15803d;   /* deeper (hover states)            */
+  /* ── Gold — primary accent ───────────────────────────── */
+  --gold:     #c9a84c;   /* antique gold                    */
+  --gold-l:   #e8c96d;   /* light gold (text on dark)       */
+  --gold-d:   #a07830;   /* deep gold (hover / pressed)     */
 
-  /* ── Text ────────────────────────────────────────────── */
-  --text:     #f0f0f0;   /* primary                          */
-  --text-2:   #a0a0a0;   /* secondary                        */
-  --text-3:   #606060;   /* muted / placeholder              */
+  /* ── Silver — secondary accent ──────────────────────── */
+  --silver:   #c8c8de;   /* bright cool silver              */
+  --silver-l: #eaeaf6;   /* brilliant light silver          */
+  --silver-d: #9090a8;   /* muted silver                    */
 
-  /* ── Gold (used sparingly for premium accents) ───────── */
-  --gold:     #c9a227;
+  /* ── Green — scorecard semantic ONLY (golf standard) ── */
+  --green:    #18a34a;
+  --green-l:  #22c55e;
+  --green-d:  #15803d;
+
+  /* ── Text — warm cream ───────────────────────────────── */
+  --text:     #f2ede6;   /* warm cream white                */
+  --text-2:   #9a938a;   /* warm mid-gray                   */
+  --text-3:   #5c5650;   /* muted / placeholder             */
 
   /* ── Misc ────────────────────────────────────────────── */
   --radius:   14px;
@@ -69,32 +76,34 @@ body {
    CARDS
 ══════════════════════════════════════════════════════════ */
 
-/* Standard card — flat dark, thin border */
+/* Standard card */
 .glass-card {
   background: var(--bg-3);
   border: 1px solid var(--border);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.5);
 }
 
-/* Slightly elevated card */
+/* Elevated card */
 .premium-card {
   background: var(--surface);
   border: 1px solid var(--border-2);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.6),
+              inset 0 1px 0 rgba(201,168,76,0.06);
 }
 
 /* Stat / metric card */
 .stat-card {
   background: var(--bg-3);
   border: 1px solid var(--border);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
 }
 
-/* Pro / hero card (used for scorecard header etc.) */
+/* Pro / hero card */
 .pro-card {
   background: var(--surface);
   border: 1px solid var(--border-2);
-  box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+  box-shadow: 0 2px 16px rgba(0,0,0,0.6),
+              inset 0 1px 0 rgba(201,168,76,0.08);
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -112,7 +121,7 @@ body {
   transition: border-color 0.2s;
 }
 .input-field:focus {
-  border-color: var(--green-l);
+  border-color: var(--gold-l);
 }
 .input-field::placeholder { color: var(--text-3); }
 
@@ -120,19 +129,20 @@ body {
    BUTTONS
 ══════════════════════════════════════════════════════════ */
 .btn-primary {
-  background: var(--green);
+  background: linear-gradient(135deg, #c9a84c 0%, #a07830 100%);
   color: #fff;
-  font-weight: 600;
+  font-weight: 700;
   border-radius: var(--radius);
   padding: 13px 20px;
   border: none;
   cursor: pointer;
-  transition: background 0.15s, transform 0.1s;
+  transition: opacity 0.15s, transform 0.1s;
   font-size: 0.875rem;
+  letter-spacing: 0.01em;
 }
-.btn-primary:hover  { background: var(--green-d); }
+.btn-primary:hover  { opacity: 0.88; }
 .btn-primary:active { transform: scale(0.98); }
-.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-primary:disabled { opacity: 0.35; cursor: not-allowed; }
 
 .btn-ghost {
   background: transparent;
@@ -144,7 +154,7 @@ body {
   cursor: pointer;
   transition: border-color 0.15s, color 0.15s;
 }
-.btn-ghost:hover { border-color: var(--green-l); color: var(--green-l); }
+.btn-ghost:hover { border-color: var(--gold-l); color: var(--gold-l); }
 
 /* ══════════════════════════════════════════════════════════
    TYPOGRAPHY UTILITIES
@@ -154,12 +164,12 @@ body {
 .section-title {
   font-size: 0.6875rem;
   font-weight: 700;
-  letter-spacing: 0.10em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-3);
 }
 
-/* ── Nav pill (tab/chip) ─────────────────────────────────── */
+/* ── Nav pill ────────────────────────────────────────────── */
 .nav-pill {
   display: inline-flex;
   align-items: center;
@@ -173,11 +183,11 @@ body {
   font-weight: 600;
   transition: all 0.15s;
 }
-.nav-pill:hover { border-color: var(--green-l); color: var(--green-l); }
+.nav-pill:hover { border-color: var(--gold-l); color: var(--gold-l); }
 .nav-pill.active {
-  background: rgba(34,197,94,0.12);
-  border-color: rgba(34,197,94,0.3);
-  color: var(--green-l);
+  background: rgba(201,168,76,0.12);
+  border-color: rgba(201,168,76,0.35);
+  color: var(--gold-l);
 }
 
 /* ── Badge ──────────────────────────────────────────────── */
@@ -199,7 +209,7 @@ body {
 }
 
 /* ══════════════════════════════════════════════════════════
-   SCORE BADGES — semantic colors only
+   SCORE BADGES — semantic golf colors (unchanged)
 ══════════════════════════════════════════════════════════ */
 .score-badge {
   display: inline-flex;
@@ -258,7 +268,7 @@ body {
   border-radius: var(--radius);
   overflow: hidden;
   z-index: 300;
-  box-shadow: 0 12px 40px rgba(0,0,0,0.7);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.8);
   max-height: 240px;
   overflow-y: auto;
 }
@@ -288,6 +298,13 @@ body {
 .menu-item:active { background: var(--surface);   }
 
 /* ══════════════════════════════════════════════════════════
+   GOLD GLOW UTILITY
+══════════════════════════════════════════════════════════ */
+.gold-glow {
+  box-shadow: 0 0 16px rgba(201,168,76,0.25), 0 0 4px rgba(201,168,76,0.15);
+}
+
+/* ══════════════════════════════════════════════════════════
    ANIMATIONS
 ══════════════════════════════════════════════════════════ */
 @keyframes fadeIn {
@@ -302,7 +319,13 @@ body {
   0%   { opacity: 0; transform: translateX(-8px) rotate(-90deg); }
   100% { opacity: 1; transform: translateX(0)    rotate(-90deg); }
 }
+@keyframes shimmer {
+  0%   { opacity: 0.6; }
+  50%  { opacity: 1; }
+  100% { opacity: 0.6; }
+}
 
 .animate-fade-in    { animation: fadeIn  0.2s ease both; }
 .animate-slide-up   { animation: slideUp 0.28s cubic-bezier(0.32,0.72,0,1) both; }
 .landscape-label-in { animation: landscapeLabelIn 0.3s ease both; }
+.animate-shimmer    { animation: shimmer 2s ease-in-out infinite; }

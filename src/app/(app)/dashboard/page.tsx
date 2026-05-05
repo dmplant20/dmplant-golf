@@ -155,7 +155,7 @@ export default function DashboardPage() {
             {user?.full_name_en && <p className="text-sm mt-0.5" style={{ color: 'var(--text-2)' }}>{user.full_name_en}</p>}
             <div className="flex items-center gap-2 mt-3 flex-wrap">
               <span className={`badge border text-[11px] ${rc}`}>{roleName}</span>
-              <span className="badge text-[11px]" style={{ background: 'rgba(34,197,94,0.10)', color: 'var(--green-l)', border: '1px solid rgba(34,197,94,0.2)' }}>
+              <span className="badge text-[11px]" style={{ background: 'rgba(201,168,76,0.12)', color: 'var(--gold-l)', border: '1px solid rgba(201,168,76,0.28)' }}>
                 ⛳ Inter Stellar GOLF
               </span>
             </div>
@@ -176,7 +176,7 @@ export default function DashboardPage() {
         {[
           { icon: Users,       label: ko ? '총 회원'  : 'Members', value: `${stats.members}${ko ? '명' : ''}`,                              color: '#60a5fa', bg: 'rgba(59,130,246,0.1)' },
           { icon: Wallet,      label: ko ? '클럽 잔액': 'Balance',  value: stats.balance === 0 ? `${sym}0` : `${sym}${(stats.balance/1000).toFixed(0)}K`, color: '#fbbf24', bg: 'rgba(251,191,36,0.1)' },
-          { icon: CalendarDays,label: ko ? '다음 모임': 'Next',     value: nextDateStr || '—',                                               color: 'var(--green-l)', bg: 'rgba(34,197,94,0.1)' },
+          { icon: CalendarDays,label: ko ? '다음 모임': 'Next',     value: nextDateStr || '—',                                               color: 'var(--gold-l)', bg: 'rgba(201,168,76,0.1)' },
         ].map(({ icon: Icon, label, value, color, bg }) => (
           <div key={label} className="stat-card rounded-2xl p-3.5">
             <div className="w-8 h-8 rounded-xl flex items-center justify-center mb-2.5 flex-shrink-0" style={{ background: bg }}>
@@ -195,12 +195,12 @@ export default function DashboardPage() {
           {/* 헤더 */}
           <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid var(--border)' }}>
             <div className="flex items-center gap-2">
-              <CalendarDays size={14} style={{ color: 'var(--green-l)' }} />
+              <CalendarDays size={14} style={{ color: 'var(--gold-l)' }} />
               <span className="text-sm font-bold" style={{ color: 'var(--text)' }}>
                 {ko ? `${nextMtg.month}월 정기모임 현황` : `${nextMtg.date.toLocaleDateString('en-US',{month:'long'})} Meeting`}
               </span>
             </div>
-            <Link href="/meetings" className="text-xs flex items-center gap-0.5 font-medium" style={{ color: 'var(--green-l)' }}>
+            <Link href="/meetings" className="text-xs flex items-center gap-0.5 font-medium" style={{ color: 'var(--gold-l)' }}>
               {ko ? '전체보기' : 'Full view'} <ChevronRight size={12} />
             </Link>
           </div>
@@ -209,7 +209,7 @@ export default function DashboardPage() {
           <div className="px-4 pt-3 pb-2 flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
               style={{ background: 'var(--surface-2)' }}>
-              <Clock size={16} style={{ color: 'var(--green-l)' }} />
+              <Clock size={16} style={{ color: 'var(--gold-l)' }} />
             </div>
             <div>
               <p className="font-semibold text-sm" style={{ color: 'var(--text)' }}>{nextDateStr}</p>
@@ -263,8 +263,8 @@ export default function DashboardPage() {
                   myRsvp ? '' : 'text-white'
                 }`}
                 style={myRsvp
-                  ? { color: 'var(--green-l)', background: 'rgba(34,197,94,0.1)' }
-                  : { background: 'var(--green)' }
+                  ? { color: 'var(--gold-l)', background: 'rgba(201,168,76,0.12)' }
+                  : { background: 'linear-gradient(135deg, #c9a84c, #a07830)', color: '#fff' }
                 }>
                 {myRsvp ? (ko ? '변경' : 'Change') : (ko ? '응답하기' : 'Respond')} →
               </Link>
@@ -275,7 +275,7 @@ export default function DashboardPage() {
           {meetingGroups.length > 0 && (
             <div className="px-4 pb-4">
               <div className="flex items-center gap-1.5 mb-2">
-                <LayoutGrid size={12} style={{ color: 'var(--green-l)' }} />
+                <LayoutGrid size={12} style={{ color: 'var(--gold-l)' }} />
                 <p className="section-title">{ko ? '조 편성 결과' : 'GROUP ASSIGNMENTS'}</p>
               </div>
               <div className="space-y-1.5">
@@ -284,7 +284,7 @@ export default function DashboardPage() {
                     className="flex items-start gap-2.5 rounded-xl px-3 py-2"
                     style={{ background: 'var(--surface-2)' }}>
                     <span className="text-[10px] font-black rounded-lg px-1.5 py-0.5 flex-shrink-0 mt-0.5"
-                      style={{ color: 'var(--green-l)', background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.2)' }}>
+                      style={{ color: 'var(--gold-l)', background: 'rgba(201,168,76,0.12)', border: '1px solid rgba(201,168,76,0.25)' }}>
                       {g.group_number}조
                     </span>
                     <p className="text-xs leading-relaxed" style={{ color: 'var(--text-2)' }}>
@@ -295,7 +295,7 @@ export default function DashboardPage() {
                   </div>
                 ))}
               </div>
-              <Link href="/meetings" className="block mt-2 text-center text-[11px]" style={{ color: 'var(--green-l)' }}>
+              <Link href="/meetings" className="block mt-2 text-center text-[11px]" style={{ color: 'var(--gold-l)' }}>
                 {ko ? '정기모임 상세보기 →' : 'See full meeting details →'}
               </Link>
             </div>
@@ -310,7 +310,7 @@ export default function DashboardPage() {
           {[
             { href: '/members',      icon: Users,        label: ko ? '회원 관리'     : 'Members',       sub: `${stats.members}${ko ? '명' : ' members'}`,                      color: '#60a5fa', bg: 'rgba(59,130,246,0.08)' },
             { href: '/finance',      icon: Wallet,       label: ko ? '재무 현황'     : 'Finance',        sub: `${sym}${stats.balance.toLocaleString()}`,                        color: '#fbbf24', bg: 'rgba(251,191,36,0.08)' },
-            { href: '/meetings',     icon: CalendarDays, label: ko ? '정기모임'      : 'Meetings',       sub: nextDateStr || (ko ? '미설정' : 'Not set'),                      color: 'var(--green-l)', bg: 'rgba(34,197,94,0.08)' },
+            { href: '/meetings',     icon: CalendarDays, label: ko ? '정기모임'      : 'Meetings',       sub: nextDateStr || (ko ? '미설정' : 'Not set'),                      color: 'var(--gold-l)', bg: 'rgba(201,168,76,0.08)' },
             { href: '/announcement', icon: Bell,         label: ko ? '공지사항'      : 'Notices',        sub: ko ? '확인하기' : 'View all',                                    color: '#a78bfa', bg: 'rgba(167,139,250,0.08)' },
             { href: '/tournament',   icon: Trophy,       label: ko ? '토너먼트'      : 'Tournament',     sub: ko ? '결과 보기' : 'View results',                               color: '#f97316', bg: 'rgba(249,115,22,0.08)' },
             { href: '/scorecard',    icon: TrendingUp,   label: ko ? '내 스코어카드' : 'My Scorecard',   sub: ko ? '개인 기록' : 'Personal records',                           color: '#2dd4bf', bg: 'rgba(45,212,191,0.08)' },
@@ -334,7 +334,7 @@ export default function DashboardPage() {
       <div>
         <div className="flex items-center justify-between mb-3">
           <p className="section-title">{ko ? '최근 공지사항' : 'ANNOUNCEMENTS'}</p>
-          <Link href="/announcement" className="text-xs font-medium" style={{ color: 'var(--green-l)' }}>{ko ? '전체보기' : 'View all'}</Link>
+          <Link href="/announcement" className="text-xs font-medium" style={{ color: 'var(--gold-l)' }}>{ko ? '전체보기' : 'View all'}</Link>
         </div>
         <div className="space-y-2">
           {announcements.length === 0 ? (
