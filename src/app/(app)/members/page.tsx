@@ -220,7 +220,8 @@ export default function MembersPage() {
       <div className="flex gap-1.5 mb-5 overflow-x-auto no-scrollbar">
         {tabs.map(t => (
           <button key={t.id} onClick={() => setTab(t.id as any)}
-            className={`flex-shrink-0 px-3 py-2 rounded-xl text-sm font-medium transition ${tab === t.id ? 'bg-green-700 text-white' : 'bg-gray-900 text-gray-400 hover:text-white'}`}>
+            className={`flex-shrink-0 px-3 py-2 rounded-xl text-sm font-medium transition ${tab === t.id ? 'text-white' : 'bg-gray-900 text-gray-400 hover:text-white'}`}
+            style={tab === t.id ? { background: 'linear-gradient(135deg,#c9a84c,#a07830)' } : undefined}>
             {t.label}{t.count !== undefined ? ` (${t.count})` : ''}
           </button>
         ))}
@@ -235,7 +236,7 @@ export default function MembersPage() {
           {members.map(m => (
             <div key={m.id} className="glass-card rounded-2xl px-4 py-3 flex items-center gap-3">
               <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg flex-shrink-0 overflow-hidden"
-                style={{ background: 'rgba(22,163,74,0.15)', border: '1px solid rgba(34,197,94,0.2)' }}>
+                style={{ background: 'rgba(201,168,76,0.10)', border: '1px solid rgba(201,168,76,0.20)' }}>
                 {m.users?.avatar_url ? <img src={m.users.avatar_url} className="w-10 h-10 rounded-full object-cover" alt="" /> : '👤'}
               </div>
               <div className="flex-1 min-w-0">
@@ -249,7 +250,7 @@ export default function MembersPage() {
                   <RoleBadge role={m.role} ko={ko} />
                   {m.fee_type === 'annual'  && <span className="text-[11px] px-2 py-0.5 rounded-full bg-yellow-900/50 text-yellow-300">{ko ? '년회비' : 'Annual'}</span>}
                   {m.fee_type === 'monthly' && <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-900/50  text-blue-300">{ko ? '월회비' : 'Monthly'}</span>}
-                  {m.club_handicap != null && <span className="text-[11px] text-green-400">HC {m.club_handicap}</span>}
+                  {m.club_handicap != null && <span className="text-[11px]" style={{ color: 'var(--gold-l)' }}>HC {m.club_handicap}</span>}
                   {/* 내 회비 납부 현황 */}
                   {m.user_id === user?.id && myFeeStatus && (
                     myFeeStatus.paid
@@ -263,11 +264,15 @@ export default function MembersPage() {
               {canManage && (
                 <div className="flex items-center gap-1.5 flex-shrink-0">
                   <button onClick={() => setQuickHcMember(m)} title={ko ? '핸디 수정' : 'Edit HC'}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-green-400 hover:bg-green-900/20 transition">
+                    className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 transition"
+                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--gold-l)'; (e.currentTarget as HTMLButtonElement).style.background = 'rgba(201,168,76,0.12)' }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = ''; (e.currentTarget as HTMLButtonElement).style.background = '' }}>
                     <GaugeCircle size={15} />
                   </button>
                   <button onClick={() => setEditMember(m)} title={ko ? '정보 수정' : 'Edit'}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-green-400 hover:bg-green-900/20 transition">
+                    className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 transition"
+                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--gold-l)'; (e.currentTarget as HTMLButtonElement).style.background = 'rgba(201,168,76,0.12)' }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = ''; (e.currentTarget as HTMLButtonElement).style.background = '' }}>
                     <Edit2 size={15} />
                   </button>
                   {/* 탈퇴 처리: 본인 제외 */}
@@ -308,7 +313,8 @@ export default function MembersPage() {
                 {canManage && (
                   <div className="flex gap-2 flex-shrink-0">
                     <button onClick={() => approve(m)}
-                      className="flex items-center gap-1 bg-green-700 hover:bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg transition">
+                      className="flex items-center gap-1 text-white text-xs px-3 py-1.5 rounded-lg transition"
+                      style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)' }}>
                       <UserCheck size={12} />{ko ? '승인' : 'Approve'}
                     </button>
                     <button onClick={() => reject(m)}
@@ -461,7 +467,7 @@ function QuickHcModal({ member, ko, onClose, onSave }: any) {
       <div className="bg-gray-900 rounded-t-3xl px-5 pt-4 pb-8 w-full" onClick={e => e.stopPropagation()}>
         <div className="flex justify-center mb-4"><div className="w-10 h-1 bg-gray-700 rounded-full" /></div>
         <div className="flex items-center gap-2 mb-4">
-          <GaugeCircle size={18} className="text-green-400" />
+          <GaugeCircle size={18} style={{ color: 'var(--gold-l)' }} />
           <h3 className="text-base font-bold text-white flex-1">{ko ? '핸디캡 설정' : 'Set Handicap'}</h3>
           <span className="text-sm text-gray-400">{member.users?.full_name}</span>
         </div>
@@ -479,7 +485,8 @@ function QuickHcModal({ member, ko, onClose, onSave }: any) {
             <div className="flex gap-1.5 mt-2 flex-wrap">
               {[0, 5, 9, 12, 15, 18, 21, 24, 27, 36].map(n => (
                 <button key={n} onClick={() => setClubHc(String(n))}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${clubHc === String(n) ? 'bg-green-700 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${clubHc === String(n) ? 'text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
+                  style={clubHc === String(n) ? { background: 'linear-gradient(135deg,#c9a84c,#a07830)' } : undefined}>
                   {n}
                 </button>
               ))}
@@ -499,7 +506,7 @@ function QuickHcModal({ member, ko, onClose, onSave }: any) {
           <div className="flex gap-3 pt-1">
             <button onClick={onClose} className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 font-medium">{ko ? '취소' : 'Cancel'}</button>
             <button onClick={() => onSave(member.id, clubHc !== '' ? parseFloat(clubHc) : null, personalHc !== '' ? parseFloat(personalHc) : null)}
-              className="flex-1 py-3 rounded-xl bg-green-700 text-white font-bold">{ko ? '저장' : 'Save'}</button>
+              className="flex-1 py-3 rounded-xl text-white font-bold" style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)' }}>{ko ? '저장' : 'Save'}</button>
           </div>
         </div>
       </div>
@@ -534,7 +541,7 @@ function EditMemberModal({ member, ko, myRole, members, onClose, onSave, onDeleg
       <div className="bg-gray-900 rounded-t-3xl p-6 w-full max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex justify-center mb-4"><div className="w-10 h-1 bg-gray-700 rounded-full" /></div>
         <div className="flex items-center gap-2 mb-5">
-          <Shield size={16} className="text-green-400" />
+          <Shield size={16} style={{ color: 'var(--gold-l)' }} />
           <h3 className="text-base font-bold text-white flex-1">{member.users?.full_name} {ko ? '수정' : '— Edit'}</h3>
         </div>
 
@@ -596,7 +603,7 @@ function EditMemberModal({ member, ko, myRole, members, onClose, onSave, onDeleg
           <div className="flex gap-3">
             <button onClick={onClose} className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 font-medium">{ko ? '취소' : 'Cancel'}</button>
             <button onClick={() => onSave(member.id, clubHc !== '' ? parseFloat(clubHc) : null, personalHc !== '' ? parseFloat(personalHc) : null, role, feeType || null)}
-              className="flex-1 py-3 rounded-xl bg-green-700 text-white font-bold">{ko ? '저장' : 'Save'}</button>
+              className="flex-1 py-3 rounded-xl text-white font-bold" style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)' }}>{ko ? '저장' : 'Save'}</button>
           </div>
 
           {/* ── 역할 위임 (회장/총무 → 다른 회원) ── */}

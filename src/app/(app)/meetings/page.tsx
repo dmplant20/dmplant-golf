@@ -145,12 +145,13 @@ export default function MeetingsPage() {
   const [loading,     setLoading]     = useState(true)
   const [noticeSent,  setNoticeSent]  = useState(false)
 
-  const [showPatternModal,  setShowPatternModal]  = useState(false)
-  const [showOverrideModal, setShowOverrideModal] = useState(false)
-  const [showGroupModal,    setShowGroupModal]    = useState(false)
-  const [showAnalysis,      setShowAnalysis]      = useState(false)
-  const [saving,            setSaving]            = useState(false)
-  const [autoGroupLoading,  setAutoGroupLoading]  = useState(false)
+  const [showPatternModal,   setShowPatternModal]   = useState(false)
+  const [showOverrideModal,  setShowOverrideModal]  = useState(false)
+  const [showGroupModal,     setShowGroupModal]     = useState(false)
+  const [showAnalysis,       setShowAnalysis]       = useState(false)
+  const [showAttendingModal, setShowAttendingModal] = useState(false)
+  const [saving,             setSaving]             = useState(false)
+  const [autoGroupLoading,   setAutoGroupLoading]   = useState(false)
 
   // ── month navigation (과거 기록 열람) ──────────────────────────────────────
   const [navYM, setNavYM] = useState<{ year: number; month: number } | null>(null)
@@ -891,10 +892,14 @@ export default function MeetingsPage() {
             <div className="glass-card rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>{ko ? '참석 여부' : 'RSVP'}</p>
-                {/* Clickable count — already shows list below */}
-                <span className="text-xs" style={{ color: 'var(--text-3)' }}>
+                {/* Clickable count → opens attending members modal */}
+                <button
+                  onClick={() => setShowAttendingModal(true)}
+                  className="text-xs flex items-center gap-1 px-2.5 py-1 rounded-lg transition active:scale-95"
+                  style={{ background: 'rgba(201,168,76,0.08)', color: 'var(--gold-l)', border: '1px solid rgba(201,168,76,0.2)' }}>
+                  <Users size={11} />
                   {attending.length}{ko ? '명 참석' : ' attending'} · {absent.length}{ko ? '명 불참' : ' absent'}
-                </span>
+                </button>
               </div>
 
               {/* My response */}
@@ -1512,6 +1517,95 @@ export default function MeetingsPage() {
               )
             })}
           </div>
+        )}
+      </BottomSheet>
+
+      {/* ── Attending Members Modal ── */}
+      <BottomSheet
+        open={showAttendingModal}
+        onClose={() => setShowAttendingModal(false)}
+        title={ko ? `참석 현황 (${attending.length}명)` : `Attendance (${attending.length})`}
+        footer={
+          <button onClick={() => setShowAttendingModal(false)}
+            className="w-full py-3 rounded-xl bg-gray-800 text-gray-300 text-sm font-medium">
+            {ko ? '닫기' : 'Close'}
+          </button>
+        }
+      >
+        {/* 참석 */}
+        {attending.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold mb-2 flex items-center gap-1.5" style={{ color: '#4ade80' }}>
+              <Check size={12} />{ko ? `참석 ${attending.length}명` : `Attending · ${attending.length}`}
+            </p>
+            <div className="space-y-1.5">
+              {attending.map((a: any) => {
+                const nm   = lang === 'ko' ? a.users?.full_name : (a.users?.full_name_en || a.users?.full_name)
+                const abbr = a.users?.name_abbr
+                const hc   = clubMembers.find(cm => cm.user_id === a.user_id)?.club_handicap
+                const grpNum = groups.find((g: any) => g.meeting_group_members?.some((gm: any) => gm.user_id === a.user_id))?.group_number
+                return (
+                  <div key={a.user_id} className="flex items-center justify-between rounded-xl px-3 py-2.5"
+                    style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.15)' }}>
+                    <div>
+                      <span className="text-sm text-white font-medium">{nm}</span>
+                      {abbr && <span className="text-xs text-gray-500 ml-1.5">({abbr})</span>}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {hc != null && <span className="text-[11px] text-gray-400">HC {hc}</span>}
+                      {grpNum != null && (
+                        <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-md"
+                          style={{ background: 'rgba(201,168,76,0.15)', color: 'var(--gold-l)', border: '1px solid rgba(201,168,76,0.3)' }}>
+                          {grpNum}조
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* 불참 */}
+        {absent.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold mb-2 flex items-center gap-1.5" style={{ color: '#f87171' }}>
+              <Ban size={12} />{ko ? `불참 ${absent.length}명` : `Absent · ${absent.length}`}
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {absent.map((a: any) => {
+                const nm = lang === 'ko' ? a.users?.full_name : (a.users?.full_name_en || a.users?.full_name)
+                return (
+                  <span key={a.user_id} className="text-xs px-2.5 py-1 rounded-full"
+                    style={{ background: 'rgba(239,68,68,0.10)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)' }}>
+                    {nm}
+                  </span>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* 미응답 */}
+        {notRespon.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold mb-2 flex items-center gap-1.5" style={{ color: 'var(--text-3)' }}>
+              <HelpCircle size={12} />{ko ? `미응답 ${notRespon.length}명` : `No response · ${notRespon.length}`}
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {notRespon.map((m: any) => (
+                <span key={m.user_id} className="text-xs px-2.5 py-1 rounded-full"
+                  style={{ background: 'var(--surface-2)', color: 'var(--text-3)' }}>
+                  {memberName(m)}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {attending.length === 0 && absent.length === 0 && (
+          <p className="text-center text-gray-500 text-sm py-6">{ko ? '아직 응답이 없습니다.' : 'No responses yet.'}</p>
         )}
       </BottomSheet>
 
