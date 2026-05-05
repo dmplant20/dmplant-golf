@@ -1034,50 +1034,63 @@ export default function ScorecardPage() {
               const diff      = r.total_score ? r.total_score - r.course_par : null
               const diffColor = diff === null ? '#4a6a4a' : diff <= 0 ? '#86efac' : diff <= 5 ? '#fde68a' : '#fca5a5'
               const bgColor   = diff === null ? 'rgba(107,114,128,0.08)' : diff <= 0 ? 'rgba(22,163,74,0.1)' : diff <= 5 ? 'rgba(234,179,8,0.1)' : 'rgba(239,68,68,0.1)'
-              const justSaved = selectedRound?.id === r.id   // 방금 저장한 라운드
+              const justSaved = selectedRound?.id === r.id
               return (
-                <button key={r.id} onClick={() => openRound(r)}
-                  className="w-full text-left rounded-2xl px-4 py-3.5 flex items-center gap-3 transition-all active:scale-[0.98]"
+                <div key={r.id}
+                  className="w-full rounded-2xl flex items-center overflow-hidden transition-all"
                   style={{
                     background: justSaved ? 'rgba(22,163,74,0.12)' : 'rgba(255,255,255,0.03)',
-                    border: justSaved ? '1px solid rgba(34,197,94,0.45)' : '1px solid rgba(34,197,94,0.1)',
-                    boxShadow: justSaved ? '0 0 0 1px rgba(34,197,94,0.15)' : 'none',
+                    border: justSaved ? '1px solid rgba(34,197,94,0.45)' : '1px solid rgba(255,255,255,0.07)',
                   }}>
-                  {/* 스코어 뱃지 */}
-                  <div className="w-12 h-12 rounded-xl flex flex-col items-center justify-center flex-shrink-0"
-                    style={{ background: bgColor }}>
-                    {r.total_score ? (
-                      <>
-                        <span className="text-base font-black" style={{ color: diffColor }}>{r.total_score}</span>
-                        <span className="text-[9px] font-bold" style={{ color: diffColor, opacity: 0.8 }}>
-                          {diff! >= 0 ? '+' : ''}{diff}
-                        </span>
-                      </>
-                    ) : (
-                      <span className="text-[10px] font-semibold" style={{ color: '#4a6a4a' }}>
-                        {ko ? '진행' : 'WIP'}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-sm font-bold text-white truncate">{r.course_name}</p>
-                      {justSaved && (
-                        <span className="flex-shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded-full"
-                          style={{ background: 'rgba(34,197,94,0.2)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.3)' }}>
-                          ✓ {ko ? '저장됨' : 'Saved'}
+
+                  {/* ── 메인 클릭 영역 (라운드 열기) ── */}
+                  <button onClick={() => openRound(r)}
+                    className="flex-1 flex items-center gap-3 px-4 py-3.5 text-left min-w-0 active:bg-white/5 transition-colors">
+                    {/* 스코어 뱃지 */}
+                    <div className="w-12 h-12 rounded-xl flex flex-col items-center justify-center flex-shrink-0"
+                      style={{ background: bgColor }}>
+                      {r.total_score ? (
+                        <>
+                          <span className="text-base font-black leading-none" style={{ color: diffColor }}>{r.total_score}</span>
+                          <span className="text-[9px] font-bold mt-0.5" style={{ color: diffColor, opacity: 0.8 }}>
+                            {diff! >= 0 ? '+' : ''}{diff}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-[10px] font-semibold" style={{ color: '#4a6a4a' }}>
+                          {ko ? '진행' : 'WIP'}
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                      <span className="text-xs flex items-center gap-0.5" style={{ color: '#5a7a5a' }}>
-                        <Calendar size={10} />{r.played_at}
-                      </span>
-                      <span className="text-xs" style={{ color: '#3a5a3a' }}>Par {r.course_par} · {r.total_holes}H</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-bold text-white truncate">{r.course_name}</p>
+                        {justSaved && (
+                          <span className="flex-shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded-full"
+                            style={{ background: 'rgba(34,197,94,0.2)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.3)' }}>
+                            ✓ {ko ? '저장됨' : 'Saved'}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-xs flex items-center gap-0.5" style={{ color: '#5a7a5a' }}>
+                          <Calendar size={10} />{r.played_at}
+                        </span>
+                        <span className="text-xs" style={{ color: '#4a5a4a' }}>Par {r.course_par} · {r.total_holes}H</span>
+                      </div>
                     </div>
-                  </div>
-                  <ChevronRight size={15} style={{ color: justSaved ? '#22c55e' : '#3a5a3a' }} className="flex-shrink-0" />
-                </button>
+                    <ChevronRight size={15} style={{ color: justSaved ? '#22c55e' : '#3a5a3a', flexShrink: 0 }} />
+                  </button>
+
+                  {/* ── 삭제 버튼 ── */}
+                  <button
+                    onClick={() => deleteRound(r.id)}
+                    className="flex-shrink-0 flex items-center justify-center h-full px-3.5 transition-colors active:bg-red-900/30"
+                    style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}
+                    title={ko ? '삭제' : 'Delete'}>
+                    <Trash2 size={16} style={{ color: '#6b7280' }} />
+                  </button>
+                </div>
               )
             })}
           </div>
