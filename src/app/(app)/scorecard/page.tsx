@@ -352,11 +352,12 @@ export default function ScorecardPage() {
     const total = filled.length === selectedRound.total_holes
       ? filled.reduce((s, [, hd]) => s + (hd.score ?? 0), 0) : null
     await supabase.from('personal_rounds').update({ total_score: total }).eq('id', selectedRound.id)
-    const { data } = await supabase.from('personal_rounds').select('*').eq('id', selectedRound.id).single()
-    if (data) setSelectedRound(data)
+    const { data: saved } = await supabase.from('personal_rounds').select('*').eq('id', selectedRound.id).single()
     setSaving(false)
     await loadRounds()
-    // 핸디오버 벌금
+
+    // 핸디오버 벌금 계산 (백그라운드)
+    let fineMsg: string | null = null
     try {
       if (total !== null && currentClubId && user) {
         const [{ data: clubData }, { data: membership }] = await Promise.all([
@@ -378,14 +379,22 @@ export default function ScorecardPage() {
               description: ko ? `핸디오버 벌금 (+${over}타)` : `Handicap-over fine (+${over} strokes)`,
               transaction_date: selectedRound.played_at, recorded_by: user.id, member_id: user.id,
             })
-            setFineToast(ko ? `벌금 ${sym}${fine.toLocaleString()} 자동 부과 (+${over}타)` : `Fine ${sym}${fine.toLocaleString()} (+${over} strokes)`)
-          } else {
-            setFineToast(ko ? '핸디오버 없음 ✓' : 'No fine ✓')
+            fineMsg = ko ? `벌금 ${sym}${fine.toLocaleString()} 자동 부과 (+${over}타)` : `Fine ${sym}${fine.toLocaleString()} (+${over} strokes)`
           }
-          setTimeout(() => setFineToast(null), 3000)
         }
       }
     } catch { /* ignore */ }
+
+    // 저장 완료 → 리스트로 이동 (저장된 라운드 하이라이트)
+    setView('list')
+    setSelectedRound(saved ?? null)   // 리스트에서 강조 표시용
+    setLocalHoles({})
+
+    // 벌금 토스트는 리스트 화면에서 표시
+    if (fineMsg) {
+      setFineToast(fineMsg)
+      setTimeout(() => setFineToast(null), 4000)
+    }
   }
 
   // ── 코스명(서브코스) 수정 ────────────────────────────────────────────────
@@ -1022,13 +1031,18 @@ export default function ScorecardPage() {
         ) : (
           <div className="space-y-2">
             {rounds.map(r => {
-              const diff = r.total_score ? r.total_score - r.course_par : null
+              const diff      = r.total_score ? r.total_score - r.course_par : null
               const diffColor = diff === null ? '#4a6a4a' : diff <= 0 ? '#86efac' : diff <= 5 ? '#fde68a' : '#fca5a5'
               const bgColor   = diff === null ? 'rgba(107,114,128,0.08)' : diff <= 0 ? 'rgba(22,163,74,0.1)' : diff <= 5 ? 'rgba(234,179,8,0.1)' : 'rgba(239,68,68,0.1)'
+              const justSaved = selectedRound?.id === r.id   // 방금 저장한 라운드
               return (
                 <button key={r.id} onClick={() => openRound(r)}
                   className="w-full text-left rounded-2xl px-4 py-3.5 flex items-center gap-3 transition-all active:scale-[0.98]"
-                  style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(34,197,94,0.1)' }}>
+                  style={{
+                    background: justSaved ? 'rgba(22,163,74,0.12)' : 'rgba(255,255,255,0.03)',
+                    border: justSaved ? '1px solid rgba(34,197,94,0.45)' : '1px solid rgba(34,197,94,0.1)',
+                    boxShadow: justSaved ? '0 0 0 1px rgba(34,197,94,0.15)' : 'none',
+                  }}>
                   {/* 스코어 뱃지 */}
                   <div className="w-12 h-12 rounded-xl flex flex-col items-center justify-center flex-shrink-0"
                     style={{ background: bgColor }}>
@@ -1046,7 +1060,15 @@ export default function ScorecardPage() {
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-white truncate">{r.course_name}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-bold text-white truncate">{r.course_name}</p>
+                      {justSaved && (
+                        <span className="flex-shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded-full"
+                          style={{ background: 'rgba(34,197,94,0.2)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.3)' }}>
+                          ✓ {ko ? '저장됨' : 'Saved'}
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                       <span className="text-xs flex items-center gap-0.5" style={{ color: '#5a7a5a' }}>
                         <Calendar size={10} />{r.played_at}
@@ -1054,7 +1076,7 @@ export default function ScorecardPage() {
                       <span className="text-xs" style={{ color: '#3a5a3a' }}>Par {r.course_par} · {r.total_holes}H</span>
                     </div>
                   </div>
-                  <ChevronRight size={15} style={{ color: '#3a5a3a' }} className="flex-shrink-0" />
+                  <ChevronRight size={15} style={{ color: justSaved ? '#22c55e' : '#3a5a3a' }} className="flex-shrink-0" />
                 </button>
               )
             })}
