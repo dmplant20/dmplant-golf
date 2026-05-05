@@ -1448,7 +1448,7 @@ function HoleEditModal({ hole, totalHoles, data, ko, onClose, onNavigate, onChan
   onChange: (score: number|null, putts: number|null, par: number, yardage: number|null) => void
 }) {
   const [score,   setScore]   = useState<number|null>(data.score)
-  const [putts,   setPutts]   = useState<number|null>(data.putts)
+  const [putts,   setPutts]   = useState<number|null>(data.putts ?? 2)   // 기본 2퍼트
   const [par,     setPar]     = useState(data.par)
   const [yardage, setYardage] = useState<string>(data.yardage != null ? String(data.yardage) : '')
 
@@ -1456,8 +1456,13 @@ function HoleEditModal({ hole, totalHoles, data, ko, onClose, onNavigate, onChan
   const info = scoreInfo(score, par)
 
   // 퍼트 +/- (0~6)
-  const incPutts = () => setPutts(p => p === null ? 2 : Math.min(6, p + 1))
-  const decPutts = () => setPutts(p => p === null ? 2 : Math.max(0, p - 1))
+  const incPutts = () => setPutts(p => Math.min(6, (p ?? 2) + 1))
+  const decPutts = () => setPutts(p => Math.max(0, (p ?? 2) - 1))
+
+  // 즉시 저장 헬퍼 (퀵버튼 탭 시 바로 확인)
+  function confirm(s: number, p: number = par, pt: number | null = putts) {
+    onChange(s, pt ?? 2, p, yardage ? parseInt(yardage) : null)
+  }
 
   return (
     <div className="fixed inset-0 z-[200] flex items-end" onClick={onClose}>
@@ -1494,16 +1499,18 @@ function HoleEditModal({ hole, totalHoles, data, ko, onClose, onNavigate, onChan
         </div>
 
         <div className="px-5 space-y-4">
-          {/* 파 선택 */}
+          {/* 파 선택 — 탭하면 파+스코어(파) 즉시 저장 */}
           <div>
-            <p className="text-[11px] font-bold mb-2" style={{ color: '#5a7a5a' }}>{ko ? '파 선택' : 'Par'}</p>
+            <p className="text-[11px] font-bold mb-2" style={{ color: '#5a7a5a' }}>
+              {ko ? '파 선택 (탭하면 파로 바로 저장)' : 'Par (tap to save as Par)'}
+            </p>
             <div className="flex gap-2">
               {[3, 4, 5].map(p => (
-                <button key={p} onClick={() => setPar(p)}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-black transition"
-                  style={par === p
-                    ? { background: 'linear-gradient(135deg,#16a34a,#14532d)', color: '#fff', boxShadow: '0 2px 8px rgba(22,163,74,0.3)' }
-                    : { background: 'rgba(255,255,255,0.05)', color: '#5a7a5a', border: '1px solid rgba(34,197,94,0.1)' }}>
+                <button key={p} onClick={() => confirm(p, p)}
+                  className="flex-1 py-3 rounded-xl text-base font-black transition active:scale-95"
+                  style={par === p && score === p
+                    ? { background: 'linear-gradient(135deg,#16a34a,#14532d)', color: '#fff', boxShadow: '0 2px 12px rgba(22,163,74,0.4)', fontSize: '1.1rem' }
+                    : { background: 'rgba(255,255,255,0.06)', color: '#d1d5db', border: '1px solid rgba(255,255,255,0.1)', fontSize: '1.1rem' }}>
                   {p}
                 </button>
               ))}
@@ -1512,9 +1519,15 @@ function HoleEditModal({ hole, totalHoles, data, ko, onClose, onNavigate, onChan
 
           {/* 타수 입력 */}
           <div>
-            <p className="text-[11px] font-bold mb-2" style={{ color: '#5a7a5a' }}>{ko ? '타수' : 'Score'}</p>
+            <p className="text-[11px] font-bold mb-2" style={{ color: '#5a7a5a' }}>
+              {ko ? '타수 (탭하면 바로 저장)' : 'Score (tap to save instantly)'}
+            </p>
             <div className="flex items-center gap-3 mb-3">
-              <button onClick={() => setScore(s => s !== null ? Math.max(1, s - 1) : par)}
+              {/* − : 한 칸 빼고 즉시 저장 */}
+              <button onClick={() => {
+                  const next = score !== null ? Math.max(1, score - 1) : Math.max(1, par - 1)
+                  confirm(next)
+                }}
                 className="w-14 h-14 rounded-2xl text-2xl font-black transition active:scale-90"
                 style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)' }}>−</button>
 
@@ -1526,23 +1539,27 @@ function HoleEditModal({ hole, totalHoles, data, ko, onClose, onNavigate, onChan
                 </span>
               </div>
 
-              <button onClick={() => setScore(s => s !== null ? s + 1 : par)}
+              {/* + : 한 칸 더하고 즉시 저장 */}
+              <button onClick={() => {
+                  const next = score !== null ? score + 1 : par + 1
+                  confirm(next)
+                }}
                 className="w-14 h-14 rounded-2xl text-2xl font-black transition active:scale-90"
                 style={{ background: 'rgba(34,197,94,0.12)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.2)' }}>+</button>
             </div>
 
-            {/* 빠른 선택 버튼 */}
+            {/* 빠른 선택 — 탭하면 즉시 저장 */}
             <div className="flex gap-1.5 justify-center">
               {[par-2, par-1, par, par+1, par+2, par+3].filter(v => v >= 1).map(v => {
                 const delta = v - par
                 const si = scoreInfo(v, par)
                 const isSelected = score === v
                 return (
-                  <button key={v} onClick={() => setScore(v)}
-                    className="flex-1 py-2 rounded-xl text-xs font-black transition active:scale-95"
+                  <button key={v} onClick={() => confirm(v)}
+                    className="flex-1 py-2.5 rounded-xl text-xs font-black transition active:scale-95"
                     style={isSelected
-                      ? { background: si.bg, color: si.text, border: `1px solid ${si.border}` }
-                      : { background: 'rgba(255,255,255,0.05)', color: '#5a7a5a', border: '1px solid rgba(34,197,94,0.08)' }}>
+                      ? { background: si.bg, color: si.text, border: `1px solid ${si.border}`, boxShadow: `0 2px 8px ${si.border}55` }
+                      : { background: 'rgba(255,255,255,0.06)', color: '#9ca3af', border: '1px solid rgba(255,255,255,0.1)' }}>
                     {delta === 0 ? 'P' : delta > 0 ? `+${delta}` : delta}
                   </button>
                 )
@@ -1569,13 +1586,13 @@ function HoleEditModal({ hole, totalHoles, data, ko, onClose, onNavigate, onChan
               </div>
               {/* 빠른 퍼트 선택 */}
               <div className="flex gap-1 mt-1.5">
-                {([null, 1, 2, 3] as const).map(p => (
-                  <button key={String(p)} onClick={() => setPutts(p)}
+                {([1, 2, 3, 4] as const).map(p => (
+                  <button key={p} onClick={() => setPutts(p)}
                     className="flex-1 py-1.5 rounded-lg text-[10px] font-bold transition"
                     style={putts === p
                       ? { background: 'rgba(59,130,246,0.25)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.35)' }
-                      : { background: 'rgba(255,255,255,0.04)', color: '#4a6a4a' }}>
-                    {p === null ? '—' : p}
+                      : { background: 'rgba(255,255,255,0.04)', color: '#6b7280' }}>
+                    {p}
                   </button>
                 ))}
               </div>
@@ -1605,7 +1622,7 @@ function HoleEditModal({ hole, totalHoles, data, ko, onClose, onNavigate, onChan
             </button>
 
             {/* 확인 */}
-            <button onClick={() => onChange(score, putts, par, yardage ? parseInt(yardage) : null)}
+            <button onClick={() => onChange(score, putts ?? 2, par, yardage ? parseInt(yardage) : null)}
               className="flex-1 py-3.5 rounded-xl font-black text-sm transition active:scale-95"
               style={{ background: 'linear-gradient(135deg,#16a34a,#14532d)', color: '#fff', boxShadow: '0 4px 16px rgba(22,163,74,0.3)' }}>
               {ko ? '✓ 확인' : '✓ OK'}
