@@ -76,7 +76,9 @@
       "Bash(find \"C:\\\\Users\\\\dmpla\\\\Documents\\\\projects\\\\dmplant-golf\" -name \"*.sql\" -type f -exec grep -l \"soft.delete\\\\|withdrawn\\\\|audit\\\\|deleted_at\" {} \\\\;)",
       "Bash(find \"C:\\\\Users\\\\dmpla\\\\Documents\\\\projects\\\\dmplant-golf\" -name \"*.sql\" -type f -exec grep -H \"rls\\\\|policy\\\\|withdrawn\" {} \\\\;)",
       "Bash(findstr /i \"deploy\\\\|build\\\\|start\")",
-      "Bash(node scripts/bump-sw.js)"
+      "Bash(node scripts/bump-sw.js)",
+      "Bash(node -e \"console.log\\(require\\('crypto'\\).randomBytes\\(32\\).toString\\('hex'\\)\\)\")",
+      "Bash(git commit *)"
     ]
   }
 }
