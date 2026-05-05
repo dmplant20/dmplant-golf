@@ -365,11 +365,20 @@ export default function MeetingsPage() {
   // ── RSVP ──────────────────────────────────────────────────────────────
   async function rsvp(status: 'attending' | 'absent') {
     if (!meeting || !user) return
+    // optimistic update — show active state immediately
+    setAttendances(prev => {
+      const without = prev.filter(a => a.user_id !== user.id)
+      return [...without, { user_id: user.id, status, users: user }]
+    })
     const supabase = createClient()
-    await supabase.from('meeting_attendances').upsert(
+    const { error } = await supabase.from('meeting_attendances').upsert(
       { club_id: currentClubId, year: meeting.year, month: meeting.month, user_id: user.id, status, responded_at: new Date().toISOString() },
       { onConflict: 'club_id,year,month,user_id' }
     )
+    if (error) {
+      console.error('[RSVP] upsert error:', error.message)
+      alert(ko ? `저장 실패: ${error.message}` : `Save failed: ${error.message}`)
+    }
     await loadRsvp(meeting.year, meeting.month)
   }
 

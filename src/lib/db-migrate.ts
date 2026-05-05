@@ -46,13 +46,38 @@ CREATE TABLE IF NOT EXISTS meeting_attendances (
   user_id     uuid REFERENCES users(id) ON DELETE CASCADE NOT NULL,
   year        int  NOT NULL,
   month       int  NOT NULL,
-  status      text NOT NULL CHECK (status IN ('attending', 'not_attending')),
+  status      text NOT NULL CHECK (status IN ('attending', 'absent')),
   reason      text,
   responded_at timestamptz DEFAULT now() NOT NULL,
   UNIQUE(club_id, user_id, year, month)
 );
 CREATE INDEX IF NOT EXISTS idx_meeting_attendances_club
   ON meeting_attendances(club_id, year, month);
+
+-- 기존 테이블의 status 제약 수정 (not_attending → absent)
+DO $$ BEGIN
+  ALTER TABLE meeting_attendances DROP CONSTRAINT IF EXISTS meeting_attendances_status_check;
+  ALTER TABLE meeting_attendances ADD CONSTRAINT meeting_attendances_status_check
+    CHECK (status IN ('attending', 'absent'));
+EXCEPTION WHEN others THEN NULL;
+END $$;
+
+-- meeting_attendances RLS
+ALTER TABLE meeting_attendances ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "ma_select" ON meeting_attendances;
+CREATE POLICY "ma_select" ON meeting_attendances FOR SELECT
+  USING (EXISTS (
+    SELECT 1 FROM club_memberships
+    WHERE club_id = meeting_attendances.club_id
+      AND user_id = auth.uid() AND status = 'approved'
+  ));
+DROP POLICY IF EXISTS "ma_upsert" ON meeting_attendances;
+CREATE POLICY "ma_upsert" ON meeting_attendances FOR INSERT
+  WITH CHECK (user_id = auth.uid());
+DROP POLICY IF EXISTS "ma_update" ON meeting_attendances;
+CREATE POLICY "ma_update" ON meeting_attendances FOR UPDATE
+  USING (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid());
 
 -- club_memberships 역할 제약 조건 확장 (vice_president, auditor, advisor 포함)
 DO $$ BEGIN
