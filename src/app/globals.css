@@ -1,31 +1,40 @@
 @import "tailwindcss";
 
+/* ══════════════════════════════════════════════════════════
+   INTER STELLAR GOLF — Design System v2
+   Premium minimal dark. One accent. No glow.
+══════════════════════════════════════════════════════════ */
+
 :root {
-  --bg:        #070f07;
-  --bg-2:      #0c1a0c;
-  --bg-3:      #111f11;
-  --surface:   #142014;
-  --surface-2: #1b2e1b;
-  --border:    rgba(74, 222, 128, 0.15);
-  --border-2:  rgba(74, 222, 128, 0.28);
-  --green:     #16a34a;
-  --green-l:   #4ade80;
-  --green-m:   #22c55e;
-  --green-d:   #14532d;
-  --gold:      #f59e0b;
-  --gold-l:    #fcd34d;
-  --text:      #f0fdf4;
-  --text-2:    #bbf7d0;
-  --text-3:    #4ade80;
-  --text-muted:#6b9a6b;
-  --radius:    16px;
+  /* ── Backgrounds ─────────────────────────────────────── */
+  --bg:       #0a0a0a;   /* true dark charcoal               */
+  --bg-2:     #111111;   /* slightly lighter                  */
+  --bg-3:     #181818;   /* card background                  */
+  --surface:  #1c1c1c;   /* elevated surface                 */
+  --surface-2:#242424;   /* secondary surface / input field  */
+
+  /* ── Borders ─────────────────────────────────────────── */
+  --border:   rgba(255,255,255,0.07);   /* default subtle   */
+  --border-2: rgba(255,255,255,0.12);   /* emphasized       */
+
+  /* ── Accent (single source of truth) ────────────────── */
+  --green:    #18a34a;   /* primary action green             */
+  --green-l:  #22c55e;   /* lighter variant (text on dark)   */
+  --green-d:  #15803d;   /* deeper (hover states)            */
+
+  /* ── Text ────────────────────────────────────────────── */
+  --text:     #f0f0f0;   /* primary                          */
+  --text-2:   #a0a0a0;   /* secondary                        */
+  --text-3:   #606060;   /* muted / placeholder              */
+
+  /* ── Gold (used sparingly for premium accents) ───────── */
+  --gold:     #c9a227;
+
+  /* ── Misc ────────────────────────────────────────────── */
+  --radius:   14px;
 }
 
-/* ── 시스템 폰트 스택 (Google Fonts 의존성 없음) ────────────────────────
-   iOS:     Apple SD Gothic Neo → Helvetica Neue
-   Android: Noto Sans KR (기본 내장) → Roboto
-   Windows: Malgun Gothic → Segoe UI
-──────────────────────────────────────────────────────────────────────── */
+/* ── System font stack ──────────────────────────────────── */
 @theme inline {
   --color-background: var(--bg);
   --color-foreground: var(--text);
@@ -45,193 +54,175 @@ body {
   overscroll-behavior: none;
 }
 
-/* ── 안전 영역 ─────────────────────────────────────────────────────────── */
+/* ── Safe areas ─────────────────────────────────────────── */
 .safe-top    { padding-top:    env(safe-area-inset-top); }
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
 .bottom-nav  { padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem); }
 
-/* ── 스크롤바 숨김 ──────────────────────────────────────────────────────── */
+/* ── Scrollbar hide ─────────────────────────────────────── */
 .scroll-hide::-webkit-scrollbar { display: none; }
-.scroll-hide { -ms-overflow-style: none; scrollbar-width: none; }
+.scroll-hide  { -ms-overflow-style: none; scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-/* ── 카드 ────────────────────────────────────────────────────────────────
-   glass-card  : 기본 유리 효과
-   premium-card: 그라디언트 테두리 + 글로우
-   stat-card   : 통계 숫자 카드
-   pro-card    : 프로 스탯 표시 (흰 텍스트, 고대비)
-──────────────────────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════
+   CARDS
+══════════════════════════════════════════════════════════ */
+
+/* Standard card — flat dark, thin border */
 .glass-card {
-  background: linear-gradient(135deg, rgba(27,46,27,0.85) 0%, rgba(12,26,12,0.95) 100%);
+  background: var(--bg-3);
   border: 1px solid var(--border);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  box-shadow: 0 2px 16px rgba(0,0,0,0.35);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
 }
 
+/* Slightly elevated card */
 .premium-card {
-  background: linear-gradient(145deg, rgba(74,222,128,0.10) 0%, rgba(7,15,7,0.97) 60%);
+  background: var(--surface);
   border: 1px solid var(--border-2);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  box-shadow:
-    0 4px 32px rgba(0,0,0,0.5),
-    inset 0 1px 0 rgba(74,222,128,0.14),
-    0 0 0 1px rgba(74,222,128,0.06);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.5);
 }
 
+/* Stat / metric card */
 .stat-card {
-  background: linear-gradient(145deg, rgba(74,222,128,0.14) 0%, rgba(11,20,11,0.98) 100%);
-  border: 1px solid var(--border-2);
-  position: relative;
-  overflow: hidden;
-}
-.stat-card::before {
-  content: '';
-  position: absolute;
-  top: -20px; right: -20px;
-  width: 90px; height: 90px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(74,222,128,0.18) 0%, transparent 70%);
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.35);
 }
 
+/* Pro / hero card (used for scorecard header etc.) */
 .pro-card {
-  background: linear-gradient(145deg, rgba(27,46,27,0.98) 0%, rgba(7,15,7,1) 100%);
+  background: var(--surface);
   border: 1px solid var(--border-2);
-  position: relative;
-  overflow: hidden;
-  box-shadow:
-    0 8px 32px rgba(0,0,0,0.6),
-    inset 0 1px 0 rgba(74,222,128,0.18);
-}
-.pro-card::after {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(74,222,128,0.5), transparent);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.5);
 }
 
-/* ── 입력 필드 ────────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════
+   INPUTS
+══════════════════════════════════════════════════════════ */
 .input-field {
   width: 100%;
-  background: rgba(11,20,11,0.85);
-  border: 1px solid rgba(74,222,128,0.25);
-  border-radius: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
   padding: 12px 16px;
   color: var(--text);
   font-size: 0.875rem;
   outline: none;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: border-color 0.2s;
 }
 .input-field:focus {
-  border-color: rgba(74,222,128,0.6);
-  box-shadow: 0 0 0 3px rgba(74,222,128,0.12), 0 0 12px rgba(74,222,128,0.08);
+  border-color: var(--green-l);
 }
-.input-field::placeholder { color: var(--text-muted); }
+.input-field::placeholder { color: var(--text-3); }
 
-/* ── 버튼 ─────────────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════
+   BUTTONS
+══════════════════════════════════════════════════════════ */
 .btn-primary {
-  background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
-  color: white;
+  background: var(--green);
+  color: #fff;
   font-weight: 600;
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 13px 20px;
   border: none;
   cursor: pointer;
-  transition: opacity 0.15s, transform 0.1s;
-  box-shadow: 0 4px 20px rgba(22,163,74,0.4), inset 0 1px 0 rgba(255,255,255,0.1);
+  transition: background 0.15s, transform 0.1s;
   font-size: 0.875rem;
 }
-.btn-primary:hover  { opacity: 0.9; }
+.btn-primary:hover  { background: var(--green-d); }
 .btn-primary:active { transform: scale(0.98); }
-.btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .btn-ghost {
-  background: rgba(74,222,128,0.1);
-  border: 1px solid rgba(74,222,128,0.28);
-  color: #86efac;
-  border-radius: 12px;
+  background: transparent;
+  border: 1px solid var(--border-2);
+  color: var(--text-2);
+  border-radius: var(--radius);
   padding: 10px 16px;
   font-size: 0.8125rem;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: border-color 0.15s, color 0.15s;
 }
-.btn-ghost:hover { background: rgba(74,222,128,0.18); }
+.btn-ghost:hover { border-color: var(--green-l); color: var(--green-l); }
 
-/* ── 내비 필 ──────────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════
+   TYPOGRAPHY UTILITIES
+══════════════════════════════════════════════════════════ */
+
+/* Section label */
+.section-title {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+/* ── Nav pill (tab/chip) ─────────────────────────────────── */
 .nav-pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 6px 14px;
   border-radius: 99px;
-  background: rgba(74,222,128,0.12);
-  border: 1px solid rgba(74,222,128,0.25);
-  color: var(--green-l);
+  background: transparent;
+  border: 1px solid var(--border-2);
+  color: var(--text-2);
   font-size: 0.8125rem;
   font-weight: 600;
-  transition: background 0.15s, border-color 0.15s;
+  transition: all 0.15s;
 }
-.nav-pill:hover {
-  background: rgba(74,222,128,0.2);
-  border-color: rgba(74,222,128,0.4);
-}
+.nav-pill:hover { border-color: var(--green-l); color: var(--green-l); }
 .nav-pill.active {
-  background: rgba(74,222,128,0.22);
-  border-color: rgba(74,222,128,0.5);
-  box-shadow: 0 0 12px rgba(74,222,128,0.15);
+  background: rgba(34,197,94,0.12);
+  border-color: rgba(34,197,94,0.3);
+  color: var(--green-l);
 }
 
-/* ── 스코어 뱃지 ──────────────────────────────────────────────────────── */
-.score-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  font-size: 0.9375rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-}
-
-/* ── 뱃지 ─────────────────────────────────────────────────────────────── */
+/* ── Badge ──────────────────────────────────────────────── */
 .badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 3px 10px;
   border-radius: 99px;
-  font-size: 0.7rem;
+  font-size: 0.6875rem;
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
 }
 
-/* ── 섹션 헤더 ────────────────────────────────────────────────────────── */
-.section-title {
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--green-l);
-}
-
-/* ── 구분선 ───────────────────────────────────────────────────────────── */
+/* ── Divider ────────────────────────────────────────────── */
 .divider {
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(74,222,128,0.25), transparent);
+  background: var(--border);
 }
 
-/* ── 스코어 컬러 ──────────────────────────────────────────────────────── */
-.score-eagle  { background: #4338ca; color: #fef3c7; }
-.score-birdie { background: #1d4ed8; color: #fff; }
-.score-par    { background: #15803d; color: #fff; }
-.score-bogey  { background: #a16207; color: #fff; }
-.score-double { background: #c2410c; color: #fff; }
-.score-triple { background: #b91c1c; color: #fff; }
+/* ══════════════════════════════════════════════════════════
+   SCORE BADGES — semantic colors only
+══════════════════════════════════════════════════════════ */
+.score-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
 
-/* ── 랜드스케이프 테이블 ──────────────────────────────────────────────── */
+.score-eagle  { background: #312e81; color: #e0e7ff; }
+.score-birdie { background: #1e3a8a; color: #dbeafe; }
+.score-par    { background: #14532d; color: #dcfce7; }
+.score-bogey  { background: #78350f; color: #fef3c7; }
+.score-double { background: #7c2d12; color: #ffedd5; }
+.score-triple { background: #7f1d1d; color: #fee2e2; }
+
+/* ══════════════════════════════════════════════════════════
+   LANDSCAPE SCORECARD TABLE
+══════════════════════════════════════════════════════════ */
 .landscape-table {
   width: 100%;
   border-collapse: separate;
@@ -241,54 +232,33 @@ body {
 .landscape-table th,
 .landscape-table td {
   padding: 8px 10px;
-  border-bottom: 1px solid rgba(74,222,128,0.1);
+  border-bottom: 1px solid var(--border);
   text-align: center;
   white-space: nowrap;
 }
 .landscape-table th {
-  font-size: 0.7rem;
+  font-size: 0.6875rem;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-3);
-  background: rgba(27,46,27,0.6);
+  background: var(--surface);
 }
 .landscape-table tr:last-child td { border-bottom: none; }
 
-/* ── 애니메이션 ───────────────────────────────────────────────────────── */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-@keyframes slideUp {
-  from { transform: translateY(100%); }
-  to   { transform: translateY(0); }
-}
-@keyframes pulse-green {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(74,222,128,0.4); }
-  50%       { box-shadow: 0 0 0 8px rgba(74,222,128,0); }
-}
-@keyframes landscapeLabelIn {
-  0%   { opacity: 0; transform: translateX(-8px) rotate(-90deg); }
-  100% { opacity: 1; transform: translateX(0)    rotate(-90deg); }
-}
-
-.animate-fade-in    { animation: fadeIn  0.25s ease both; }
-.animate-slide-up   { animation: slideUp 0.3s cubic-bezier(0.32,0.72,0,1) both; }
-.pulse-green        { animation: pulse-green 2s infinite; }
-.landscape-label-in { animation: landscapeLabelIn 0.3s ease both; }
-
-/* ── 골프 코스 자동완성 드롭다운 ─────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════
+   COURSE DROPDOWN
+══════════════════════════════════════════════════════════ */
 .course-dropdown {
   position: absolute;
   top: calc(100% + 6px);
   left: 0; right: 0;
-  background: #0c1a0c;
+  background: var(--surface);
   border: 1px solid var(--border-2);
-  border-radius: 14px;
+  border-radius: var(--radius);
   overflow: hidden;
   z-index: 300;
-  box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.7);
   max-height: 240px;
   overflow-y: auto;
 }
@@ -296,20 +266,43 @@ body {
   padding: 10px 14px;
   cursor: pointer;
   transition: background 0.12s;
-  border-bottom: 1px solid rgba(74,222,128,0.08);
+  border-bottom: 1px solid var(--border);
 }
 .course-item:last-child { border-bottom: none; }
-.course-item:hover, .course-item:focus { background: rgba(74,222,128,0.12); }
+.course-item:hover,
+.course-item:focus { background: var(--surface-2); }
 
-/* ── 메뉴 아이템 ──────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════
+   MENU ITEM
+══════════════════════════════════════════════════════════ */
 .menu-item {
   display: flex;
   align-items: center;
   gap: 14px;
   padding: 14px 16px;
-  border-radius: 16px;
+  border-radius: var(--radius);
   transition: background 0.15s;
   cursor: pointer;
 }
-.menu-item:hover  { background: rgba(74,222,128,0.08); }
-.menu-item:active { background: rgba(74,222,128,0.14); }
+.menu-item:hover  { background: var(--surface-2); }
+.menu-item:active { background: var(--surface);   }
+
+/* ══════════════════════════════════════════════════════════
+   ANIMATIONS
+══════════════════════════════════════════════════════════ */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+@keyframes landscapeLabelIn {
+  0%   { opacity: 0; transform: translateX(-8px) rotate(-90deg); }
+  100% { opacity: 1; transform: translateX(0)    rotate(-90deg); }
+}
+
+.animate-fade-in    { animation: fadeIn  0.2s ease both; }
+.animate-slide-up   { animation: slideUp 0.28s cubic-bezier(0.32,0.72,0,1) both; }
+.landscape-label-in { animation: landscapeLabelIn 0.3s ease both; }

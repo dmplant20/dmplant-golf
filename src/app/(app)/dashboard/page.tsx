@@ -52,7 +52,7 @@ const ROLE_COLOR: Record<string, string> = {
   auditor:        'text-red-300 bg-red-900/40 border-red-700/40',
   advisor:        'text-teal-300 bg-teal-900/40 border-teal-700/40',
   officer:        'text-purple-300 bg-purple-900/40 border-purple-700/40',
-  member:         'text-gray-300 bg-gray-800/60 border-gray-700/40',
+  member:         'text-gray-300 bg-white/5 border-white/10',
 }
 
 // ── component ──────────────────────────────────────────────────────────────
@@ -147,34 +147,26 @@ export default function DashboardPage() {
     <div className="px-4 pt-5 pb-6 space-y-5 animate-fade-in">
 
       {/* ── 히어로 카드 ─────────────────────────────────────────── */}
-      <div className="rounded-2xl p-5 relative overflow-hidden"
-        style={{
-          background: 'linear-gradient(135deg, rgba(22,163,74,0.18) 0%, rgba(6,13,6,0.97) 70%)',
-          border: '1px solid rgba(34,197,94,0.22)',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-        }}>
-        <div className="absolute top-0 right-0 w-40 h-40 rounded-full pointer-events-none"
-          style={{ background: 'radial-gradient(circle, rgba(22,163,74,0.12) 0%, transparent 70%)', transform: 'translate(30%,-30%)' }} />
+      <div className="pro-card rounded-2xl p-5 relative overflow-hidden">
         <div className="flex items-start justify-between">
           <div>
-            <p className="text-sm mb-1" style={{ color: '#5a7a5a' }}>{ko ? '안녕하세요 👋' : 'Welcome back 👋'}</p>
-            <h2 className="text-2xl font-extrabold text-white leading-tight">{user?.full_name ?? 'Golfer'}</h2>
-            {user?.full_name_en && <p className="text-sm mt-0.5" style={{ color: '#a3b8a3' }}>{user.full_name_en}</p>}
+            <p className="text-sm mb-1" style={{ color: 'var(--text-3)' }}>{ko ? '안녕하세요 👋' : 'Welcome back 👋'}</p>
+            <h2 className="text-2xl font-extrabold leading-tight" style={{ color: 'var(--text)' }}>{user?.full_name ?? 'Golfer'}</h2>
+            {user?.full_name_en && <p className="text-sm mt-0.5" style={{ color: 'var(--text-2)' }}>{user.full_name_en}</p>}
             <div className="flex items-center gap-2 mt-3 flex-wrap">
               <span className={`badge border text-[11px] ${rc}`}>{roleName}</span>
-              <span className="badge text-[11px]" style={{ background: 'rgba(22,163,74,0.15)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.2)' }}>
+              <span className="badge text-[11px]" style={{ background: 'rgba(34,197,94,0.10)', color: 'var(--green-l)', border: '1px solid rgba(34,197,94,0.2)' }}>
                 ⛳ Inter Stellar GOLF
               </span>
             </div>
           </div>
-          <div className="relative flex-shrink-0">
-            <div className="absolute inset-0 rounded-full blur-xl" style={{ background: 'rgba(22,163,74,0.2)' }} />
-            <div className="relative w-14 h-14 rounded-full flex items-center justify-center text-3xl"
-              style={{ background: 'linear-gradient(135deg, rgba(22,163,74,0.3), rgba(14,53,29,0.8))', border: '1px solid rgba(34,197,94,0.3)' }}>
-              {user?.avatar_url
-                ? <img src={user.avatar_url} className="w-14 h-14 rounded-full object-cover" alt="" />
-                : '⛳'}
-            </div>
+          <div
+            className="w-14 h-14 rounded-full flex items-center justify-center text-3xl flex-shrink-0"
+            style={{ background: 'var(--surface-2)', border: '1px solid var(--border-2)' }}
+          >
+            {user?.avatar_url
+              ? <img src={user.avatar_url} className="w-14 h-14 rounded-full object-cover" alt="" />
+              : '⛳'}
           </div>
         </div>
       </div>
@@ -184,33 +176,31 @@ export default function DashboardPage() {
         {[
           { icon: Users,       label: ko ? '총 회원'  : 'Members', value: `${stats.members}${ko ? '명' : ''}`,                              color: '#60a5fa', bg: 'rgba(59,130,246,0.1)' },
           { icon: Wallet,      label: ko ? '클럽 잔액': 'Balance',  value: stats.balance === 0 ? `${sym}0` : `${sym}${(stats.balance/1000).toFixed(0)}K`, color: '#fbbf24', bg: 'rgba(251,191,36,0.1)' },
-          { icon: CalendarDays,label: ko ? '다음 모임': 'Next',     value: nextDateStr || '—',                                               color: '#34d399', bg: 'rgba(52,211,153,0.1)' },
+          { icon: CalendarDays,label: ko ? '다음 모임': 'Next',     value: nextDateStr || '—',                                               color: 'var(--green-l)', bg: 'rgba(34,197,94,0.1)' },
         ].map(({ icon: Icon, label, value, color, bg }) => (
           <div key={label} className="stat-card rounded-2xl p-3.5">
             <div className="w-8 h-8 rounded-xl flex items-center justify-center mb-2.5 flex-shrink-0" style={{ background: bg }}>
               <Icon size={16} style={{ color }} />
             </div>
-            <p className="text-white font-bold text-sm leading-tight truncate">{value}</p>
-            <p className="text-[10px] mt-0.5 truncate" style={{ color: '#5a7a5a' }}>{label}</p>
+            <p className="font-bold text-sm leading-tight truncate" style={{ color: 'var(--text)' }}>{value}</p>
+            <p className="text-[10px] mt-0.5 truncate" style={{ color: 'var(--text-3)' }}>{label}</p>
           </div>
         ))}
       </div>
 
       {/* ── 정기모임 현황 카드 ────────────────────────────────────── */}
       {nextMtg && !loading && (
-        <div className="rounded-2xl overflow-hidden"
-          style={{ border: '1px solid rgba(34,197,94,0.22)', background: 'rgba(4,10,4,0.97)', boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>
+        <div className="glass-card rounded-2xl overflow-hidden">
 
           {/* 헤더 */}
-          <div className="flex items-center justify-between px-4 py-3"
-            style={{ borderBottom: '1px solid rgba(34,197,94,0.1)', background: 'rgba(22,163,74,0.07)' }}>
+          <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid var(--border)' }}>
             <div className="flex items-center gap-2">
-              <CalendarDays size={14} className="text-green-400" />
-              <span className="text-sm font-bold text-white">
+              <CalendarDays size={14} style={{ color: 'var(--green-l)' }} />
+              <span className="text-sm font-bold" style={{ color: 'var(--text)' }}>
                 {ko ? `${nextMtg.month}월 정기모임 현황` : `${nextMtg.date.toLocaleDateString('en-US',{month:'long'})} Meeting`}
               </span>
             </div>
-            <Link href="/meetings" className="text-xs text-green-400 flex items-center gap-0.5 font-medium">
+            <Link href="/meetings" className="text-xs flex items-center gap-0.5 font-medium" style={{ color: 'var(--green-l)' }}>
               {ko ? '전체보기' : 'Full view'} <ChevronRight size={12} />
             </Link>
           </div>
@@ -218,13 +208,13 @@ export default function DashboardPage() {
           {/* 날짜 + venue */}
           <div className="px-4 pt-3 pb-2 flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-              style={{ background: 'rgba(22,163,74,0.15)' }}>
-              <Clock size={16} className="text-green-400" />
+              style={{ background: 'var(--surface-2)' }}>
+              <Clock size={16} style={{ color: 'var(--green-l)' }} />
             </div>
             <div>
-              <p className="text-white font-semibold text-sm">{nextDateStr}</p>
+              <p className="font-semibold text-sm" style={{ color: 'var(--text)' }}>{nextDateStr}</p>
               {nextMtg.venue && (
-                <p className="text-xs flex items-center gap-1 mt-0.5" style={{ color: '#5a7a5a' }}>
+                <p className="text-xs flex items-center gap-1 mt-0.5" style={{ color: 'var(--text-3)' }}>
                   <MapPin size={10} />{nextMtg.venue}
                 </p>
               )}
@@ -232,35 +222,35 @@ export default function DashboardPage() {
           </div>
 
           {/* 참석 카운터 */}
-          <div className="grid grid-cols-3 mx-4 mb-3 rounded-xl overflow-hidden border border-gray-800/60">
-            <div className="text-center py-2.5 border-r border-gray-800/60">
-              <p className="text-2xl font-black text-green-400 leading-none">{attendCounts.attending}</p>
-              <p className="text-[10px] text-gray-500 mt-1">✅ {ko ? '참석' : 'Attending'}</p>
+          <div className="grid grid-cols-3 mx-4 mb-3 rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+            <div className="text-center py-2.5" style={{ borderRight: '1px solid var(--border)' }}>
+              <p className="text-2xl font-black leading-none" style={{ color: '#4ade80' }}>{attendCounts.attending}</p>
+              <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>✅ {ko ? '참석' : 'Attending'}</p>
             </div>
-            <div className="text-center py-2.5 border-r border-gray-800/60">
-              <p className="text-2xl font-black text-red-400 leading-none">{attendCounts.absent}</p>
-              <p className="text-[10px] text-gray-500 mt-1">❌ {ko ? '불참' : 'Absent'}</p>
+            <div className="text-center py-2.5" style={{ borderRight: '1px solid var(--border)' }}>
+              <p className="text-2xl font-black leading-none" style={{ color: '#f87171' }}>{attendCounts.absent}</p>
+              <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>❌ {ko ? '불참' : 'Absent'}</p>
             </div>
             <div className="text-center py-2.5">
-              <p className="text-2xl font-black text-gray-400 leading-none">{attendCounts.noResponse}</p>
-              <p className="text-[10px] text-gray-500 mt-1">❓ {ko ? '미응답' : 'No reply'}</p>
+              <p className="text-2xl font-black leading-none" style={{ color: 'var(--text-2)' }}>{attendCounts.noResponse}</p>
+              <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>❓ {ko ? '미응답' : 'No reply'}</p>
             </div>
           </div>
 
           {/* 내 RSVP 상태 */}
           <div className="px-4 pb-3">
             <div className={`rounded-xl px-3 py-2.5 flex items-center justify-between ${
-              myRsvp === 'attending' ? 'bg-green-900/25 border border-green-800/50'
-              : myRsvp === 'absent'  ? 'bg-red-900/25 border border-red-800/50'
-              :                        'bg-amber-900/20 border border-amber-700/40'
+              myRsvp === 'attending' ? 'bg-green-900/20 border border-green-800/40'
+              : myRsvp === 'absent'  ? 'bg-red-900/20 border border-red-800/40'
+              :                        'bg-amber-900/15 border border-amber-700/30'
             }`}>
               <div className="flex items-center gap-2">
                 {myRsvp === 'attending'
-                  ? <CheckCircle size={15} className="text-green-400" />
+                  ? <CheckCircle size={15} style={{ color: 'var(--green-l)' }} />
                   : myRsvp === 'absent'
                     ? <XCircle size={15} className="text-red-400" />
                     : <HelpCircle size={15} className="text-amber-400" />}
-                <span className="text-sm text-white font-medium">
+                <span className="text-sm font-medium" style={{ color: 'var(--text)' }}>
                   {myRsvp === 'attending'
                     ? (ko ? '내 응답: 참석' : 'My RSVP: Attending')
                     : myRsvp === 'absent'
@@ -270,8 +260,12 @@ export default function DashboardPage() {
               </div>
               <Link href="/meetings"
                 className={`text-xs font-semibold px-3 py-1.5 rounded-lg ${
-                  myRsvp ? 'text-green-400 bg-green-900/30' : 'text-white bg-green-700 hover:bg-green-600'
-                }`}>
+                  myRsvp ? '' : 'text-white'
+                }`}
+                style={myRsvp
+                  ? { color: 'var(--green-l)', background: 'rgba(34,197,94,0.1)' }
+                  : { background: 'var(--green)' }
+                }>
                 {myRsvp ? (ko ? '변경' : 'Change') : (ko ? '응답하기' : 'Respond')} →
               </Link>
             </div>
@@ -281,19 +275,19 @@ export default function DashboardPage() {
           {meetingGroups.length > 0 && (
             <div className="px-4 pb-4">
               <div className="flex items-center gap-1.5 mb-2">
-                <LayoutGrid size={12} className="text-green-400" />
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                  {ko ? '조 편성 결과' : 'Group assignments'}
-                </p>
+                <LayoutGrid size={12} style={{ color: 'var(--green-l)' }} />
+                <p className="section-title">{ko ? '조 편성 결과' : 'GROUP ASSIGNMENTS'}</p>
               </div>
               <div className="space-y-1.5">
                 {meetingGroups.map((g: any) => (
                   <div key={g.group_number}
-                    className="flex items-start gap-2.5 bg-gray-800/40 rounded-xl px-3 py-2">
-                    <span className="text-[10px] font-black text-green-400 bg-green-900/30 border border-green-800/30 rounded-lg px-1.5 py-0.5 flex-shrink-0 mt-0.5">
+                    className="flex items-start gap-2.5 rounded-xl px-3 py-2"
+                    style={{ background: 'var(--surface-2)' }}>
+                    <span className="text-[10px] font-black rounded-lg px-1.5 py-0.5 flex-shrink-0 mt-0.5"
+                      style={{ color: 'var(--green-l)', background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.2)' }}>
                       {g.group_number}조
                     </span>
-                    <p className="text-xs text-gray-300 leading-relaxed">
+                    <p className="text-xs leading-relaxed" style={{ color: 'var(--text-2)' }}>
                       {(g.meeting_group_members ?? [])
                         .map((m: any) => lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name))
                         .join(' · ')}
@@ -301,7 +295,7 @@ export default function DashboardPage() {
                   </div>
                 ))}
               </div>
-              <Link href="/meetings" className="block mt-2 text-center text-[11px] text-green-500 hover:text-green-400">
+              <Link href="/meetings" className="block mt-2 text-center text-[11px]" style={{ color: 'var(--green-l)' }}>
                 {ko ? '정기모임 상세보기 →' : 'See full meeting details →'}
               </Link>
             </div>
@@ -316,7 +310,7 @@ export default function DashboardPage() {
           {[
             { href: '/members',      icon: Users,        label: ko ? '회원 관리'     : 'Members',       sub: `${stats.members}${ko ? '명' : ' members'}`,                      color: '#60a5fa', bg: 'rgba(59,130,246,0.08)' },
             { href: '/finance',      icon: Wallet,       label: ko ? '재무 현황'     : 'Finance',        sub: `${sym}${stats.balance.toLocaleString()}`,                        color: '#fbbf24', bg: 'rgba(251,191,36,0.08)' },
-            { href: '/meetings',     icon: CalendarDays, label: ko ? '정기모임'      : 'Meetings',       sub: nextDateStr || (ko ? '미설정' : 'Not set'),                      color: '#34d399', bg: 'rgba(52,211,153,0.08)' },
+            { href: '/meetings',     icon: CalendarDays, label: ko ? '정기모임'      : 'Meetings',       sub: nextDateStr || (ko ? '미설정' : 'Not set'),                      color: 'var(--green-l)', bg: 'rgba(34,197,94,0.08)' },
             { href: '/announcement', icon: Bell,         label: ko ? '공지사항'      : 'Notices',        sub: ko ? '확인하기' : 'View all',                                    color: '#a78bfa', bg: 'rgba(167,139,250,0.08)' },
             { href: '/tournament',   icon: Trophy,       label: ko ? '토너먼트'      : 'Tournament',     sub: ko ? '결과 보기' : 'View results',                               color: '#f97316', bg: 'rgba(249,115,22,0.08)' },
             { href: '/scorecard',    icon: TrendingUp,   label: ko ? '내 스코어카드' : 'My Scorecard',   sub: ko ? '개인 기록' : 'Personal records',                           color: '#2dd4bf', bg: 'rgba(45,212,191,0.08)' },
@@ -328,8 +322,8 @@ export default function DashboardPage() {
                 <Icon size={18} style={{ color }} />
               </div>
               <div className="min-w-0">
-                <p className="text-white font-semibold text-sm leading-tight">{label}</p>
-                <p className="text-xs truncate mt-0.5" style={{ color: '#5a7a5a' }}>{sub}</p>
+                <p className="font-semibold text-sm leading-tight" style={{ color: 'var(--text)' }}>{label}</p>
+                <p className="text-xs truncate mt-0.5" style={{ color: 'var(--text-3)' }}>{sub}</p>
               </div>
             </Link>
           ))}
@@ -340,26 +334,26 @@ export default function DashboardPage() {
       <div>
         <div className="flex items-center justify-between mb-3">
           <p className="section-title">{ko ? '최근 공지사항' : 'ANNOUNCEMENTS'}</p>
-          <Link href="/announcement" className="text-xs font-medium" style={{ color: '#22c55e' }}>{ko ? '전체보기' : 'View all'}</Link>
+          <Link href="/announcement" className="text-xs font-medium" style={{ color: 'var(--green-l)' }}>{ko ? '전체보기' : 'View all'}</Link>
         </div>
         <div className="space-y-2">
           {announcements.length === 0 ? (
             <div className="glass-card rounded-xl py-6 text-center">
-              <p className="text-sm" style={{ color: '#3a5a3a' }}>{ko ? '공지사항이 없습니다' : 'No announcements'}</p>
+              <p className="text-sm" style={{ color: 'var(--text-3)' }}>{ko ? '공지사항이 없습니다' : 'No announcements'}</p>
             </div>
           ) : announcements.map(a => (
             <Link key={a.id} href="/announcement"
               className="glass-card rounded-xl px-4 py-3 flex items-center gap-3 transition-all active:scale-[0.98] block">
               <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ background: 'rgba(167,139,250,0.15)' }}>
+                style={{ background: 'rgba(167,139,250,0.12)' }}>
                 <Bell size={13} style={{ color: '#a78bfa' }} />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-white font-medium truncate">
+                <p className="text-sm font-medium truncate" style={{ color: 'var(--text)' }}>
                   {lang === 'ko' ? a.title : (a.title_en || a.title)}
                 </p>
               </div>
-              <p className="text-[10px] flex-shrink-0" style={{ color: '#3a5a3a' }}>
+              <p className="text-[10px] flex-shrink-0" style={{ color: 'var(--text-3)' }}>
                 {new Date(a.created_at).toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', { month: 'short', day: 'numeric' })}
               </p>
             </Link>

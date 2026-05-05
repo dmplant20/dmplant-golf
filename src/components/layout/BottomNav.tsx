@@ -22,11 +22,9 @@ export default function BottomNav() {
       <div
         className="rounded-2xl px-2 py-2 flex items-center justify-around"
         style={{
-          background: 'linear-gradient(180deg, #142014 0%, #0c1a0c 100%)',
-          backdropFilter: 'blur(28px)',
-          WebkitBackdropFilter: 'blur(28px)',
-          border: '1px solid rgba(74,222,128,0.2)',
-          boxShadow: '0 -2px 32px rgba(0,0,0,0.55), 0 0 0 1px rgba(74,222,128,0.06), inset 0 1px 0 rgba(74,222,128,0.08)',
+          background: 'var(--bg-2)',
+          border: '1px solid var(--border)',
+          boxShadow: '0 -1px 24px rgba(0,0,0,0.5)',
         }}
       >
         {NAV.map(({ href, icon: Icon, ko, en }) => {
@@ -36,25 +34,18 @@ export default function BottomNav() {
               key={href}
               onClick={() => router.push(href)}
               className="relative flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-all duration-150"
-              style={active
-                ? {
-                    background: 'rgba(74,222,128,0.14)',
-                    boxShadow: '0 0 12px rgba(74,222,128,0.12)',
-                  }
-                : undefined
-              }
+              style={active ? { background: 'rgba(34,197,94,0.10)' } : undefined}
             >
-              {/* active gradient line above icon */}
+              {/* active indicator line */}
               {active && (
                 <span
                   className="absolute top-0 left-1/2"
                   style={{
-                    width: 28,
+                    width: 20,
                     height: 2,
                     borderRadius: 1,
-                    background: 'linear-gradient(90deg, transparent, #4ade80, transparent)',
+                    background: 'var(--green-l)',
                     transform: 'translateX(-50%)',
-                    boxShadow: '0 0 8px rgba(74,222,128,0.6)',
                   }}
                 />
               )}
@@ -63,35 +54,17 @@ export default function BottomNav() {
                 size={22}
                 strokeWidth={active ? 2.5 : 1.6}
                 style={{
-                  color: active ? '#4ade80' : '#6b9a6b',
+                  color: active ? 'var(--green-l)' : 'var(--text-3)',
                   transition: 'color 0.15s',
-                  filter: active ? 'drop-shadow(0 0 5px rgba(74,222,128,0.5))' : 'none',
                 }}
               />
 
               <span
                 className="text-[10px] font-semibold transition-colors duration-150"
-                style={{ color: active ? '#4ade80' : '#6b9a6b' }}
+                style={{ color: active ? 'var(--green-l)' : 'var(--text-3)' }}
               >
                 {lang === 'ko' ? ko : en}
               </span>
-
-              {/* active glow dot */}
-              {active && (
-                <span
-                  style={{
-                    position: 'absolute',
-                    bottom: 3,
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    width: 4,
-                    height: 4,
-                    borderRadius: '50%',
-                    background: '#4ade80',
-                    boxShadow: '0 0 6px rgba(74,222,128,0.8)',
-                  }}
-                />
-              )}
             </button>
           )
         })}
