@@ -604,7 +604,7 @@ export default function ScorecardPage() {
                   <td className="text-center py-1.5 font-black text-base"
                     style={{
                       color: (() => { const d = (outScore+inScore)-totalPar; return d < 0 ? '#4ade80' : d === 0 ? '#fcd34d' : '#fca5a5' })(),
-                      borderLeft: '1px solid rgba(74,222,128,0.12)',
+                      borderLeft: '1px solid rgba(201,168,76,0.12)',
                     }}>
                     {filledCount > 0 ? (outScore + inScore) : '—'}
                   </td>
@@ -613,7 +613,7 @@ export default function ScorecardPage() {
                 {Array.from({ length: totalHoles }, (_, i) => i + 1).some(h => localHoles[h]?.putts !== null) && (
                   <tr style={{ background: 'rgba(96,165,250,0.05)' }}>
                     <td className="px-3 py-1.5 font-bold text-[10px] sticky left-0"
-                      style={{ background: 'rgba(7,21,7,0.98)', color: '#60a5fa', borderRight: '1px solid rgba(74,222,128,0.12)' }}>
+                      style={{ background: 'var(--bg-2)', color: '#60a5fa', borderRight: '1px solid rgba(201,168,76,0.12)' }}>
                       {ko ? '퍼트' : 'Putts'}
                     </td>
                     {Array.from({ length: totalHoles }, (_, i) => i + 1).map(h => (
@@ -623,7 +623,7 @@ export default function ScorecardPage() {
                       </td>
                     ))}
                     <td className="text-center py-1.5 font-black text-[11px]"
-                      style={{ color: '#60a5fa', borderLeft: '1px solid rgba(74,222,128,0.12)' }}>
+                      style={{ color: '#60a5fa', borderLeft: '1px solid rgba(201,168,76,0.12)' }}>
                       {Object.values(localHoles).reduce((s, h) => s + (h.putts ?? 0), 0) || '—'}
                     </td>
                   </tr>
@@ -674,7 +674,7 @@ export default function ScorecardPage() {
                 </div>
                 <button onClick={openEditName}
                   className="flex-shrink-0 w-6 h-6 rounded-lg flex items-center justify-center transition mt-0.5"
-                  style={{ background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.2)' }}
+                  style={{ background: 'rgba(201,168,76,0.10)', border: '1px solid rgba(201,168,76,0.2)' }}
                   title={ko ? '코스명 수정' : 'Edit course name'}>
                   <Pencil size={11} style={{ color: 'var(--gold-l)' }} />
                 </button>
