@@ -365,21 +365,46 @@ export default function MeetingsPage() {
   // ── RSVP ──────────────────────────────────────────────────────────────
   async function rsvp(status: 'attending' | 'absent') {
     if (!meeting || !user) return
-    // optimistic update — show active state immediately
+    if (myAtt) return // Already voted — cannot change without canceling first
+
+    // Optimistic update
     setAttendances(prev => {
       const without = prev.filter(a => a.user_id !== user.id)
       return [...without, { user_id: user.id, status, users: user }]
     })
-    const supabase = createClient()
-    const { error } = await supabase.from('meeting_attendances').upsert(
-      { club_id: currentClubId, year: meeting.year, month: meeting.month, user_id: user.id, status, responded_at: new Date().toISOString() },
-      { onConflict: 'club_id,year,month,user_id' }
-    )
-    if (error) {
-      console.error('[RSVP] upsert error:', error.message)
-      alert(ko ? `저장 실패: ${error.message}` : `Save failed: ${error.message}`)
+
+    const res = await fetch('/api/meetings/rsvp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ club_id: currentClubId, year: meeting.year, month: meeting.month, status })
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      // Revert optimistic
+      setAttendances(prev => prev.filter(a => a.user_id !== user.id))
+      alert(ko ? `저장 실패: ${data.error}` : `Save failed: ${data.error}`)
     }
     await loadRsvp(meeting.year, meeting.month)
+  }
+
+  async function cancelRsvp() {
+    if (!meeting || !user || !myAtt) return
+
+    // Optimistic remove
+    setAttendances(prev => prev.filter(a => a.user_id !== user.id))
+
+    const res = await fetch('/api/meetings/rsvp', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ club_id: currentClubId, year: meeting.year, month: meeting.month })
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      await loadRsvp(meeting.year, meeting.month) // Reload on failure
+      alert(ko ? `취소 실패: ${data.error}` : `Cancel failed: ${data.error}`)
+    } else {
+      await loadRsvp(meeting.year, meeting.month)
+    }
   }
 
   // ── auto grouping ──────────────────────────────────────────────────────
@@ -863,31 +888,63 @@ export default function MeetingsPage() {
 
           {/* ── RSVP ── */}
           {isRsvpOpen && displayMeeting.status !== 'cancelled' && (
-            <div className="glass-card rounded-2xl p-4 space-y-4">
+            <div className="glass-card rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-white">{ko ? '참석 여부' : 'RSVP'}</p>
-                <span className="text-xs text-gray-500">{attending.length}{ko ? '명 참석' : ' attending'}</span>
+                <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>{ko ? '참석 여부' : 'RSVP'}</p>
+                {/* Clickable count — already shows list below */}
+                <span className="text-xs" style={{ color: 'var(--text-3)' }}>
+                  {attending.length}{ko ? '명 참석' : ' attending'} · {absent.length}{ko ? '명 불참' : ' absent'}
+                </span>
               </div>
-              <div>
-                <p className="text-xs text-gray-400 mb-2">{ko ? '내 응답' : 'My response'}</p>
-                <div className="flex gap-2">
-                  <button onClick={() => rsvp('attending')}
-                    className={`flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl text-sm font-medium transition ${myAtt?.status === 'attending' ? 'bg-green-700 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
-                    <Check size={15} />{ko ? '참석' : 'Attending'}
-                  </button>
-                  <button onClick={() => rsvp('absent')}
-                    className={`flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl text-sm font-medium transition ${myAtt?.status === 'absent' ? 'bg-red-800 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
-                    <Ban size={15} />{ko ? '불참' : 'Absent'}
+
+              {/* My response */}
+              {myAtt ? (
+                /* Already voted — show locked state + cancel button */
+                <div className="flex items-center gap-3">
+                  <div className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold ${
+                    myAtt.status === 'attending' ? 'bg-green-700/80 text-white' : 'bg-red-800/80 text-white'
+                  }`}>
+                    {myAtt.status === 'attending' ? <Check size={16} /> : <Ban size={16} />}
+                    {myAtt.status === 'attending' ? (ko ? '참석 완료' : 'Attending ✓') : (ko ? '불참 완료' : 'Absent ✓')}
+                  </div>
+                  {/* Cancel button — only for own RSVP */}
+                  <button onClick={cancelRsvp}
+                    className="px-4 py-3 rounded-xl text-sm border transition"
+                    style={{ color: 'var(--text-3)', borderColor: 'var(--border-2)' }}
+                    title={ko ? '응답 취소' : 'Cancel response'}>
+                    <X size={15} />
                   </button>
                 </div>
-              </div>
-              <div className="space-y-3">
+              ) : (
+                /* Not voted yet — show both buttons */
+                <div>
+                  <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>{ko ? '내 응답' : 'My response'}</p>
+                  <div className="flex gap-2">
+                    <button onClick={() => rsvp('attending')}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl text-sm font-semibold transition active:scale-[0.97]"
+                      style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.35)', color: '#4ade80' }}>
+                      <Check size={15} />{ko ? '참석' : 'Attending'}
+                    </button>
+                    <button onClick={() => rsvp('absent')}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl text-sm font-semibold transition active:scale-[0.97]"
+                      style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}>
+                      <Ban size={15} />{ko ? '불참' : 'Absent'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Attendance lists */}
+              <div className="space-y-2.5">
                 {attending.length > 0 && (
                   <div>
-                    <p className="text-xs text-green-400 font-medium mb-1.5 flex items-center gap-1"><Check size={11} />{ko ? `참석 (${attending.length}명)` : `Attending (${attending.length})`}</p>
+                    <p className="text-xs font-semibold mb-1.5 flex items-center gap-1" style={{ color: '#4ade80' }}>
+                      <Check size={11} />{ko ? `참석 (${attending.length}명)` : `Attending (${attending.length})`}
+                    </p>
                     <div className="flex flex-wrap gap-1.5">
                       {attending.map((a: any) => (
-                        <span key={a.user_id} className="bg-green-900/30 text-green-300 text-xs px-2.5 py-1 rounded-full">
+                        <span key={a.user_id} className="text-xs px-2.5 py-1 rounded-full"
+                          style={{ background: 'rgba(34,197,94,0.12)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.2)' }}>
                           {lang === 'ko' ? a.users?.full_name : (a.users?.full_name_en || a.users?.full_name)}
                           {a.users?.name_abbr ? ` (${a.users.name_abbr})` : ''}
                         </span>
@@ -897,10 +954,13 @@ export default function MeetingsPage() {
                 )}
                 {absent.length > 0 && (
                   <div>
-                    <p className="text-xs text-red-400 font-medium mb-1.5 flex items-center gap-1"><Ban size={11} />{ko ? `불참 (${absent.length}명)` : `Absent (${absent.length})`}</p>
+                    <p className="text-xs font-semibold mb-1.5 flex items-center gap-1" style={{ color: '#f87171' }}>
+                      <Ban size={11} />{ko ? `불참 (${absent.length}명)` : `Absent (${absent.length})`}
+                    </p>
                     <div className="flex flex-wrap gap-1.5">
                       {absent.map((a: any) => (
-                        <span key={a.user_id} className="bg-red-900/30 text-red-400 text-xs px-2.5 py-1 rounded-full">
+                        <span key={a.user_id} className="text-xs px-2.5 py-1 rounded-full"
+                          style={{ background: 'rgba(239,68,68,0.10)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)' }}>
                           {lang === 'ko' ? a.users?.full_name : (a.users?.full_name_en || a.users?.full_name)}
                         </span>
                       ))}
@@ -909,10 +969,13 @@ export default function MeetingsPage() {
                 )}
                 {notRespon.length > 0 && (
                   <div>
-                    <p className="text-xs text-gray-500 font-medium mb-1.5 flex items-center gap-1"><HelpCircle size={11} />{ko ? `미응답 (${notRespon.length}명)` : `No response (${notRespon.length})`}</p>
+                    <p className="text-xs font-semibold mb-1.5 flex items-center gap-1" style={{ color: 'var(--text-3)' }}>
+                      <HelpCircle size={11} />{ko ? `미응답 (${notRespon.length}명)` : `No response (${notRespon.length})`}
+                    </p>
                     <div className="flex flex-wrap gap-1.5">
                       {notRespon.map((m: any) => (
-                        <span key={m.user_id} className="bg-gray-800 text-gray-500 text-xs px-2.5 py-1 rounded-full">
+                        <span key={m.user_id} className="text-xs px-2.5 py-1 rounded-full"
+                          style={{ background: 'var(--surface-2)', color: 'var(--text-3)' }}>
                           {memberName(m)}
                         </span>
                       ))}
