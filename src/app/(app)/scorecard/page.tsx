@@ -96,9 +96,9 @@ function computePars(totalPar: number, holes: number): number[] {
 // key: `${courseId}_${subIndex}` (0=첫번째 코스, 1=두번째, 2=세번째)
 const SUB_COURSE_PARS: Record<string, number[]> = {
   // Twin Doves Golf Club (Binh Duong) — 27홀
-  '_tdg_0': [4,5,3,4,4,5,3,4,4],  // Luna  (par 36)
-  '_tdg_1': [4,4,3,5,4,3,4,5,4],  // Stella (par 36) — 추후 수정 가능
-  '_tdg_2': [4,4,5,3,4,4,3,5,4],  // Sole  (par 36) — 추후 수정 가능
+  '_tdg_0': [4,5,4,4,3,4,4,3,5],  // Luna  (par 36)
+  '_tdg_1': [4,4,4,4,3,5,4,4,4],  // Stella (par 36)
+  '_tdg_2': [4,4,3,4,4,4,5,3,5],  // Sole  (par 36)
   // Song Be Golf Resort (Binh Duong) — 27홀
   '_sbg_0': [4,5,3,4,4,3,5,4,4],  // Lotus
   '_sbg_1': [4,4,3,5,4,4,3,5,4],  // Palm
