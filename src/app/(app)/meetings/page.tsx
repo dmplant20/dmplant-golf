@@ -150,6 +150,7 @@ export default function MeetingsPage() {
   const [showGroupModal,     setShowGroupModal]     = useState(false)
   const [showAnalysis,       setShowAnalysis]       = useState(false)
   const [showAttendingModal, setShowAttendingModal] = useState(false)
+  const [rsvpError,          setRsvpError]          = useState<string | null>(null)
   const [saving,             setSaving]             = useState(false)
   const [autoGroupLoading,   setAutoGroupLoading]   = useState(false)
 
@@ -383,7 +384,10 @@ export default function MeetingsPage() {
     if (!res.ok) {
       // Revert optimistic
       setAttendances(prev => prev.filter(a => a.user_id !== user.id))
-      alert(ko ? `저장 실패: ${data.error}` : `Save failed: ${data.error}`)
+      setRsvpError(ko ? '저장에 실패했습니다. 잠시 후 다시 시도해주세요.' : 'Save failed. Please try again.')
+      setTimeout(() => setRsvpError(null), 4000)
+    } else {
+      setRsvpError(null)
     }
     await loadRsvp(meeting.year, meeting.month)
   }
@@ -401,9 +405,11 @@ export default function MeetingsPage() {
     })
     const data = await res.json()
     if (!res.ok) {
-      await loadRsvp(meeting.year, meeting.month) // Reload on failure
-      alert(ko ? `취소 실패: ${data.error}` : `Cancel failed: ${data.error}`)
+      await loadRsvp(meeting.year, meeting.month)
+      setRsvpError(ko ? '취소에 실패했습니다. 잠시 후 다시 시도해주세요.' : 'Cancel failed. Please try again.')
+      setTimeout(() => setRsvpError(null), 4000)
     } else {
+      setRsvpError(null)
       await loadRsvp(meeting.year, meeting.month)
     }
   }
@@ -901,6 +907,14 @@ export default function MeetingsPage() {
                   {attending.length}{ko ? '명 참석' : ' attending'} · {absent.length}{ko ? '명 불참' : ' absent'}
                 </button>
               </div>
+
+              {/* 인라인 에러 (alert 대신) */}
+              {rsvpError && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+                  style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.25)', color: '#f87171' }}>
+                  <span>⚠</span>{rsvpError}
+                </div>
+              )}
 
               {/* My response */}
               {myAtt ? (
