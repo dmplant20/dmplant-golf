@@ -4,7 +4,8 @@ import Anthropic from '@anthropic-ai/sdk'
 const client = new Anthropic()
 
 export async function POST(req: NextRequest) {
-  const { image, members, lang } = await req.json()
+  const { image, mediaType, members, lang } = await req.json()
+  const imgType = (mediaType ?? 'image/jpeg') as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
   const isKo = lang === 'ko'
 
   const memberList = members.map((m: any) => `${m.full_name}(${m.full_name_en || ''}, ${m.name_abbr || ''})`).join(', ')
@@ -27,7 +28,7 @@ Return JSON only.`
     messages: [{
       role: 'user',
       content: [
-        { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: image } },
+        { type: 'image', source: { type: 'base64', media_type: imgType, data: image } },
         { type: 'text', text: prompt }
       ]
     }]

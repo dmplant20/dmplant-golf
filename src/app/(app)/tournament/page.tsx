@@ -164,8 +164,11 @@ export default function ChampionshipPage() {
     setOcrLoading(true)
     const reader = new FileReader()
     reader.onload = async () => {
-      const base64 = (reader.result as string).split(',')[1]
-      const res = await fetch('/api/ocr/scorecard', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: base64, members: members.map((m: any) => ({ ...m.users, user_id: m.user_id })), lang }) })
+      const dataUrl = reader.result as string
+      const mimeMatch = dataUrl.match(/^data:([^;]+);base64,/)
+      const mediaType = (mimeMatch?.[1] ?? 'image/jpeg') as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
+      const base64 = dataUrl.split(',')[1]
+      const res = await fetch('/api/ocr/scorecard', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: base64, mediaType, members: members.map((m: any) => ({ ...m.users, user_id: m.user_id })), lang }) })
       const data = await res.json()
       const supabase = createClient()
       const allGMs = groups.flatMap(g => g.tournament_group_members)

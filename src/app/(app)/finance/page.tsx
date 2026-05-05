@@ -174,8 +174,11 @@ export default function FinancePage() {
     setOcrLoading(true)
     const reader = new FileReader()
     reader.onload = async () => {
-      const base64 = (reader.result as string).split(',')[1]
-      const res = await fetch('/api/ocr/receipt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: base64, currency, lang }) })
+      const dataUrl = reader.result as string
+      const mimeMatch = dataUrl.match(/^data:([^;]+);base64,/)
+      const mediaType = (mimeMatch?.[1] ?? 'image/jpeg') as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
+      const base64 = dataUrl.split(',')[1]
+      const res = await fetch('/api/ocr/receipt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: base64, mediaType, currency, lang }) })
       const data = await res.json()
       if (data.items) {
         const supabase = createClient()
