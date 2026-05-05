@@ -92,6 +92,41 @@ function computePars(totalPar: number, holes: number): number[] {
   return result
 }
 
+// ── 서브코스별 실제 홀 파 데이터 (9홀 단위) ──────────────────────────────────
+// key: `${courseId}_${subIndex}` (0=첫번째 코스, 1=두번째, 2=세번째)
+const SUB_COURSE_PARS: Record<string, number[]> = {
+  // Twin Doves Golf Club (Binh Duong) — 27홀
+  '_tdg_0': [4,5,3,4,4,5,3,4,4],  // Luna  (par 36)
+  '_tdg_1': [4,4,3,5,4,3,4,5,4],  // Stella (par 36) — 추후 수정 가능
+  '_tdg_2': [4,4,5,3,4,4,3,5,4],  // Sole  (par 36) — 추후 수정 가능
+  // Song Be Golf Resort (Binh Duong) — 27홀
+  '_sbg_0': [4,5,3,4,4,3,5,4,4],  // Lotus
+  '_sbg_1': [4,4,3,5,4,4,3,5,4],  // Palm
+  '_sbg_2': [4,4,5,3,4,4,5,3,4],  // Desert
+}
+
+/**
+ * 선택된 서브코스 조합에 맞는 실제 파 배열 반환
+ * subKey: '01'(두 코스 조합), '0'(단일 코스)
+ * 데이터 없으면 null 반환 → computePars() 폴백
+ */
+function getSubCoursePars(courseId: string, subKey: string): number[] | null {
+  const indices = subKey.split('').map(Number)
+  const parArrays: number[][] = []
+  for (const i of indices) {
+    const key = `${courseId}_${i}`
+    if (!SUB_COURSE_PARS[key]) return null
+    parArrays.push(SUB_COURSE_PARS[key])
+  }
+  return parArrays.flat()
+}
+
+// ── 코스명 파서 (베이스명 + 서브코스 분리) ────────────────────────────────────
+function parseCourseName(name: string): { base: string; sub: string | null } {
+  const m = name.match(/^(.+?)\s*\((.+)\)$/)
+  return m ? { base: m[1].trim(), sub: m[2].trim() } : { base: name, sub: null }
+}
+
 // ── 스코어 색상 ───────────────────────────────────────────────────────────
 function scoreInfo(score: number | null, par: number) {
   if (score === null) return { bg: 'rgba(55,65,55,0.5)', text: '#4a6a4a', border: 'transparent', label: '', shape: 'square' }
@@ -281,10 +316,14 @@ export default function ScorecardPage() {
     }).select().single()
     if (error) { setCreateError(error.message); setCreating(false); return }
     if (round) {
-      const computedPars = computePars(newForm.coursePar, newForm.holes)
+      // 서브코스 실제 파 데이터 우선 사용, 없으면 totalPar 기반 계산
+      const specificPars = (selectedCourseObj && subCourse)
+        ? getSubCoursePars(selectedCourseObj.id, subCourse)
+        : null
+      const computedPars = specificPars ?? computePars(newForm.coursePar, newForm.holes)
       await supabase.from('personal_round_holes').insert(
         Array.from({ length: newForm.holes }, (_, i) => ({
-          round_id: round.id, hole_number: i + 1, par: computedPars[i], score: null,
+          round_id: round.id, hole_number: i + 1, par: computedPars[i] ?? 4, score: null,
         }))
       )
       setShowNew(false); resetNewForm(); await loadRounds(); await openRound(round)
@@ -433,10 +472,19 @@ export default function ScorecardPage() {
               <ChevronLeft size={16} style={{ color: '#4ade80' }} />
             </button>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-black truncate" style={{ color: '#f0fdf4' }}>{selectedRound.course_name}</p>
-              <p className="text-[10px]" style={{ color: '#4ade80' }}>
-                {selectedRound.played_at} · Par {selectedRound.course_par} · {totalHoles}H
-              </p>
+              {(() => {
+                const { base, sub } = parseCourseName(selectedRound.course_name)
+                return (
+                  <>
+                    <p className="text-xs font-black truncate leading-tight" style={{ color: '#f0fdf4' }}>
+                      {base}{sub ? ` · ${sub}` : ''}
+                    </p>
+                    <p className="text-[10px]" style={{ color: '#4ade80' }}>
+                      {selectedRound.played_at} · Par {selectedRound.course_par} · {totalHoles}H
+                    </p>
+                  </>
+                )
+              })()}
             </div>
             {/* 총점 */}
             <div className="flex items-center gap-2 flex-shrink-0">
@@ -602,18 +650,28 @@ export default function ScorecardPage() {
           <ChevronLeft size={18} style={{ color: '#4ade80' }} />
         </button>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            <p className="text-sm font-black truncate leading-tight" style={{ color: '#f0fdf4' }}>{selectedRound.course_name}</p>
-            <button onClick={openEditName}
-              className="flex-shrink-0 w-6 h-6 rounded-lg flex items-center justify-center transition"
-              style={{ background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.2)' }}
-              title={ko ? '코스명 수정' : 'Edit course name'}>
-              <Pencil size={11} style={{ color: '#4ade80' }} />
-            </button>
-          </div>
-          <p className="text-[11px] font-semibold" style={{ color: '#4ade80' }}>
-            {selectedRound.played_at} · Par {selectedRound.course_par} · {totalHoles}H
-          </p>
+          {(() => {
+            const { base, sub } = parseCourseName(selectedRound.course_name)
+            return (
+              <div className="flex items-start gap-1.5">
+                <div className="min-w-0">
+                  <p className="text-sm font-black truncate leading-tight" style={{ color: '#f0fdf4' }}>{base}</p>
+                  {sub && (
+                    <p className="text-[11px] font-bold leading-tight" style={{ color: '#4ade80' }}>{sub}</p>
+                  )}
+                  <p className="text-[10px] font-semibold mt-0.5" style={{ color: '#5a7a5a' }}>
+                    {selectedRound.played_at} · Par {selectedRound.course_par} · {totalHoles}H
+                  </p>
+                </div>
+                <button onClick={openEditName}
+                  className="flex-shrink-0 w-6 h-6 rounded-lg flex items-center justify-center transition mt-0.5"
+                  style={{ background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.2)' }}
+                  title={ko ? '코스명 수정' : 'Edit course name'}>
+                  <Pencil size={11} style={{ color: '#4ade80' }} />
+                </button>
+              </div>
+            )
+          })()}
         </div>
         {/* 진행도 */}
         <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
