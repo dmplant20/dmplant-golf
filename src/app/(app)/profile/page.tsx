@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/authStore'
 import {
   ChevronLeft, Camera, Save, Check, User,
   Phone, Mail, AtSign, Languages, Trash2, Cake,
+  Lock, Eye, EyeOff, ChevronDown, ChevronUp,
 } from 'lucide-react'
 
 export default function ProfilePage() {
@@ -26,6 +27,15 @@ export default function ProfilePage() {
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const [avatarFile,    setAvatarFile]    = useState<File | null>(null)
   const [showSheet,     setShowSheet]     = useState(false)  // photo source picker
+
+  // 비밀번호 변경 섹션
+  const [pwOpen,       setPwOpen]       = useState(false)
+  const [pwForm,       setPwForm]       = useState({ new_password: '', confirm_password: '' })
+  const [pwSaving,     setPwSaving]     = useState(false)
+  const [pwSaved,      setPwSaved]      = useState(false)
+  const [pwError,      setPwError]      = useState<string | null>(null)
+  const [showNewPw,    setShowNewPw]    = useState(false)
+  const [showConfirmPw,setShowConfirmPw]= useState(false)
 
   const cameraRef  = useRef<HTMLInputElement>(null)
   const galleryRef = useRef<HTMLInputElement>(null)
@@ -102,6 +112,39 @@ export default function ProfilePage() {
       setTimeout(() => setSaved(false), 2500)
     }
     setSaving(false)
+  }
+
+  // 비밀번호 저장
+  async function savePassword() {
+    if (!user) return
+    setPwError(null)
+    if (pwForm.new_password.length < 8) {
+      setPwError(ko ? '비밀번호는 최소 8자 이상이어야 합니다' : 'Password must be at least 8 characters')
+      return
+    }
+    if (pwForm.new_password !== pwForm.confirm_password) {
+      setPwError(ko ? '비밀번호가 일치하지 않습니다' : 'Passwords do not match')
+      return
+    }
+    setPwSaving(true)
+    try {
+      const res = await fetch('/api/admin/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target_user_id: user.id, new_password: pwForm.new_password }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setPwError(data.error ?? (ko ? '오류가 발생했습니다' : 'An error occurred'))
+      } else {
+        setPwSaved(true)
+        setPwForm({ new_password: '', confirm_password: '' })
+        setTimeout(() => { setPwSaved(false); setPwOpen(false) }, 2500)
+      }
+    } catch {
+      setPwError(ko ? '네트워크 오류' : 'Network error')
+    }
+    setPwSaving(false)
   }
 
   // 언마운트 시 preview URL 정리
@@ -311,6 +354,107 @@ export default function ProfilePage() {
             <><Save size={16} />{ko ? '저장하기' : 'Save Changes'}</>
           )}
         </button>
+
+        {/* ── 비밀번호 변경 섹션 ── */}
+        <div className="glass-card rounded-2xl overflow-hidden">
+          {/* 헤더 (토글) */}
+          <button
+            onClick={() => { setPwOpen(o => !o); setPwError(null); setPwSaved(false) }}
+            className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-white/5 transition"
+          >
+            <Lock size={16} className="text-gray-500 flex-shrink-0" />
+            <div className="flex-1 text-left">
+              <p className="text-sm text-white">{ko ? '비밀번호 변경' : 'Change Password'}</p>
+              <p className="text-xs text-gray-500">{ko ? '새 비밀번호 설정' : 'Set a new password'}</p>
+            </div>
+            {pwOpen ? <ChevronUp size={16} className="text-gray-500" /> : <ChevronDown size={16} className="text-gray-500" />}
+          </button>
+
+          {pwOpen && (
+            <div className="border-t border-gray-800/60 px-4 pb-4 pt-3 space-y-3">
+              {/* 새 비밀번호 */}
+              <div>
+                <p className="text-xs text-gray-500 mb-1">{ko ? '새 비밀번호' : 'New Password'}</p>
+                <div className="relative">
+                  <input
+                    type={showNewPw ? 'text' : 'password'}
+                    value={pwForm.new_password}
+                    onChange={e => { setPwForm(f => ({ ...f, new_password: e.target.value })); setPwError(null) }}
+                    className="w-full bg-gray-800/70 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm outline-none pr-10"
+                    placeholder={ko ? '최소 8자' : 'Min. 8 characters'}
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPw(v => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+                  >
+                    {showNewPw ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+                {pwForm.new_password.length > 0 && pwForm.new_password.length < 8 && (
+                  <p className="text-[11px] text-amber-400 mt-1">{ko ? '8자 이상 입력하세요' : 'Enter at least 8 characters'}</p>
+                )}
+              </div>
+
+              {/* 비밀번호 확인 */}
+              <div>
+                <p className="text-xs text-gray-500 mb-1">{ko ? '비밀번호 확인' : 'Confirm Password'}</p>
+                <div className="relative">
+                  <input
+                    type={showConfirmPw ? 'text' : 'password'}
+                    value={pwForm.confirm_password}
+                    onChange={e => { setPwForm(f => ({ ...f, confirm_password: e.target.value })); setPwError(null) }}
+                    className="w-full bg-gray-800/70 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm outline-none pr-10"
+                    placeholder={ko ? '동일한 비밀번호 입력' : 'Re-enter password'}
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPw(v => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+                  >
+                    {showConfirmPw ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+                {pwForm.confirm_password.length > 0 && pwForm.new_password !== pwForm.confirm_password && (
+                  <p className="text-[11px] text-red-400 mt-1">{ko ? '비밀번호가 일치하지 않습니다' : 'Passwords do not match'}</p>
+                )}
+              </div>
+
+              {/* 에러 배너 */}
+              {pwError && (
+                <div className="rounded-xl bg-red-900/30 border border-red-700/40 px-3 py-2.5 text-xs text-red-300">
+                  {pwError}
+                </div>
+              )}
+
+              {/* 저장 성공 배너 */}
+              {pwSaved && (
+                <div className="rounded-xl bg-green-900/30 border border-green-700/40 px-3 py-2.5 text-xs text-green-300 flex items-center gap-1.5">
+                  <Check size={12} />{ko ? '비밀번호가 변경되었습니다' : 'Password changed successfully'}
+                </div>
+              )}
+
+              {/* 버튼 */}
+              <button
+                onClick={savePassword}
+                disabled={pwSaving || !pwForm.new_password || !pwForm.confirm_password}
+                className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-bold text-sm text-white transition-all disabled:opacity-40 disabled:cursor-default active:scale-95"
+                style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)' }}
+              >
+                {pwSaving ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    {ko ? '변경 중...' : 'Updating...'}
+                  </>
+                ) : (
+                  <><Lock size={15} />{ko ? '비밀번호 변경' : 'Change Password'}</>
+                )}
+              </button>
+            </div>
+          )}
+        </div>
 
       </div>
 

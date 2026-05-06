@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/authStore'
 import {
   UserCheck, Clock, UserX, Edit2, ShieldCheck, GaugeCircle,
   UserMinus, RotateCcw, AlertTriangle, History, Shield,
+  UserPlus, Copy, Check as CheckIcon, X,
 } from 'lucide-react'
 
 // ── role config ────────────────────────────────────────────────────────────
@@ -70,6 +71,8 @@ export default function MembersPage() {
   const [myFeeStatus,   setMyFeeStatus]   = useState<{
     feeType: string; paid: boolean; unpaidMonths: number[]
   } | null>(null)
+  const [showAddMember, setShowAddMember] = useState(false)
+  const [addSuccess,    setAddSuccess]    = useState<{ email: string; tempPassword: string; full_name: string } | null>(null)
 
   async function load() {
     if (!currentClubId) return
@@ -216,16 +219,50 @@ export default function MembersPage() {
 
   return (
     <div className="px-4 py-5 pb-28">
-      {/* ── 탭 ── */}
-      <div className="flex gap-1.5 mb-5 overflow-x-auto no-scrollbar">
-        {tabs.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id as any)}
-            className={`flex-shrink-0 px-3 py-2 rounded-xl text-sm font-medium transition ${tab === t.id ? 'text-white' : 'bg-gray-900 text-gray-400 hover:text-white'}`}
-            style={tab === t.id ? { background: 'linear-gradient(135deg,#c9a84c,#a07830)' } : undefined}>
-            {t.label}{t.count !== undefined ? ` (${t.count})` : ''}
+      {/* ── 탭 + 회원 추가 버튼 ── */}
+      <div className="flex items-center gap-1.5 mb-5">
+        <div className="flex gap-1.5 flex-1 overflow-x-auto no-scrollbar">
+          {tabs.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id as any)}
+              className={`flex-shrink-0 px-3 py-2 rounded-xl text-sm font-medium transition ${tab === t.id ? 'text-white' : 'bg-gray-900 text-gray-400 hover:text-white'}`}
+              style={tab === t.id ? { background: 'linear-gradient(135deg,#c9a84c,#a07830)' } : undefined}>
+              {t.label}{t.count !== undefined ? ` (${t.count})` : ''}
+            </button>
+          ))}
+        </div>
+        {canManage && (
+          <button
+            onClick={() => { setShowAddMember(true); setAddSuccess(null) }}
+            title={ko ? '회원 추가' : 'Add Member'}
+            className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-xl text-white transition active:scale-95"
+            style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)' }}
+          >
+            <UserPlus size={16} />
           </button>
-        ))}
+        )}
       </div>
+
+      {/* ── 계정 생성 성공 배너 ── */}
+      {addSuccess && (
+        <div className="mb-4 rounded-2xl bg-green-900/25 border border-green-700/40 px-4 py-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-green-300 mb-0.5">
+                계정 생성됨 — {addSuccess.full_name}
+              </p>
+              <p className="text-xs text-gray-400 break-all">
+                {addSuccess.email} / PW: <span className="text-white font-mono">{addSuccess.tempPassword}</span>
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <CopyButton text={`${addSuccess.email} / ${addSuccess.tempPassword}`} ko={ko} />
+              <button onClick={() => setAddSuccess(null)} className="text-gray-500 hover:text-white transition">
+                <X size={15} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="text-center text-gray-500 py-10">{ko ? '로딩 중...' : 'Loading...'}</div>
@@ -453,6 +490,241 @@ export default function MembersPage() {
           onConfirm={(reason: string) => withdrawMember(withdrawTarget, reason)}
         />
       )}
+      {showAddMember && currentClubId && (
+        <AddMemberModal
+          ko={ko}
+          clubId={currentClubId}
+          onClose={() => setShowAddMember(false)}
+          onSuccess={(result) => {
+            setAddSuccess(result)
+            setShowAddMember(false)
+            load()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── CopyButton ─────────────────────────────────────────────────────────────
+function CopyButton({ text, ko }: { text: string; ko: boolean }) {
+  const [copied, setCopied] = useState(false)
+  async function doCopy() {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch { /* ignore */ }
+  }
+  return (
+    <button onClick={doCopy} title={ko ? '복사' : 'Copy'}
+      className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 transition">
+      {copied ? <CheckIcon size={12} className="text-green-400" /> : <Copy size={12} />}
+      {copied ? (ko ? '복사됨' : 'Copied') : (ko ? '복사' : 'Copy')}
+    </button>
+  )
+}
+
+// ── AddMemberModal ─────────────────────────────────────────────────────────
+function generateTempPw() {
+  return `Golf@${Math.floor(1000 + Math.random() * 9000)}`
+}
+
+function AddMemberModal({ ko, clubId, onClose, onSuccess }: {
+  ko: boolean
+  clubId: string
+  onClose: () => void
+  onSuccess: (result: { email: string; tempPassword: string; full_name: string }) => void
+}) {
+  const [form, setForm] = useState({
+    full_name:    '',
+    full_name_en: '',
+    name_abbr:    '',
+    email:        '',
+    role:         'member',
+    tempPassword: generateTempPw(),
+  })
+  const [submitting, setSubmitting] = useState(false)
+  const [error,      setError]      = useState<string | null>(null)
+  const [pwCopied,   setPwCopied]   = useState(false)
+
+  async function copyPw() {
+    try { await navigator.clipboard.writeText(form.tempPassword); setPwCopied(true); setTimeout(() => setPwCopied(false), 2000) } catch { /* ignore */ }
+  }
+
+  async function submit() {
+    setError(null)
+    if (!form.full_name.trim() || !form.email.trim()) {
+      setError(ko ? '이름과 이메일은 필수입니다' : 'Name and email are required')
+      return
+    }
+    if (!form.email.includes('@')) {
+      setError(ko ? '유효한 이메일을 입력하세요' : 'Enter a valid email')
+      return
+    }
+    setSubmitting(true)
+    try {
+      const res = await fetch('/api/admin/create-member', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...form, club_id: clubId }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error ?? (ko ? '오류가 발생했습니다' : 'An error occurred'))
+      } else {
+        onSuccess({ email: data.email, tempPassword: data.tempPassword, full_name: data.full_name })
+      }
+    } catch {
+      setError(ko ? '네트워크 오류' : 'Network error')
+    }
+    setSubmitting(false)
+  }
+
+  const roles = [
+    { v: 'president',      label: ko ? '회장'   : 'President' },
+    { v: 'vice_president', label: ko ? '부회장' : 'Vice Pres.' },
+    { v: 'secretary',      label: ko ? '총무'   : 'Secretary' },
+    { v: 'auditor',        label: ko ? '감사'   : 'Auditor' },
+    { v: 'advisor',        label: ko ? '고문'   : 'Advisor' },
+    { v: 'officer',        label: ko ? '임원'   : 'Officer' },
+    { v: 'member',         label: ko ? '회원'   : 'Member' },
+  ]
+
+  return (
+    <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-[300] px-4" onClick={onClose}>
+      <div className="bg-gray-900 rounded-3xl w-full max-w-md max-h-[92vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
+        {/* 헤더 */}
+        <div className="flex items-center gap-3 px-5 pt-5 pb-4 border-b border-gray-800">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)' }}>
+            <UserPlus size={16} className="text-white" />
+          </div>
+          <h2 className="text-base font-bold text-white flex-1">{ko ? '회원 추가' : 'Add Member'}</h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-white transition"><X size={18} /></button>
+        </div>
+
+        <div className="px-5 py-4 space-y-4">
+          {/* 한글 이름 (필수) */}
+          <div>
+            <label className="text-xs text-gray-400 block mb-1.5">{ko ? '한글 이름 *' : 'Korean Name *'}</label>
+            <input
+              type="text"
+              value={form.full_name}
+              onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))}
+              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-yellow-600/60"
+              placeholder={ko ? '예: 홍길동' : 'e.g. 홍길동'}
+              autoFocus
+            />
+          </div>
+
+          {/* 영문 이름 */}
+          <div>
+            <label className="text-xs text-gray-400 block mb-1.5">{ko ? '영문 이름' : 'English Name'}</label>
+            <input
+              type="text"
+              value={form.full_name_en}
+              onChange={e => setForm(f => ({ ...f, full_name_en: e.target.value }))}
+              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-yellow-600/60"
+              placeholder="Hong Gil-dong"
+            />
+          </div>
+
+          {/* 약자 */}
+          <div>
+            <label className="text-xs text-gray-400 block mb-1.5">{ko ? '약자 · 이니셜' : 'Abbreviation'}</label>
+            <input
+              type="text"
+              value={form.name_abbr}
+              onChange={e => setForm(f => ({ ...f, name_abbr: e.target.value }))}
+              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-yellow-600/60"
+              placeholder={ko ? '예: 홍GD' : 'e.g. HGD'}
+            />
+          </div>
+
+          {/* 이메일 (필수) */}
+          <div>
+            <label className="text-xs text-gray-400 block mb-1.5">{ko ? '이메일 *' : 'Email *'}</label>
+            <input
+              type="email"
+              value={form.email}
+              onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-yellow-600/60"
+              placeholder="member@example.com"
+              autoComplete="off"
+            />
+          </div>
+
+          {/* 역할 */}
+          <div>
+            <label className="text-xs text-gray-400 block mb-1.5">{ko ? '역할' : 'Role'}</label>
+            <select
+              value={form.role}
+              onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
+              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm outline-none"
+              style={{ colorScheme: 'dark' }}
+            >
+              {roles.map(r => <option key={r.v} value={r.v}>{r.label}</option>)}
+            </select>
+          </div>
+
+          {/* 임시 비밀번호 */}
+          <div>
+            <label className="text-xs text-gray-400 block mb-1.5">{ko ? '임시 비밀번호' : 'Temp Password'}</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={form.tempPassword}
+                onChange={e => setForm(f => ({ ...f, tempPassword: e.target.value }))}
+                className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm font-mono outline-none focus:border-yellow-600/60"
+              />
+              <button
+                type="button"
+                onClick={copyPw}
+                title={ko ? '복사' : 'Copy'}
+                className="px-3 rounded-xl bg-gray-800 border border-gray-700 text-gray-400 hover:text-white transition flex-shrink-0"
+              >
+                {pwCopied ? <CheckIcon size={15} className="text-green-400" /> : <Copy size={15} />}
+              </button>
+              <button
+                type="button"
+                onClick={() => setForm(f => ({ ...f, tempPassword: generateTempPw() }))}
+                title={ko ? '새로 생성' : 'Regenerate'}
+                className="px-3 rounded-xl bg-gray-800 border border-gray-700 text-gray-400 hover:text-white transition text-xs flex-shrink-0"
+              >
+                {ko ? '새로' : 'New'}
+              </button>
+            </div>
+            <p className="text-[11px] text-gray-600 mt-1">{ko ? '회원이 처음 로그인 후 변경할 수 있습니다' : 'Member can change this after first login'}</p>
+          </div>
+
+          {/* 에러 */}
+          {error && (
+            <div className="rounded-xl bg-red-900/30 border border-red-700/40 px-3 py-2.5 text-xs text-red-300">
+              {error}
+            </div>
+          )}
+
+          {/* 버튼 */}
+          <div className="flex gap-3 pt-1">
+            <button onClick={onClose} className="flex-1 py-3.5 rounded-xl bg-gray-800 text-gray-300 font-medium text-sm">
+              {ko ? '취소' : 'Cancel'}
+            </button>
+            <button
+              onClick={submit}
+              disabled={submitting}
+              className="flex-1 py-3.5 rounded-xl text-white font-bold text-sm transition active:scale-95 disabled:opacity-50"
+              style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)' }}
+            >
+              {submitting ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin inline-block" />
+                  {ko ? '생성 중...' : 'Creating...'}
+                </span>
+              ) : (ko ? '계정 생성' : 'Create Account')}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
