@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import CourseSearchInput from '@/components/ui/CourseSearchInput'
+import PushNotificationToggle from '@/components/ui/PushNotificationToggle'
 
 // ── 골프장 폼 기본값 ──────────────────────────────────────────────────────
 const EMPTY_COURSE = {
@@ -289,6 +290,11 @@ export default function SettingsPage() {
           <Settings size={20} className="text-green-400" />
           <h1 className="text-lg font-bold text-white">{ko ? '클럽 설정' : 'Club Settings'}</h1>
         </div>
+      </div>
+
+      {/* 푸시 알림 토글 — 모든 회원이 자기 디바이스 알림 켜기/끄기 가능 */}
+      <div className="mb-4">
+        <PushNotificationToggle variant="card" />
       </div>
 
       {!canManage ? (

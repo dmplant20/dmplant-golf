@@ -175,9 +175,11 @@ export async function GET(_req: NextRequest) {
   }[] = []
 
   try {
+    // fee_type은 회원별 (club_memberships.fee_type) — clubs 테이블이 아님!
+    // 다른 페이지들과 일치시켜 데이터 출처 통일.
     const { data: memberships } = await supabase
       .from('club_memberships')
-      .select('club_id, clubs(id, name, fee_type, annual_fee, monthly_fee, currency)')
+      .select('club_id, fee_type, clubs(id, name, annual_fee, monthly_fee, currency)')
       .eq('user_id', user.id)
       .eq('status', 'approved')
 
@@ -186,35 +188,37 @@ export async function GET(_req: NextRequest) {
         const club = Array.isArray(m.clubs) ? m.clubs[0] : m.clubs
         if (!club) continue
 
-        const feeType: string = club.fee_type ?? 'annual'
+        // fee_type 미지정 회원은 회비 검사에서 제외 (회비 면제 또는 미설정)
+        const feeType: string | null = (m as any).fee_type ?? null
+        if (!feeType) continue
+
         const feeAmount: number =
           feeType === 'monthly' ? (club.monthly_fee ?? 0) : (club.annual_fee ?? 0)
         if (!feeAmount) continue
 
-        // Check existing fee payment
+        // 이번 달 / 이번 해 회비 납부 여부 확인 (다중 행 가능 → limit(1))
         let query = supabase
           .from('finance_transactions')
           .select('id')
           .eq('club_id', m.club_id)
           .eq('member_id', user.id)
           .eq('type', 'fee')
+          .limit(1)
 
         if (feeType === 'monthly') {
-          // Check current month payment
           const monthStart = `${todayYear}-${String(todayMonth).padStart(2, '0')}-01`
           const nextMonth = todayMonth === 12 ? 1 : todayMonth + 1
           const nextYear = todayMonth === 12 ? todayYear + 1 : todayYear
           const monthEnd = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`
           query = query.gte('transaction_date', monthStart).lt('transaction_date', monthEnd)
         } else {
-          // Check current year payment
           const yearStart = `${todayYear}-01-01`
           const yearEnd = `${todayYear + 1}-01-01`
           query = query.gte('transaction_date', yearStart).lt('transaction_date', yearEnd)
         }
 
-        const { data: payments } = await query.maybeSingle()
-        if (payments) continue // Already paid
+        const { data: payments } = await query
+        if (payments && payments.length > 0) continue  // 이미 납부됨
 
         unpaidFees.push({
           clubId: m.club_id,

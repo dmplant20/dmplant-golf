@@ -6,11 +6,12 @@ import { useAuthStore } from '@/stores/authStore'
 import AppHeader from '@/components/layout/AppHeader'
 import BottomNav from '@/components/layout/BottomNav'
 import NotificationModals from '@/components/ui/NotificationModals'
+import { setAppBadge, getLastSeen } from '@/lib/appBadge'
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
-  const { setUser, setMyClubs, setCurrentClub, currentClubId } = useAuthStore()
+  const { setUser, setMyClubs, setCurrentClub, currentClubId, user } = useAuthStore()
 
   useEffect(() => {
     const supabase = createClient()
@@ -37,7 +38,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           logo_url: m.clubs.logo_url,
         }))
         setMyClubs(clubs)
-        if (!currentClubId) setCurrentClub(clubs[0].id)
+        // Keep persisted club selection if it's still valid; otherwise fall back to first.
+        const stillValid = currentClubId && clubs.some(c => c.id === currentClubId)
+        if (!stillValid) setCurrentClub(clubs[0].id)
       } else {
         // 가입된 클럽 없음 → 온보딩으로
         if (pathname !== '/onboarding') {
@@ -54,6 +57,54 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
     return () => subscription.unsubscribe()
   }, [])
+
+  // Per-club background accent: hash club id → theme 1-4 on document body
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    if (!currentClubId) {
+      document.body.removeAttribute('data-club-theme')
+      return
+    }
+    let h = 0
+    for (let i = 0; i < currentClubId.length; i++) h = ((h << 5) - h + currentClubId.charCodeAt(i)) | 0
+    const theme = (Math.abs(h) % 4) + 1
+    document.body.setAttribute('data-club-theme', String(theme))
+  }, [currentClubId])
+
+  // 앱 배지: 마지막 방문 이후 새로 올라온 공지/경조사 개수
+  useEffect(() => {
+    const userId = user?.id
+    if (!currentClubId || !userId) return
+    let cancelled = false
+
+    async function refreshBadge() {
+      const supabase = createClient()
+      const since = getLastSeen(userId!, currentClubId!)
+      const [{ count: noticeCount }, { count: eventCount }] = await Promise.all([
+        supabase.from('announcements')
+          .select('*', { count: 'exact', head: true })
+          .eq('club_id', currentClubId).gt('created_at', since),
+        supabase.from('events')
+          .select('*', { count: 'exact', head: true })
+          .eq('club_id', currentClubId).gt('created_at', since),
+      ])
+      if (cancelled) return
+      const total = (noticeCount ?? 0) + (eventCount ?? 0)
+      setAppBadge(total)
+    }
+
+    refreshBadge()
+    function onWake() { if (document.visibilityState === 'visible') refreshBadge() }
+    document.addEventListener('visibilitychange', onWake)
+    window.addEventListener('focus', onWake)
+    const id = setInterval(refreshBadge, 5 * 60_000)  // 5분마다 백그라운드 갱신
+    return () => {
+      cancelled = true
+      document.removeEventListener('visibilitychange', onWake)
+      window.removeEventListener('focus', onWake)
+      clearInterval(id)
+    }
+  }, [currentClubId, user?.id])
 
   const isOnboarding = pathname === '/onboarding'
 

@@ -274,12 +274,35 @@ export default function MeetingsPage() {
     setYearlyLoading(false)
   }
 
-  useEffect(() => { load() }, [currentClubId])
+  useEffect(() => {
+    load()
+    function onWake() { if (document.visibilityState === 'visible') load() }
+    document.addEventListener('visibilitychange', onWake)
+    window.addEventListener('focus', onWake)
+    window.addEventListener('pageshow', onWake)
+    return () => {
+      document.removeEventListener('visibilitychange', onWake)
+      window.removeEventListener('focus', onWake)
+      window.removeEventListener('pageshow', onWake)
+    }
+  }, [currentClubId])
 
   const meeting = useMemo(() => getRelevantMeeting(pattern, overrides), [pattern, overrides])
 
   useEffect(() => {
-    if (meeting) loadRsvp(meeting.year, meeting.month)
+    if (!meeting) return
+    loadRsvp(meeting.year, meeting.month)
+    function onWake() {
+      if (document.visibilityState === 'visible' && meeting) loadRsvp(meeting.year, meeting.month)
+    }
+    document.addEventListener('visibilitychange', onWake)
+    window.addEventListener('focus', onWake)
+    window.addEventListener('pageshow', onWake)
+    return () => {
+      document.removeEventListener('visibilitychange', onWake)
+      window.removeEventListener('focus', onWake)
+      window.removeEventListener('pageshow', onWake)
+    }
   }, [meeting?.year, meeting?.month, currentClubId])
 
   // ── navigation-based display meeting ──────────────────────────────────────
@@ -331,7 +354,10 @@ export default function MeetingsPage() {
   }
 
   const daysUntil   = meeting?.date ? getDaysUntil(meeting.date) : null
+  // RSVP 창: D-14 ~ D-(-1) (과거 1일까지). 이전엔 비활성으로 노출.
   const isRsvpOpen  = !isPastView && daysUntil !== null && daysUntil <= 14 && daysUntil >= -1
+  // RSVP 영역 자체는 D-30 이내 미래 모임에 모두 노출 (비활성 상태로라도)
+  const showRsvpArea = !isPastView && displayMeeting?.status !== 'cancelled' && daysUntil !== null && daysUntil >= -1
   const isScoreOpen = isPastView || (daysUntil !== null && daysUntil <= 1)
 
   const attending = attendances.filter(a => a.status === 'attending')
@@ -865,12 +891,35 @@ export default function MeetingsPage() {
               </div>
               {displayMeeting.status === 'cancelled'   && <XCircle size={20} className="text-red-400 flex-shrink-0 mt-1" />}
               {displayMeeting.status === 'rescheduled' && <AlertTriangle size={20} className="text-yellow-400 flex-shrink-0 mt-1" />}
-              {displayMeeting.status === 'scheduled'   && <CheckCircle size={20} className="text-green-500 flex-shrink-0 mt-1" />}
+              {/* status === 'scheduled' 일 땐 별도 아이콘 표시 안 함
+                  (사용자가 RSVP 완료로 오해하던 초록 체크 제거) */}
             </div>
             <div className="flex items-center gap-4 text-xs text-gray-400">
               {displayMeeting.time  && <span className="flex items-center gap-1"><Clock size={12} />{fmtTime(displayMeeting.time.slice(0,5), ko)}</span>}
               {displayMeeting.venue && <span className="flex items-center gap-1"><MapPin size={12} />{displayMeeting.venue}</span>}
             </div>
+
+            {/* ── 내 RSVP 상태 (명확한 배지) ──────────────────────────── */}
+            {!isPastView && displayMeeting.status !== 'cancelled' && (
+              <div className="pt-1">
+                {myAtt?.status === 'attending' ? (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full"
+                    style={{ background: 'rgba(34,197,94,0.15)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.35)' }}>
+                    <CheckCircle size={12} />{ko ? '내 응답: 참석' : 'My RSVP: Attending'}
+                  </span>
+                ) : myAtt?.status === 'absent' ? (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full"
+                    style={{ background: 'rgba(239,68,68,0.15)', color: '#f87171', border: '1px solid rgba(239,68,68,0.35)' }}>
+                    <XCircle size={12} />{ko ? '내 응답: 불참' : 'My RSVP: Absent'}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full"
+                    style={{ background: 'rgba(251,191,36,0.12)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.30)' }}>
+                    <HelpCircle size={12} />{ko ? '아직 응답 전' : 'Not responded'}
+                  </span>
+                )}
+              </div>
+            )}
             {displayMeeting.reason && <p className="text-xs text-yellow-400">{displayMeeting.reason}</p>}
             {noticeSent && isRsvpOpen && (
               <p className="text-xs text-green-500 flex items-center gap-1"><CheckCircle size={11} />{ko ? '공지 자동 발송됨' : 'Notice sent'}</p>
@@ -894,7 +943,7 @@ export default function MeetingsPage() {
           </div>
 
           {/* ── RSVP ── */}
-          {isRsvpOpen && displayMeeting.status !== 'cancelled' && (
+          {showRsvpArea && (
             <div className="glass-card rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>{ko ? '참석 여부' : 'RSVP'}</p>
@@ -926,30 +975,52 @@ export default function MeetingsPage() {
                     {myAtt.status === 'attending' ? <Check size={16} /> : <Ban size={16} />}
                     {myAtt.status === 'attending' ? (ko ? '참석 완료' : 'Attending ✓') : (ko ? '불참 완료' : 'Absent ✓')}
                   </div>
-                  {/* Cancel button — only for own RSVP */}
-                  <button onClick={cancelRsvp}
-                    className="px-4 py-3 rounded-xl text-sm border transition"
-                    style={{ color: 'var(--text-3)', borderColor: 'var(--border-2)' }}
-                    title={ko ? '응답 취소' : 'Cancel response'}>
-                    <X size={15} />
-                  </button>
+                  {/* Cancel button — only for own RSVP, only when window is open */}
+                  {isRsvpOpen && (
+                    <button onClick={cancelRsvp}
+                      className="px-4 py-3 rounded-xl text-sm border transition"
+                      style={{ color: 'var(--text-3)', borderColor: 'var(--border-2)' }}
+                      title={ko ? '응답 취소' : 'Cancel response'}>
+                      <X size={15} />
+                    </button>
+                  )}
                 </div>
               ) : (
-                /* Not voted yet — show both buttons */
+                /* Not voted yet — show both buttons (disabled if window not open yet) */
                 <div>
                   <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>{ko ? '내 응답' : 'My response'}</p>
                   <div className="flex gap-2">
-                    <button onClick={() => rsvp('attending')}
+                    <button
+                      onClick={() => rsvp('attending')}
+                      disabled={!isRsvpOpen}
                       className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl text-sm font-semibold transition active:scale-[0.97]"
-                      style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.35)', color: '#4ade80' }}>
+                      style={
+                        !isRsvpOpen
+                          ? { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-3)', cursor: 'not-allowed' }
+                          : { background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.35)', color: '#4ade80' }
+                      }>
                       <Check size={15} />{ko ? '참석' : 'Attending'}
                     </button>
-                    <button onClick={() => rsvp('absent')}
+                    <button
+                      onClick={() => rsvp('absent')}
+                      disabled={!isRsvpOpen}
                       className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl text-sm font-semibold transition active:scale-[0.97]"
-                      style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}>
+                      style={
+                        !isRsvpOpen
+                          ? { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-3)', cursor: 'not-allowed' }
+                          : { background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }
+                      }>
                       <Ban size={15} />{ko ? '불참' : 'Absent'}
                     </button>
                   </div>
+                  {/* 비활성 안내 (D-14 이전) */}
+                  {!isRsvpOpen && daysUntil !== null && daysUntil > 14 && (
+                    <p className="text-[11px] text-center mt-2" style={{ color: 'var(--text-3)' }}>
+                      {ko
+                        ? `D-${daysUntil} · 모임 14일 전부터 응답할 수 있습니다`
+                        : `D-${daysUntil} · RSVP opens 14 days before the meeting`}
+                    </p>
+                  )}
                 </div>
               )}
 

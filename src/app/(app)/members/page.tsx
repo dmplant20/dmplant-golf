@@ -32,6 +32,17 @@ const ROLE_MAP: Record<string, [string, string]> = {
 // 임원급 이상 (회계 상세 열람 권한)
 export const OFFICER_ROLES = ['president', 'vice_president', 'secretary', 'auditor', 'advisor', 'officer']
 
+// 회원 명부 정렬 순서 (회장 → 부회장 → 감사 → 총무 → 고문 → 임원 → 회원)
+const ROLE_ORDER: Record<string, number> = {
+  president:      1,
+  vice_president: 2,
+  auditor:        3,
+  secretary:      4,
+  advisor:        5,
+  officer:        6,
+  member:         7,
+}
+
 const ACTION_LABELS: Record<string, [string, string]> = {
   approval:      ['가입 승인', 'Approved'],
   rejection:     ['가입 거부', 'Rejected'],
@@ -71,6 +82,9 @@ export default function MembersPage() {
   const [myFeeStatus,   setMyFeeStatus]   = useState<{
     feeType: string; paid: boolean; unpaidMonths: number[]
   } | null>(null)
+  const [feeStatusByUser, setFeeStatusByUser] = useState<Record<string, {
+    feeType: 'annual' | 'monthly'; paid: boolean; unpaidMonths: number[]
+  }>>({})
   const [showAddMember, setShowAddMember] = useState(false)
   const [addSuccess,    setAddSuccess]    = useState<{ email: string; tempPassword: string; full_name: string } | null>(null)
 
@@ -81,7 +95,7 @@ export default function MembersPage() {
     const [{ data: approved }, { data: pend }, { data: withdr }, { data: log }] = await Promise.all([
       supabase.from('club_memberships')
         .select('*, users(full_name, full_name_en, name_abbr, avatar_url, phone)')
-        .eq('club_id', currentClubId).eq('status', 'approved').order('role'),
+        .eq('club_id', currentClubId).eq('status', 'approved'),
       supabase.from('club_memberships')
         .select('*, users(full_name, full_name_en, name_abbr, phone)')
         .eq('club_id', currentClubId).eq('status', 'pending'),
@@ -97,37 +111,63 @@ export default function MembersPage() {
             .limit(50)
         : Promise.resolve({ data: [] }),
     ])
-    setMembers(approved ?? [])
+    const sortedApproved = (approved ?? []).slice().sort((a: any, b: any) => {
+      const ra = ROLE_ORDER[a.role] ?? 99
+      const rb = ROLE_ORDER[b.role] ?? 99
+      if (ra !== rb) return ra - rb
+      const na = a.users?.full_name ?? ''
+      const nb = b.users?.full_name ?? ''
+      return na.localeCompare(nb, 'ko')
+    })
+    setMembers(sortedApproved)
     setPending(pend ?? [])
     setWithdrawn(withdr ?? [])
     setActivityLog(log ?? [])
     setLoading(false)
 
-    // 내 회비 납부 현황
-    if (user?.id) {
-      const myMem = approved?.find((m: any) => m.user_id === user.id)
-      if (myMem?.fee_type) {
-        const currentYear  = new Date().getFullYear()
-        const currentMonth = new Date().getMonth() + 1
-        const { data: feeTxns } = await supabase
-          .from('finance_transactions').select('transaction_date')
-          .eq('club_id', currentClubId).eq('type', 'fee').eq('member_id', user.id)
-          .gte('transaction_date', `${currentYear}-01-01`).lte('transaction_date', `${currentYear}-12-31`)
-        if (myMem.fee_type === 'annual') {
-          setMyFeeStatus({ feeType: 'annual', paid: (feeTxns?.length ?? 0) > 0, unpaidMonths: [] })
-        } else {
-          const paidMonths = new Set((feeTxns ?? []).map((t: any) => new Date(t.transaction_date).getMonth() + 1))
-          const unpaidMonths: number[] = []
-          for (let m = 1; m <= currentMonth; m++) if (!paidMonths.has(m)) unpaidMonths.push(m)
-          setMyFeeStatus({ feeType: 'monthly', paid: unpaidMonths.length === 0, unpaidMonths })
-        }
+    // ── 회비 납부 현황 (전 회원) ──────────────────────────────────────────
+    const currentYear  = new Date().getFullYear()
+    const currentMonth = new Date().getMonth() + 1
+    const { data: allFeeTxns } = await supabase
+      .from('finance_transactions').select('member_id, transaction_date')
+      .eq('club_id', currentClubId).eq('type', 'fee')
+      .gte('transaction_date', `${currentYear}-01-01`).lte('transaction_date', `${currentYear}-12-31`)
+
+    const txnsByUser: Record<string, string[]> = {}
+    ;(allFeeTxns ?? []).forEach((t: any) => {
+      if (!t.member_id) return
+      ;(txnsByUser[t.member_id] ||= []).push(t.transaction_date)
+    })
+
+    const statusMap: Record<string, { feeType: 'annual' | 'monthly'; paid: boolean; unpaidMonths: number[] }> = {}
+    ;(approved ?? []).forEach((m: any) => {
+      if (!m.fee_type) return
+      const dates = txnsByUser[m.user_id] ?? []
+      if (m.fee_type === 'annual') {
+        statusMap[m.user_id] = { feeType: 'annual', paid: dates.length > 0, unpaidMonths: [] }
       } else {
-        setMyFeeStatus(null)
+        const paidMonths = new Set(dates.map((d) => new Date(d).getMonth() + 1))
+        const unpaidMonths: number[] = []
+        for (let mm = 1; mm <= currentMonth; mm++) if (!paidMonths.has(mm)) unpaidMonths.push(mm)
+        statusMap[m.user_id] = { feeType: 'monthly', paid: unpaidMonths.length === 0, unpaidMonths }
       }
-    }
+    })
+    setFeeStatusByUser(statusMap)
+    setMyFeeStatus(user?.id && statusMap[user.id] ? statusMap[user.id] : null)
   }
 
-  useEffect(() => { load() }, [currentClubId])
+  useEffect(() => {
+    load()
+    function onWake() { if (document.visibilityState === 'visible') load() }
+    document.addEventListener('visibilitychange', onWake)
+    window.addEventListener('focus', onWake)
+    window.addEventListener('pageshow', onWake)
+    return () => {
+      document.removeEventListener('visibilitychange', onWake)
+      window.removeEventListener('focus', onWake)
+      window.removeEventListener('pageshow', onWake)
+    }
+  }, [currentClubId])
 
   // ── actions ────────────────────────────────────────────────────────────────
   async function logAction(target_user_id: string | null, action: string, old_value?: string, new_value?: string, note?: string) {
@@ -288,13 +328,17 @@ export default function MembersPage() {
                   {m.fee_type === 'annual'  && <span className="text-[11px] px-2 py-0.5 rounded-full bg-yellow-900/50 text-yellow-300">{ko ? '년회비' : 'Annual'}</span>}
                   {m.fee_type === 'monthly' && <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-900/50  text-blue-300">{ko ? '월회비' : 'Monthly'}</span>}
                   {m.club_handicap != null && <span className="text-[11px]" style={{ color: 'var(--gold-l)' }}>HC {m.club_handicap}</span>}
-                  {/* 내 회비 납부 현황 */}
-                  {m.user_id === user?.id && myFeeStatus && (
-                    myFeeStatus.paid
+                  {/* 회비 납부 현황 (전 회원 표시) */}
+                  {feeStatusByUser[m.user_id] && (
+                    feeStatusByUser[m.user_id].paid
                       ? <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-900/60 text-green-300">✓ {ko ? '납부완료' : 'Paid'}</span>
-                      : myFeeStatus.feeType === 'annual'
-                        ? <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-900/60 text-red-300">{ko ? '연회비 미납' : 'Unpaid'}</span>
-                        : <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-900/60 text-red-300">{myFeeStatus.unpaidMonths.join(',')}월 미납</span>
+                      : feeStatusByUser[m.user_id].feeType === 'annual'
+                        ? <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-900/60 text-red-300">{ko ? '연회비 미납' : 'Annual unpaid'}</span>
+                        : <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-900/60 text-red-300">
+                            {ko
+                              ? `${feeStatusByUser[m.user_id].unpaidMonths.join(',')}월 미납`
+                              : `Unpaid ${feeStatusByUser[m.user_id].unpaidMonths.join(',')}`}
+                          </span>
                   )}
                 </div>
               </div>
@@ -810,7 +854,7 @@ function EditMemberModal({ member, ko, myRole, members, onClose, onSave, onDeleg
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-end z-[200]" onClick={onClose}>
-      <div className="bg-gray-900 rounded-t-3xl p-6 w-full max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div className="bg-gray-900 rounded-t-3xl px-6 pt-6 modal-sheet-pb w-full max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex justify-center mb-4"><div className="w-10 h-1 bg-gray-700 rounded-full" /></div>
         <div className="flex items-center gap-2 mb-5">
           <Shield size={16} style={{ color: 'var(--gold-l)' }} />

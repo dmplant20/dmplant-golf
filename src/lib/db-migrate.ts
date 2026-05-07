@@ -119,6 +119,23 @@ CREATE POLICY "mal_select" ON member_activity_log FOR SELECT
 DROP POLICY IF EXISTS "mal_insert" ON member_activity_log;
 CREATE POLICY "mal_insert" ON member_activity_log FOR INSERT
   WITH CHECK (actor_id = auth.uid());
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- finance_transactions: 지출 분류 + 물품명 (경조사·상품·화환 등)
+-- ────────────────────────────────────────────────────────────────────────────
+ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS expense_category text;
+ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS item_name text;
+
+DO $$ BEGIN
+  ALTER TABLE finance_transactions DROP CONSTRAINT IF EXISTS finance_transactions_expense_category_check;
+  ALTER TABLE finance_transactions ADD CONSTRAINT finance_transactions_expense_category_check
+    CHECK (expense_category IS NULL OR expense_category IN ('condolence','gift','event','admin','other'));
+EXCEPTION WHEN others THEN NULL;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_finance_transactions_expense_category
+  ON finance_transactions(club_id, expense_category)
+  WHERE expense_category IS NOT NULL;
 `
 
 export async function autoMigrate(): Promise<void> {

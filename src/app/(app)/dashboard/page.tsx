@@ -5,8 +5,10 @@ import { useAuthStore } from '@/stores/authStore'
 import {
   CalendarDays, Wallet, Users, Bell, TrendingUp, ChevronRight,
   Trophy, MapPin, CheckCircle, XCircle, HelpCircle, LayoutGrid, Clock,
+  CreditCard,
 } from 'lucide-react'
 import Link from 'next/link'
+import PushNotificationToggle from '@/components/ui/PushNotificationToggle'
 
 // ── helpers ────────────────────────────────────────────────────────────────
 function getNthWeekday(year: number, month: number, week: number, dow: number): Date | null {
@@ -73,9 +75,83 @@ export default function DashboardPage() {
   const [myRsvp,        setMyRsvp]        = useState<string | null>(null)
   const [meetingGroups, setMeetingGroups] = useState<any[]>([])
 
+  // my fee status
+  const [myFeeStatus,   setMyFeeStatus]   = useState<{
+    feeType: string | null
+    annual: number
+    monthly: number
+    paid: boolean
+    unpaidMonths: number[]
+    paidAmount: number
+  } | null>(null)
+  // club-wide fee progress (visible to all members for transparency)
+  const [feeProgress,   setFeeProgress]   = useState<{ paid: number; total: number } | null>(null)
+
+  // RSVP submit (인라인 참석/불참 버튼용)
+  const [rsvpSubmitting, setRsvpSubmitting] = useState(false)
+  const [rsvpError,      setRsvpError]      = useState<string | null>(null)
+
+  // ── RSVP 창 (D-14 ~ D-1, 참가일 +0 까지 허용) ───────────────────────
+  const daysUntilMtg = nextMtg?.date
+    ? Math.ceil((nextMtg.date.getTime() - new Date(new Date().setHours(0,0,0,0)).getTime()) / 86400000)
+    : null
+  const rsvpOpen = daysUntilMtg !== null && daysUntilMtg <= 14 && daysUntilMtg >= -1
+
+  async function submitRsvp(status: 'attending' | 'absent') {
+    if (!nextMtg || !user || !currentClubId || rsvpSubmitting) return
+    if (!rsvpOpen) return  // 창 닫혀 있으면 무시
+    if (myRsvp === status) return  // 같은 상태면 무시
+    setRsvpSubmitting(true)
+    setRsvpError(null)
+    const prev = myRsvp
+    setMyRsvp(status)  // optimistic
+    setAttendCounts(c => {
+      const next = { ...c }
+      if (prev === 'attending')      next.attending = Math.max(0, next.attending - 1)
+      else if (prev === 'absent')    next.absent    = Math.max(0, next.absent - 1)
+      else                           next.noResponse= Math.max(0, next.noResponse - 1)
+      if (status === 'attending')    next.attending++
+      else                           next.absent++
+      return next
+    })
+    try {
+      const res = await fetch('/api/meetings/rsvp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ club_id: currentClubId, year: nextMtg.year, month: nextMtg.month, status }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setRsvpError(data.error || (ko ? '저장 실패' : 'Save failed'))
+        setMyRsvp(prev)
+        load()  // 서버 진실로 재동기화
+      }
+    } catch {
+      setRsvpError(ko ? '네트워크 오류' : 'Network error')
+      setMyRsvp(prev)
+    } finally {
+      setRsvpSubmitting(false)
+      setTimeout(() => setRsvpError(null), 3500)
+    }
+  }
+
   useEffect(() => {
     if (!currentClubId || !user) return
     load()
+
+    // Refetch when user returns to the tab/page — fixes stale RSVP/fee state
+    // after the user navigates back from /meetings or /finance.
+    function onWake() {
+      if (document.visibilityState === 'visible') load()
+    }
+    document.addEventListener('visibilitychange', onWake)
+    window.addEventListener('focus', onWake)
+    window.addEventListener('pageshow', onWake)
+    return () => {
+      document.removeEventListener('visibilitychange', onWake)
+      window.removeEventListener('focus', onWake)
+      window.removeEventListener('pageshow', onWake)
+    }
   }, [currentClubId, user?.id])
 
   async function load() {
@@ -89,16 +165,22 @@ export default function DashboardPage() {
       { data: pattern },
       { data: overrides },
       { data: allMems },
+      { data: myMembership },
+      { data: myFeeTxns },
     ] = await Promise.all([
       supabase.from('club_memberships').select('*', { count: 'exact', head: true })
         .eq('club_id', currentClubId).eq('status', 'approved'),
-      supabase.from('clubs').select('currency').eq('id', currentClubId).single(),
+      supabase.from('clubs').select('currency,annual_fee,monthly_fee').eq('id', currentClubId).single(),
       supabase.from('announcements').select('id,title,title_en,created_at')
         .eq('club_id', currentClubId).order('created_at', { ascending: false }).limit(3),
-      supabase.from('finance_transactions').select('type,amount').eq('club_id', currentClubId),
+      supabase.from('finance_transactions').select('type,amount,member_id,transaction_date').eq('club_id', currentClubId),
       supabase.from('recurring_meetings').select('*').eq('club_id', currentClubId).maybeSingle(),
       supabase.from('meeting_overrides').select('*').eq('club_id', currentClubId),
-      supabase.from('club_memberships').select('user_id').eq('club_id', currentClubId).eq('status', 'approved'),
+      supabase.from('club_memberships').select('user_id, fee_type').eq('club_id', currentClubId).eq('status', 'approved'),
+      supabase.from('club_memberships').select('fee_type')
+        .eq('club_id', currentClubId).eq('user_id', user?.id ?? '').eq('status', 'approved').maybeSingle(),
+      supabase.from('finance_transactions').select('amount,transaction_date')
+        .eq('club_id', currentClubId).eq('type', 'fee').eq('member_id', user?.id ?? ''),
     ])
 
     let balance = 0
@@ -109,6 +191,44 @@ export default function DashboardPage() {
     setStats({ members: memberCount ?? 0, balance })
     setAnnouncements(notices ?? [])
     if (club?.currency) setCurrency(club.currency)
+
+    // ── my fee status + club-wide fee progress (this calendar year) ─────────
+    const yr        = new Date().getFullYear()
+    const curMonth  = new Date().getMonth() + 1
+    const yrPrefix  = String(yr)
+    const feeTxnsYr = (txns ?? []).filter((t: any) => t.type === 'fee' && t.transaction_date?.startsWith(yrPrefix))
+
+    // my fee status
+    if (myMembership?.fee_type) {
+      const myTxnsYr = (myFeeTxns ?? []).filter((t: any) => t.transaction_date?.startsWith(yrPrefix))
+      const paidAmount = myTxnsYr.reduce((s: number, t: any) => s + (t.amount ?? 0), 0)
+      if (myMembership.fee_type === 'annual') {
+        setMyFeeStatus({
+          feeType: 'annual', annual: club?.annual_fee ?? 0, monthly: club?.monthly_fee ?? 0,
+          paid: myTxnsYr.length > 0, unpaidMonths: [], paidAmount,
+        })
+      } else {
+        const paidMonths   = new Set(myTxnsYr.map((t: any) => new Date(t.transaction_date).getMonth() + 1))
+        const unpaidMonths: number[] = []
+        for (let m = 1; m <= curMonth; m++) if (!paidMonths.has(m)) unpaidMonths.push(m)
+        setMyFeeStatus({
+          feeType: 'monthly', annual: club?.annual_fee ?? 0, monthly: club?.monthly_fee ?? 0,
+          paid: unpaidMonths.length === 0, unpaidMonths, paidAmount,
+        })
+      }
+    } else {
+      setMyFeeStatus(null)
+    }
+
+    // club-wide fee progress: count members who have paid at least once this year
+    const feeMembers = (allMems ?? []).filter((m: any) => m.fee_type) as any[]
+    if (feeMembers.length > 0) {
+      const paidIds = new Set(feeTxnsYr.filter((t: any) => t.member_id).map((t: any) => t.member_id))
+      const paid    = feeMembers.filter((m: any) => paidIds.has(m.user_id)).length
+      setFeeProgress({ paid, total: feeMembers.length })
+    } else {
+      setFeeProgress(null)
+    }
 
     // ── meeting status ──────────────────────────────────────────────────────
     const ym = getRelevantYM(pattern, overrides ?? [])
@@ -170,6 +290,9 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* ── 푸시 알림 활성화 배너 (default 상태에서만 자동 노출) ─── */}
+      <PushNotificationToggle variant="banner" />
 
       {/* ── 통계 ─────────────────────────────────────────────────── */}
       <div className="grid grid-cols-3 gap-2.5">
@@ -237,38 +360,82 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* 내 RSVP 상태 */}
-          <div className="px-4 pb-3">
-            <div className={`rounded-xl px-3 py-2.5 flex items-center justify-between ${
+          {/* 내 RSVP 상태 + 인라인 참석/불참 버튼 */}
+          <div className="px-4 pb-3 space-y-2">
+            {/* 현재 상태 라벨 */}
+            <div className={`rounded-xl px-3 py-2 flex items-center gap-2 ${
               myRsvp === 'attending' ? 'bg-green-900/20 border border-green-800/40'
               : myRsvp === 'absent'  ? 'bg-red-900/20 border border-red-800/40'
               :                        'bg-amber-900/15 border border-amber-700/30'
             }`}>
-              <div className="flex items-center gap-2">
+              {myRsvp === 'attending'
+                ? <CheckCircle size={15} style={{ color: 'var(--green-l)' }} />
+                : myRsvp === 'absent'
+                  ? <XCircle size={15} className="text-red-400" />
+                  : <HelpCircle size={15} className="text-amber-400" />}
+              <span className="text-sm font-medium flex-1" style={{ color: 'var(--text)' }}>
                 {myRsvp === 'attending'
-                  ? <CheckCircle size={15} style={{ color: 'var(--green-l)' }} />
+                  ? (ko ? '내 응답: 참석' : 'My RSVP: Attending')
                   : myRsvp === 'absent'
-                    ? <XCircle size={15} className="text-red-400" />
-                    : <HelpCircle size={15} className="text-amber-400" />}
-                <span className="text-sm font-medium" style={{ color: 'var(--text)' }}>
-                  {myRsvp === 'attending'
-                    ? (ko ? '내 응답: 참석' : 'My RSVP: Attending')
-                    : myRsvp === 'absent'
-                      ? (ko ? '내 응답: 불참' : 'My RSVP: Absent')
-                      : (ko ? '아직 응답 전입니다' : 'Not yet responded')}
-                </span>
-              </div>
-              <Link href="/meetings"
-                className={`text-xs font-semibold px-3 py-1.5 rounded-lg ${
-                  myRsvp ? '' : 'text-white'
-                }`}
-                style={myRsvp
-                  ? { color: 'var(--gold-l)', background: 'rgba(201,168,76,0.12)' }
-                  : { background: 'linear-gradient(135deg, #c9a84c, #a07830)', color: '#fff' }
-                }>
-                {myRsvp ? (ko ? '변경' : 'Change') : (ko ? '응답하기' : 'Respond')} →
-              </Link>
+                    ? (ko ? '내 응답: 불참' : 'My RSVP: Absent')
+                    : (ko ? '아직 응답 전입니다' : 'Not yet responded')}
+              </span>
+              {rsvpSubmitting && (
+                <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin opacity-60" />
+              )}
             </div>
+
+            {/* 참석 / 불참 버튼 (D-14 부터 활성) */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => submitRsvp('attending')}
+                disabled={rsvpSubmitting || !rsvpOpen}
+                className="py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 transition active:scale-[0.97]"
+                style={
+                  !rsvpOpen
+                    ? { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-3)', cursor: 'not-allowed' }
+                    : myRsvp === 'attending'
+                      ? { background: 'linear-gradient(135deg,#16a34a,#15803d)', color: '#fff', boxShadow: '0 2px 10px rgba(22,163,74,0.25)' }
+                      : { background: 'rgba(34,197,94,0.10)', border: '1px solid rgba(34,197,94,0.30)', color: '#86efac' }
+                }
+              >
+                <CheckCircle size={15} />
+                {ko ? '참석' : 'Attending'}
+              </button>
+              <button
+                type="button"
+                onClick={() => submitRsvp('absent')}
+                disabled={rsvpSubmitting || !rsvpOpen}
+                className="py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 transition active:scale-[0.97]"
+                style={
+                  !rsvpOpen
+                    ? { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-3)', cursor: 'not-allowed' }
+                    : myRsvp === 'absent'
+                      ? { background: 'linear-gradient(135deg,#dc2626,#991b1b)', color: '#fff', boxShadow: '0 2px 10px rgba(220,38,38,0.25)' }
+                      : { background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.30)', color: '#fca5a5' }
+                }
+              >
+                <XCircle size={15} />
+                {ko ? '불참' : 'Absent'}
+              </button>
+            </div>
+
+            {/* 비활성 안내: D-14 이후부터 활성화 */}
+            {!rsvpOpen && daysUntilMtg !== null && daysUntilMtg > 14 && (
+              <p className="text-[11px] text-center" style={{ color: 'var(--text-3)' }}>
+                {ko
+                  ? `D-${daysUntilMtg} · 모임 14일 전부터 응답할 수 있습니다 (D-${daysUntilMtg - 14}일 후 활성)`
+                  : `D-${daysUntilMtg} · RSVP opens 14 days before the meeting`}
+              </p>
+            )}
+
+            {rsvpError && (
+              <p className="text-[11px] px-3 py-1.5 rounded-lg"
+                style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.25)', color: '#fca5a5' }}>
+                ⚠ {rsvpError}
+              </p>
+            )}
           </div>
 
           {/* 조편성 결과 */}
@@ -298,6 +465,88 @@ export default function DashboardPage() {
               <Link href="/meetings" className="block mt-2 text-center text-[11px]" style={{ color: 'var(--gold-l)' }}>
                 {ko ? '정기모임 상세보기 →' : 'See full meeting details →'}
               </Link>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── 내 회비 상태 + 클럽 납부 진행 ─────────────────────────── */}
+      {(myFeeStatus || feeProgress) && (
+        <div className="glass-card rounded-2xl overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid var(--border)' }}>
+            <div className="flex items-center gap-2">
+              <CreditCard size={14} style={{ color: 'var(--gold-l)' }} />
+              <span className="text-sm font-bold" style={{ color: 'var(--text)' }}>
+                {ko ? `${new Date().getFullYear()}년 회비 현황` : `${new Date().getFullYear()} Fee Status`}
+              </span>
+            </div>
+            <Link href="/finance" className="text-xs flex items-center gap-0.5 font-medium" style={{ color: 'var(--gold-l)' }}>
+              {ko ? '재무현황' : 'Finance'} <ChevronRight size={12} />
+            </Link>
+          </div>
+
+          {/* 내 회비 상태 */}
+          {myFeeStatus && (
+            <div className="px-4 pt-3 pb-2">
+              <div className={`rounded-xl px-3 py-2.5 flex items-center justify-between ${
+                myFeeStatus.paid
+                  ? 'bg-green-900/20 border border-green-800/40'
+                  : 'bg-red-900/20 border border-red-800/40'
+              }`}>
+                <div className="flex items-center gap-2 min-w-0">
+                  {myFeeStatus.paid
+                    ? <CheckCircle size={15} style={{ color: 'var(--green-l)' }} />
+                    : <XCircle size={15} className="text-red-400" />}
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate" style={{ color: 'var(--text)' }}>
+                      {myFeeStatus.paid
+                        ? (ko
+                            ? (myFeeStatus.feeType === 'annual' ? '내 연회비: 납부완료' : '내 월회비: 모두 납부완료')
+                            : (myFeeStatus.feeType === 'annual' ? 'Annual fee: Paid' : 'Monthly fees: All paid'))
+                        : (ko
+                            ? (myFeeStatus.feeType === 'annual'
+                                ? '내 연회비: 미납'
+                                : `내 월회비 미납: ${myFeeStatus.unpaidMonths.join(',')}월`)
+                            : (myFeeStatus.feeType === 'annual'
+                                ? 'Annual fee: Unpaid'
+                                : `Unpaid months: ${myFeeStatus.unpaidMonths.join(',')}`))}
+                    </p>
+                    {myFeeStatus.paidAmount > 0 && (
+                      <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-3)' }}>
+                        {ko ? '납부 누계' : 'Paid total'}: {sym}{myFeeStatus.paidAmount.toLocaleString()}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <Link href="/finance"
+                  className="text-xs font-semibold px-3 py-1.5 rounded-lg flex-shrink-0"
+                  style={{ color: 'var(--gold-l)', background: 'rgba(201,168,76,0.12)' }}>
+                  {ko ? '계좌' : 'Pay'} →
+                </Link>
+              </div>
+            </div>
+          )}
+
+          {/* 클럽 전체 납부 진행 */}
+          {feeProgress && feeProgress.total > 0 && (
+            <div className="px-4 pb-4 pt-1">
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>
+                  {ko ? '클럽 전체 납부 진행' : 'Club-wide progress'}
+                </p>
+                <p className="text-[11px] font-semibold" style={{ color: 'var(--text-2)' }}>
+                  {feeProgress.paid} / {feeProgress.total}{ko ? '명' : ''}
+                </p>
+              </div>
+              <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--surface-2)' }}>
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${Math.round((feeProgress.paid / feeProgress.total) * 100)}%`,
+                    background: 'linear-gradient(135deg,#c9a84c,#a07830)',
+                  }}
+                />
+              </div>
             </div>
           )}
         </div>

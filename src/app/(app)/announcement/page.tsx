@@ -5,9 +5,11 @@ import { useAuthStore } from '@/stores/authStore'
 import {
   Bell, Plus, X, ChevronDown, ChevronUp,
   MapPin, Phone, FileText, Lock, Trash2, Calendar,
-  Sparkles, ClipboardPaste, CheckCircle2, Cake,
+  Sparkles, ClipboardPaste, CheckCircle2, Cake, Image as ImageIcon, Camera,
 } from 'lucide-react'
 import { OFFICER_ROLES } from '../members/page'
+import { clearAppBadge, markSeen } from '@/lib/appBadge'
+import { sendClubPush } from '@/lib/push'
 
 // ── 생일 유틸 ────────────────────────────────────────────────────────────
 interface BirthdayMember {
@@ -266,7 +268,9 @@ export default function AnnouncementPage() {
   const { currentClubId, user, lang, myClubs } = useAuthStore()
   const ko = lang === 'ko'
   const myRole = myClubs.find(c => c.id === currentClubId)?.role ?? 'member'
-  const canWrite = OFFICER_ROLES.includes(myRole)
+  const isOfficer = OFFICER_ROLES.includes(myRole)
+  // 공지사항: 임원 이상만 작성. 경조사: 모든 회원 등록 가능 (가족 행사 공유는 회원 자율).
+  const canWrite = true
 
   const [tab,        setTab]        = useState<'notice' | 'event'>('notice')
   const [notices,    setNotices]    = useState<Notice[]>([])
@@ -289,7 +293,13 @@ export default function AnnouncementPage() {
   const [parsing,      setParsing]      = useState(false)
   const [autoFilled,   setAutoFilled]   = useState<string[]>([])
   const [parseMsg,     setParseMsg]     = useState<string | null>(null)
-  const pasteRef = useRef<HTMLTextAreaElement>(null)
+  const [showAutoParse,setShowAutoParse]= useState<false | 'text' | 'url'>(false)
+  const [imgOcrLoading,setImgOcrLoading]= useState(false)
+  const [imgOcrError,  setImgOcrError]  = useState<string | null>(null)
+  const [urlInput,     setUrlInput]     = useState('')
+  const [urlLoading,   setUrlLoading]   = useState(false)
+  const pasteRef     = useRef<HTMLTextAreaElement>(null)
+  const imgInputRef  = useRef<HTMLInputElement>(null)
 
   function isAutoFilled(field: string) { return autoFilled.includes(field) }
 
@@ -316,6 +326,150 @@ export default function AnnouncementPage() {
       )
       setParsing(false)
     }, 400)
+  }
+
+  // ── 자동 입력 결과 적용 (이미지/URL OCR 공통) ──────────────────────
+  function applyAutoFillResult(data: any, sourceLabel: string) {
+    if (!data || (!data.title && !data.date && !data.person_name)) {
+      setImgOcrError(ko ? `${sourceLabel}에서 정보를 찾지 못했습니다.` : `Could not extract from ${sourceLabel}.`)
+      return false
+    }
+    const filled: string[] = []
+    const next = {
+      type:          data.type          || 'wedding',
+      title:         data.title         || '',
+      date:          data.date          || '',
+      time:          data.time          || '',
+      person_name:   data.person_name   || '',
+      location_name: data.location_name || '',
+      contact:       data.contact       || '',
+      raw_text:      eForm.raw_text,
+    }
+    if (next.title)         filled.push('title')
+    if (next.date)          filled.push('date')
+    if (next.time)          filled.push('time')
+    if (next.person_name)   filled.push('person_name')
+    if (next.location_name) filled.push('location_name')
+    if (next.contact)       filled.push('contact')
+    setEForm(next)
+    setAutoFilled(filled)
+    setParseMsg(`✅ ${sourceLabel}에서 ${filled.length}개 항목을 자동 입력했습니다.`)
+    return true
+  }
+
+  // ── 이미지 File → OCR 호출 (input/카메라/textarea-paste 공통) ─────
+  async function processImageFile(file: File) {
+    setImgOcrLoading(true); setImgOcrError(null); setParseMsg(null)
+    try {
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload  = () => resolve(reader.result as string)
+        reader.onerror = () => reject(new Error('read failed'))
+        reader.readAsDataURL(file)
+      })
+      const mediaType = (dataUrl.match(/^data:([^;]+);base64,/)?.[1] ?? 'image/jpeg') as
+        'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
+      const base64 = dataUrl.split(',')[1]
+      const res = await fetch('/api/ocr/event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: base64, mediaType, lang }),
+      })
+      const data = await res.json()
+      applyAutoFillResult(data, ko ? '이미지' : 'image')
+    } catch {
+      setImgOcrError(ko ? '이미지 분석 중 오류가 발생했습니다.' : 'Image analysis failed.')
+    } finally {
+      setImgOcrLoading(false)
+    }
+  }
+
+  function handleImageOcr(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    processImageFile(file)
+    if (imgInputRef.current) imgInputRef.current.value = ''  // allow re-upload of same file
+  }
+
+  // ── URL 분석 ───────────────────────────────────────────────────────
+  async function analyzeUrl() {
+    if (!urlInput.trim()) return
+    setUrlLoading(true); setImgOcrError(null); setParseMsg(null)
+    try {
+      const res = await fetch('/api/ocr/event-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: urlInput.trim(), lang }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setImgOcrError(data.error ?? (ko ? 'URL을 분석할 수 없습니다.' : 'Could not analyze URL.'))
+      } else {
+        applyAutoFillResult(data, 'URL')
+      }
+    } catch {
+      setImgOcrError(ko ? 'URL 요청 중 오류가 발생했습니다.' : 'URL request failed.')
+    } finally {
+      setUrlLoading(false)
+    }
+  }
+
+  // ── 클립보드에서 직접 붙여넣기 (텍스트 또는 이미지) ────────────────
+  async function pasteFromClipboard() {
+    setImgOcrError(null)
+    // 1) 이미지 클립보드 우선 시도 (Chrome/Edge 데스크톱 지원)
+    try {
+      // @ts-ignore — read는 일부 브라우저 미지원
+      if (navigator.clipboard?.read) {
+        const items: any[] = await (navigator.clipboard as any).read()
+        for (const it of items) {
+          const imgType = it.types.find((t: string) => t.startsWith('image/'))
+          if (imgType) {
+            const blob = await it.getType(imgType)
+            await processImageFile(new File([blob], 'pasted.png', { type: imgType }))
+            return
+          }
+        }
+      }
+    } catch { /* fall through to text */ }
+
+    // 2) 텍스트 클립보드
+    try {
+      const txt = await navigator.clipboard.readText()
+      if (!txt.trim()) {
+        setImgOcrError(ko ? '클립보드가 비어있습니다.' : 'Clipboard is empty.')
+        return
+      }
+      setShowAutoParse('text')
+      setPasteText(txt)
+      runParse(txt)
+    } catch {
+      setImgOcrError(ko
+        ? '클립보드 접근이 차단되었습니다. textarea를 길게 눌러 직접 붙여넣어 주세요.'
+        : 'Clipboard access blocked. Long-press the textarea to paste manually.')
+    }
+  }
+
+  // ── textarea 안에 이미지가 paste 되면 OCR로 라우팅 ─────────────────
+  function handleTextareaPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const items = e.clipboardData?.items
+    if (items) {
+      for (const item of items) {
+        if (item.type?.startsWith('image/')) {
+          const file = item.getAsFile()
+          if (file) {
+            e.preventDefault()
+            processImageFile(file)
+            return
+          }
+        }
+      }
+    }
+    // 텍스트 paste — 기본 동작 그대로 진행 + 50ms 후 자동분석
+    setTimeout(() => {
+      const val = pasteRef.current?.value ?? ''
+      if (val.trim()) runParse(val)
+    }, 50)
   }
 
   // ── 데이터 로드 ─────────────────────────────────────────────────
@@ -361,16 +515,31 @@ export default function AnnouncementPage() {
     setBirthdays(upcoming)
     setLoading(false)
   }
-  useEffect(() => { load() }, [currentClubId])
+  useEffect(() => {
+    load()
+    // 공지·경조사 페이지 방문 시 "확인됨"으로 표시 + 앱 배지 클리어
+    if (user?.id && currentClubId) {
+      markSeen(user.id, currentClubId)
+      clearAppBadge()
+    }
+  }, [currentClubId, user?.id])
 
   // ── 공지 등록 ────────────────────────────────────────────────────
   async function submitNotice() {
     if (!nForm.title.trim() || !currentClubId) return
     const supabase = createClient()
+    const title = nForm.title.trim()
+    const content = nForm.content.trim()
     await supabase.from('announcements').insert({
-      club_id: currentClubId, title: nForm.title.trim(),
-      content: nForm.content.trim(), author_id: user!.id,
+      club_id: currentClubId, title, content, author_id: user!.id,
     })
+    // 클럽 전체에 푸시 발송 (실패해도 등록은 성공)
+    sendClubPush({
+      club_id: currentClubId,
+      title: `📢 ${title}`,
+      body: content.slice(0, 100) || (ko ? '새 공지가 등록되었습니다' : 'New notice posted'),
+      url: '/announcement',
+    }).catch(() => {})
     setShowAdd(false); setNForm(emptyNForm); load()
   }
 
@@ -392,7 +561,20 @@ export default function AnnouncementPage() {
       description: raw,          // fallback for older columns
       created_by: user!.id,
     })
-    setShowAdd(false); setEForm(emptyEForm); setPasteText(''); setAutoFilled([]); setParseMsg(null); load()
+    // 클럽 전체에 푸시 발송 (실패해도 등록은 성공)
+    const eventTypeLabel = (eForm.type === 'wedding') ? '🎊 결혼'
+                         : (eForm.type === 'condolence') ? '🕊️ 부고'
+                         : (eForm.type === 'birth') ? '👶 출산'
+                         : (eForm.type === 'birthday') ? '🎂 생일'
+                         : (eForm.type === 'promotion') ? '🏆 승진'
+                         : '✨ 경조사'
+    sendClubPush({
+      club_id: currentClubId,
+      title: `${eventTypeLabel} ${eForm.title.trim()}`,
+      body: [eForm.person_name, eForm.date, eForm.location_name].filter(Boolean).join(' · '),
+      url: '/announcement',
+    }).catch(() => {})
+    setShowAdd(false); setEForm(emptyEForm); setPasteText(''); setAutoFilled([]); setParseMsg(null); setShowAutoParse(false); setUrlInput(''); setImgOcrError(null); load()
   }
 
   // ── 삭제 ─────────────────────────────────────────────────────────
@@ -425,16 +607,23 @@ export default function AnnouncementPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-lg font-bold text-white">{ko ? '공지 · 경조사' : 'Notices & Events'}</h1>
-          {!canWrite && (
+          {tab === 'notice' && !isOfficer && (
             <div className="flex items-center gap-1 mt-0.5">
               <Lock size={10} style={{ color: '#5a7a5a' }} />
               <p className="text-xs" style={{ color: '#5a7a5a' }}>
-                {ko ? '열람 전용 (임원 이상 작성 가능)' : 'View only — officers can post'}
+                {ko ? '공지사항: 열람 전용 (임원 이상 작성)' : 'Notices: view only — officers can post'}
+              </p>
+            </div>
+          )}
+          {tab === 'event' && (
+            <div className="flex items-center gap-1 mt-0.5">
+              <p className="text-xs" style={{ color: '#5a7a5a' }}>
+                {ko ? '경조사: 회원 누구나 등록 가능' : 'Events: any member can post'}
               </p>
             </div>
           )}
         </div>
-        {canWrite && (
+        {(tab === 'event' || isOfficer) && (
           <button onClick={() => setShowAdd(true)}
             className="flex items-center gap-1.5 text-white text-sm font-medium px-3 py-2 rounded-xl transition"
             style={{ background: 'linear-gradient(135deg,#16a34a,#15803d)', boxShadow: '0 4px 12px rgba(22,163,74,0.3)' }}>
@@ -719,12 +908,13 @@ export default function AnnouncementPage() {
       {showAdd && (
         <div className="fixed inset-0 flex items-end z-[200]" style={{ background: 'rgba(0,0,0,0.82)' }}
           onClick={() => setShowAdd(false)}>
-          <div className="w-full rounded-t-3xl p-5 space-y-4 animate-slide-up overflow-y-auto"
+          <div className="w-full rounded-t-3xl px-5 pt-5 space-y-4 animate-slide-up overflow-y-auto"
             style={{
               background: '#0a140a',
               border: '1px solid rgba(34,197,94,0.18)',
               borderBottom: 'none',
               maxHeight: '92dvh',
+              paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom))',
             }}
             onClick={e => e.stopPropagation()}>
 
@@ -781,7 +971,14 @@ export default function AnnouncementPage() {
             ) : (
               /* ── 경조사 폼 ────────────────────────────────────── */
               <>
-                {/* ━━━ 자동 분석 섹션 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+                <input
+                  ref={imgInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleImageOcr}
+                />
+                {/* ━━━ 자동 분석 박스 (textarea 기본 노출) ━━━━━━━━━━━━ */}
                 <div className="rounded-2xl overflow-hidden"
                   style={{ background: 'linear-gradient(135deg,rgba(139,92,246,0.1),rgba(6,13,6,0.95))', border: '1px solid rgba(139,92,246,0.25)' }}>
                   {/* 헤더 */}
@@ -790,73 +987,144 @@ export default function AnnouncementPage() {
                       style={{ background: 'rgba(139,92,246,0.2)' }}>
                       <Sparkles size={14} style={{ color: '#a78bfa' }} />
                     </div>
-                    <div>
+                    <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold text-white">
-                        {ko ? '📋 자동 분석 입력' : '📋 Auto-fill from Message'}
+                        {ko ? '📋 자동 입력' : '📋 Auto-fill'}
                       </p>
-                      <p className="text-[11px]" style={{ color: '#7c6faa' }}>
-                        {ko ? '청첩장·부고장을 붙여넣으면 모든 항목을 자동으로 채워드립니다'
-                            : 'Paste your invitation or notice — all fields will be filled automatically'}
+                      <p className="text-[11px] truncate" style={{ color: '#7c6faa' }}>
+                        {showAutoParse === 'url'
+                          ? (ko ? '카카오톡·문자에서 받은 링크 붙여넣기' : 'Paste the link')
+                          : (ko ? '아래 박스에 텍스트·사진을 붙여넣으면 자동 분석' : 'Paste text/image — auto-analyzed')}
                       </p>
                     </div>
                   </div>
 
-                  {/* 붙여넣기 영역 */}
-                  <div className="px-4 pb-3">
-                    <div className="relative">
-                      <textarea
-                        ref={pasteRef}
-                        rows={5}
-                        value={pasteText}
-                        onChange={e => { setPasteText(e.target.value); setParseMsg(null); setAutoFilled([]) }}
-                        onPaste={e => {
-                          // paste 이벤트 후 텍스트가 반영된 뒤 자동 분석 실행
-                          setTimeout(() => {
-                            const val = pasteRef.current?.value ?? ''
-                            if (val.trim()) runParse(val)
-                          }, 50)
-                        }}
-                        placeholder={ko
-                          ? `카카오톡·문자에서 받은 청첩장이나 부고장을 여기에 붙여넣으세요.\n──────────────────────\n결혼합니다\n신랑 홍 길 동 / 신부 김 영 희\n2026년 5월 1일 토요일 오전 11시\nOO웨딩홀 2층 다이아몬드홀\n문의: 010-1234-5678`
-                          : `Paste your wedding invitation or funeral notice here...\n──────────\nWe are getting married\nGildong & Younghee\nMay 1, 2026 at 11:00 AM`}
-                        className="w-full rounded-xl px-3.5 py-3 text-xs leading-relaxed resize-none"
-                        style={{
-                          background: 'rgba(0,0,0,0.3)',
-                          border: pasteText ? '1px solid rgba(139,92,246,0.4)' : '1px solid rgba(139,92,246,0.15)',
-                          color: '#d1c4e9',
-                          fontFamily: '"Noto Sans KR","Apple SD Gothic Neo",monospace',
-                          outline: 'none',
-                        }}
-                      />
-                      {pasteText && !parsing && (
-                        <button onClick={() => { setPasteText(''); setAutoFilled([]); setParseMsg(null) }}
-                          className="absolute right-2 top-2 w-5 h-5 rounded-full flex items-center justify-center"
-                          style={{ background: 'rgba(139,92,246,0.3)', color: '#a78bfa' }}>
-                          <X size={10} />
-                        </button>
-                      )}
-                    </div>
-
-                    {/* 분석 버튼 */}
+                  {/* 보조 액션: 사진 / URL 토글 */}
+                  <div className="px-4 pt-1 pb-2 flex gap-2">
                     <button
-                      onClick={() => runParse(pasteText)}
-                      disabled={!pasteText.trim() || parsing}
-                      className="w-full mt-2 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition disabled:opacity-40"
-                      style={{ background: pasteText.trim() ? 'linear-gradient(135deg,#7c3aed,#4c1d95)' : 'rgba(139,92,246,0.1)', color: '#e9d5ff' }}>
-                      {parsing ? (
+                      type="button"
+                      onClick={() => imgInputRef.current?.click()}
+                      disabled={imgOcrLoading}
+                      className="flex-1 py-2 rounded-lg flex items-center justify-center gap-1.5 text-xs font-medium transition disabled:opacity-50"
+                      style={{ background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', color: '#c4b5fd' }}
+                    >
+                      {imgOcrLoading ? (
                         <>
-                          <div className="w-4 h-4 border-2 border-purple-300 border-t-transparent rounded-full animate-spin" />
-                          {ko ? '분석 중...' : 'Analyzing...'}
+                          <div className="w-3 h-3 border-2 border-purple-300 border-t-transparent rounded-full animate-spin" />
+                          {ko ? '분석 중' : 'Analyzing'}
                         </>
                       ) : (
                         <>
-                          <ClipboardPaste size={15} />
-                          {ko ? '🔍 자동 분석하기' : '🔍 Auto-fill Fields'}
+                          <ImageIcon size={12} />
+                          {ko ? '사진 선택' : 'Pick Photo'}
                         </>
                       )}
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowAutoParse(showAutoParse === 'url' ? false : 'url')}
+                      className="flex-1 py-2 rounded-lg flex items-center justify-center gap-1.5 text-xs font-medium transition"
+                      style={
+                        showAutoParse === 'url'
+                          ? { background: 'rgba(139,92,246,0.4)', border: '1px solid rgba(139,92,246,0.6)', color: '#fff' }
+                          : { background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', color: '#c4b5fd' }
+                      }
+                    >
+                      <span className="text-[12px] leading-none">🌐</span>
+                      {ko ? (showAutoParse === 'url' ? 'URL 모드 끄기' : 'URL로 분석') : (showAutoParse === 'url' ? 'Cancel URL' : 'From URL')}
+                    </button>
+                  </div>
 
-                    {/* 결과 메시지 */}
+                  {/* 입력 영역: textarea 기본, URL 모드일 땐 URL input */}
+                  <div className="px-4 pb-3">
+                    {imgOcrError && (
+                      <p className="text-[11px] px-3 py-1.5 rounded-lg mb-2"
+                        style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.25)', color: '#fca5a5' }}>
+                        ⚠ {imgOcrError}
+                      </p>
+                    )}
+
+                    {showAutoParse === 'url' ? (
+                      <>
+                        <input
+                          type="url"
+                          autoFocus
+                          value={urlInput}
+                          onChange={e => setUrlInput(e.target.value)}
+                          onKeyDown={e => e.key === 'Enter' && analyzeUrl()}
+                          placeholder="https://mcard.kakao.com/..."
+                          className="w-full rounded-xl px-3.5 py-3 text-sm"
+                          style={{
+                            background: 'rgba(0,0,0,0.3)',
+                            border: '1px solid rgba(139,92,246,0.25)',
+                            color: '#e9d5ff', outline: 'none',
+                          }}
+                        />
+                        <button
+                          onClick={analyzeUrl}
+                          disabled={!urlInput.trim() || urlLoading}
+                          className="w-full mt-2 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition disabled:opacity-40"
+                          style={{ background: urlInput.trim() ? 'linear-gradient(135deg,#7c3aed,#4c1d95)' : 'rgba(139,92,246,0.1)', color: '#e9d5ff' }}
+                        >
+                          {urlLoading ? (
+                            <>
+                              <div className="w-4 h-4 border-2 border-purple-300 border-t-transparent rounded-full animate-spin" />
+                              {ko ? '불러오는 중...' : 'Loading...'}
+                            </>
+                          ) : (
+                            <>🔍 {ko ? 'URL 분석하기' : 'Analyze URL'}</>
+                          )}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <div className="relative">
+                          <textarea
+                            ref={pasteRef}
+                            rows={4}
+                            value={pasteText}
+                            onChange={e => { setPasteText(e.target.value); setParseMsg(null); setAutoFilled([]) }}
+                            onPaste={handleTextareaPaste}
+                            placeholder={ko
+                              ? '여기에 텍스트나 사진을 붙여넣으세요 (길게 눌러 붙여넣기)\n\n예) 카카오톡 청첩장 캡쳐 이미지\n예) 청첩장 텍스트'
+                              : 'Paste text or image here (long-press to paste)\n\nE.g. wedding invitation screenshot\nE.g. invitation text'}
+                            className="w-full rounded-xl px-3.5 py-3 text-xs leading-relaxed resize-none"
+                            style={{
+                              background: 'rgba(0,0,0,0.3)',
+                              border: pasteText ? '1px solid rgba(139,92,246,0.4)' : '1px solid rgba(139,92,246,0.15)',
+                              color: '#d1c4e9',
+                              fontFamily: '"Noto Sans KR","Apple SD Gothic Neo",monospace',
+                              outline: 'none',
+                            }}
+                          />
+                          {pasteText && !parsing && (
+                            <button onClick={() => { setPasteText(''); setAutoFilled([]); setParseMsg(null) }}
+                              className="absolute right-2 top-2 w-5 h-5 rounded-full flex items-center justify-center"
+                              style={{ background: 'rgba(139,92,246,0.3)', color: '#a78bfa' }}>
+                              <X size={10} />
+                            </button>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => runParse(pasteText)}
+                          disabled={!pasteText.trim() || parsing}
+                          className="w-full mt-2 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition disabled:opacity-40"
+                          style={{ background: pasteText.trim() ? 'linear-gradient(135deg,#7c3aed,#4c1d95)' : 'rgba(139,92,246,0.1)', color: '#e9d5ff' }}>
+                          {parsing ? (
+                            <>
+                              <div className="w-4 h-4 border-2 border-purple-300 border-t-transparent rounded-full animate-spin" />
+                              {ko ? '분석 중...' : 'Analyzing...'}
+                            </>
+                          ) : (
+                            <>
+                              <ClipboardPaste size={15} />
+                              {ko ? '🔍 자동 분석하기' : '🔍 Auto-fill Fields'}
+                            </>
+                          )}
+                        </button>
+                      </>
+                    )}
+
                     {parseMsg && (
                       <div className="mt-2 px-3 py-2 rounded-xl text-xs font-medium flex items-center gap-2"
                         style={{

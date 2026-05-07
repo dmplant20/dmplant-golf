@@ -7,17 +7,22 @@ import { useEffect, useState } from 'react'
 import { Download, X, Share } from 'lucide-react'
 
 export default function PwaInstallPrompt() {
-  const [show,  setShow]  = useState(false)
-  const [isIOS, setIsIOS] = useState(false)
-  const [done,  setDone]  = useState(false)
+  const [show,        setShow]        = useState(false)
+  const [isIOS,       setIsIOS]       = useState(false)
+  const [done,        setDone]        = useState(false)
+  const [androidManual,setAndroidManual] = useState(false)  // beforeinstallprompt 미발생 → 수동 안내
 
   useEffect(() => {
-    // 이미 PWA 모드로 실행 중이면 표시 안 함
-    const standalone =
+    // ── 진짜 standalone 여부 (display-mode 기준만 신뢰) ─────────────────
+    const realStandalone =
       window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as any).standalone === true ||
-      localStorage.getItem('pwa-installed') === '1'
-    if (standalone) return
+      (window.navigator as any).standalone === true
+
+    // 사용자가 PWA를 삭제하면 standalone false가 되지만 localStorage는 남음 → 자동 클리어
+    if (!realStandalone && localStorage.getItem('pwa-installed') === '1') {
+      localStorage.removeItem('pwa-installed')
+    }
+    if (realStandalone) return  // 진짜 PWA로 실행 중이면 배너 안 뜸
 
     const ua = navigator.userAgent
 
@@ -42,12 +47,23 @@ export default function PwaInstallPrompt() {
     }
 
     // 아직 이벤트가 오지 않았으면 커스텀 이벤트 대기
-    function onInstallable() { setShow(true) }
+    function onInstallable() { setShow(true); setAndroidManual(false) }
     function onInstalled()   { setShow(false); setDone(true) }
 
     window.addEventListener('pwa:installable', onInstallable)
     window.addEventListener('pwa:installed',   onInstalled)
+
+    // Chrome이 beforeinstallprompt를 안 보내는 경우(설치-삭제 후 90일 억제 등)
+    // 5초 후에도 prompt가 없으면 수동 안내 배너로 fallback
+    const fallbackTimer = setTimeout(() => {
+      if (!(window as any).__pwaPrompt && /Android|Chrome|SamsungBrowser/i.test(ua)) {
+        setAndroidManual(true)
+        setShow(true)
+      }
+    }, 5000)
+
     return () => {
+      clearTimeout(fallbackTimer)
       window.removeEventListener('pwa:installable', onInstallable)
       window.removeEventListener('pwa:installed',   onInstalled)
     }
@@ -118,22 +134,70 @@ export default function PwaInstallPrompt() {
     )
   }
 
-  // ── Android 설치 배너 ─────────────────────────────────────────────────
+  // ── Android 수동 안내 배너 (beforeinstallprompt 미발생 시) ─────────────
+  if (androidManual) {
+    return (
+      <div className="fixed bottom-24 left-4 right-4 z-[9999] animate-slide-up">
+        <div className="rounded-2xl p-4"
+          style={{
+            background: 'linear-gradient(135deg,rgba(201,168,76,0.15),rgba(12,22,12,0.97))',
+            border: '1px solid rgba(201,168,76,0.4)',
+            boxShadow: '0 8px 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(201,168,76,0.08)',
+          }}>
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg"
+              style={{ background: 'linear-gradient(135deg,#c9a84c,#6b4c1a)', boxShadow: '0 4px 16px rgba(201,168,76,0.35)' }}>
+              <span className="text-2xl">⛳</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-white font-bold text-sm">홈 화면에 앱 추가</p>
+              <p className="text-xs" style={{ color: '#a3956a' }}>Chrome 메뉴에서 설치할 수 있습니다</p>
+            </div>
+            <button onClick={() => dismiss('pwa-install-dismissed')}
+              className="text-gray-500 hover:text-gray-300 p-1 -mr-1 flex-shrink-0">
+              <X size={16} />
+            </button>
+          </div>
+          <div className="space-y-2 text-xs text-gray-300">
+            <div className="flex items-center gap-2.5 rounded-xl px-3 py-2.5"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <span className="text-base flex-shrink-0">⋮</span>
+              <span>Chrome 우상단 <strong className="text-white">⋮ (점 3개)</strong> 메뉴 탭</span>
+            </div>
+            <div className="flex items-center gap-2.5 rounded-xl px-3 py-2.5"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <span className="text-base flex-shrink-0">📲</span>
+              <span><strong className="text-white">"앱 설치"</strong> 또는 <strong className="text-white">"홈 화면에 추가"</strong> 선택</span>
+            </div>
+          </div>
+          <p className="text-center text-xs mt-3" style={{ color: '#a3956a' }}>
+            자세한 안내는{' '}
+            <a href="/install" className="underline underline-offset-2" style={{ color: '#e8c96d' }}>
+              설치 안내 페이지
+            </a>
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Android 자동 설치 배너 (beforeinstallprompt 발생 시) ───────────────
   return (
     <div className="fixed bottom-24 left-4 right-4 z-[9999] animate-slide-up">
       <div className="rounded-2xl p-4"
         style={{
-          background: 'linear-gradient(135deg,rgba(22,163,74,0.15),rgba(12,22,12,0.97))',
-          border: '1px solid rgba(34,197,94,0.4)',
-          boxShadow: '0 8px 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(34,197,94,0.08)',
+          background: 'linear-gradient(135deg,rgba(201,168,76,0.15),rgba(12,22,12,0.97))',
+          border: '1px solid rgba(201,168,76,0.4)',
+          boxShadow: '0 8px 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(201,168,76,0.08)',
         }}>
         <div className="flex items-center gap-3 mb-3">
-          <div className="w-11 h-11 bg-green-700 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-green-900/50">
+          <div className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg"
+            style={{ background: 'linear-gradient(135deg,#c9a84c,#6b4c1a)', boxShadow: '0 4px 16px rgba(201,168,76,0.35)' }}>
             <span className="text-2xl">⛳</span>
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-white font-bold text-sm">Inter Stellar GOLF</p>
-            <p className="text-xs" style={{ color: '#5a7a5a' }}>홈 화면에 앱 아이콘을 설치하세요</p>
+            <p className="text-xs" style={{ color: '#a3956a' }}>홈 화면에 앱 아이콘을 설치하세요</p>
           </div>
           <button onClick={() => dismiss('pwa-install-dismissed')}
             className="text-gray-500 hover:text-gray-300 p-1 -mr-1 flex-shrink-0">
@@ -142,7 +206,7 @@ export default function PwaInstallPrompt() {
         </div>
         <button onClick={handleInstall}
           className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white transition active:scale-[0.98]"
-          style={{ background: 'linear-gradient(135deg,#16a34a,#15803d)', boxShadow: '0 4px 16px rgba(22,163,74,0.35)' }}>
+          style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)', boxShadow: '0 4px 16px rgba(201,168,76,0.35)' }}>
           <Download size={15} />
           지금 설치 (홈 화면에 추가)
         </button>

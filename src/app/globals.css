@@ -59,12 +59,42 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overscroll-behavior: none;
+  position: relative;
 }
+
+/* ── Per-club background accent (data-club-theme on body) ─── */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  pointer-events: none; z-index: 0;
+  background: radial-gradient(80vw 60vh at 50% -10%, rgba(201,168,76,0.06), transparent 70%);
+  transition: background 0.5s ease;
+}
+body[data-club-theme="2"]::before {
+  background:
+    radial-gradient(80vw 60vh at 50% -10%, rgba(34,197,94,0.08), transparent 70%),
+    radial-gradient(60vw 50vh at 100% 100%, rgba(34,197,94,0.04), transparent 70%);
+}
+body[data-club-theme="3"]::before {
+  background:
+    radial-gradient(80vw 60vh at 50% -10%, rgba(96,165,250,0.07), transparent 70%),
+    radial-gradient(60vw 50vh at 0% 100%, rgba(96,165,250,0.04), transparent 70%);
+}
+body[data-club-theme="4"]::before {
+  background:
+    radial-gradient(80vw 60vh at 50% -10%, rgba(244,114,182,0.07), transparent 70%),
+    radial-gradient(60vw 50vh at 100% 80%, rgba(244,114,182,0.04), transparent 70%);
+}
+body > * { position: relative; z-index: 1; }
 
 /* ── Safe areas ─────────────────────────────────────────── */
 .safe-top    { padding-top:    env(safe-area-inset-top); }
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
 .bottom-nav  { padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem); }
+
+/* Bottom-sheet modal: 마지막 버튼이 home indicator에 가려지지 않도록
+   원래 padding-bottom (1.5rem ≈ p-6 / 1.25rem ≈ p-5)을 유지하면서 safe-area 추가 */
+.modal-sheet-pb { padding-bottom: calc(1.5rem + env(safe-area-inset-bottom)); }
 
 /* ── Scrollbar hide ─────────────────────────────────────── */
 .scroll-hide::-webkit-scrollbar { display: none; }
@@ -308,8 +338,10 @@ body {
    ANIMATIONS
 ══════════════════════════════════════════════════════════ */
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0); }
+  /* transform 제거: 애니메이션 끝나도 페이지 root가 containing block이 되어
+     fixed 모달이 viewport 전체를 못 덮는 버그 발생. opacity만 사용. */
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 @keyframes slideUp {
   from { transform: translateY(100%); }
