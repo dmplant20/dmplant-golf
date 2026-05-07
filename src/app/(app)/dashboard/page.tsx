@@ -268,34 +268,44 @@ export default function DashboardPage() {
   return (
     <div className="px-4 pt-5 pb-6 space-y-5 animate-fade-in">
 
-      {/* ── 히어로 카드 ─────────────────────────────────────────── */}
-      <div className="pro-card rounded-2xl p-5 relative overflow-hidden">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-sm mb-1" style={{ color: 'var(--text-3)' }}>{ko ? '안녕하세요 👋' : 'Welcome back 👋'}</p>
-            <h2 className="text-2xl font-extrabold leading-tight" style={{ color: 'var(--text)' }}>{user?.full_name ?? 'Golfer'}</h2>
-            {user?.full_name_en && <p className="text-sm mt-0.5" style={{ color: 'var(--text-2)' }}>{user.full_name_en}</p>}
-            <div className="flex items-center gap-2 mt-3 flex-wrap">
-              <span className={`badge border text-[11px] ${rc}`}>{roleName}</span>
+      {/* ── 히어로 카드 (3단 컴팩트) ─────────────────────────────── */}
+      <div className="pro-card rounded-2xl px-4 py-3 relative overflow-hidden">
+        <div className="flex items-center gap-3">
+          {/* 아바타 */}
+          <div
+            className="w-12 h-12 rounded-full flex items-center justify-center text-2xl flex-shrink-0"
+            style={{ background: 'var(--surface-2)', border: '1px solid var(--border-2)' }}
+          >
+            {user?.avatar_url
+              ? <img src={user.avatar_url} className="w-12 h-12 rounded-full object-cover" alt="" />
+              : '⛳'}
+          </div>
+          <div className="flex-1 min-w-0">
+            {/* 1단: 이름 + 영문 (한 줄) */}
+            <div className="flex items-baseline gap-2 flex-wrap">
+              <h2 className="text-lg font-extrabold leading-tight truncate" style={{ color: 'var(--text)' }}>
+                {ko ? '👋 ' : '👋 '}{user?.full_name ?? 'Golfer'}
+              </h2>
+              {user?.full_name_en && (
+                <span className="text-xs truncate" style={{ color: 'var(--text-3)' }}>
+                  {user.full_name_en}
+                </span>
+              )}
+            </div>
+            {/* 2단: 역할 뱃지들 + 3단: 클럽 — 모바일에선 한 줄에 묶고 공간 부족 시 자동 줄바꿈 */}
+            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+              <span className={`badge border text-[10px] ${rc}`}>{roleName}</span>
               {isAdmin && (
-                <span className="badge text-[11px]"
+                <span className="badge text-[10px]"
                   title="개발자 슈퍼관리자 — 모든 클럽 모든 권한"
                   style={{ background: 'rgba(244,63,94,0.15)', color: '#fb7185', border: '1px solid rgba(244,63,94,0.4)' }}>
                   🔧 DEV
                 </span>
               )}
-              <span className="badge text-[11px]" style={{ background: 'rgba(201,168,76,0.12)', color: 'var(--gold-l)', border: '1px solid rgba(201,168,76,0.28)' }}>
+              <span className="badge text-[10px]" style={{ background: 'rgba(201,168,76,0.12)', color: 'var(--gold-l)', border: '1px solid rgba(201,168,76,0.28)' }}>
                 ⛳ Inter Stellar GOLF
               </span>
             </div>
-          </div>
-          <div
-            className="w-14 h-14 rounded-full flex items-center justify-center text-3xl flex-shrink-0"
-            style={{ background: 'var(--surface-2)', border: '1px solid var(--border-2)' }}
-          >
-            {user?.avatar_url
-              ? <img src={user.avatar_url} className="w-14 h-14 rounded-full object-cover" alt="" />
-              : '⛳'}
           </div>
         </div>
       </div>
