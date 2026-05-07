@@ -908,17 +908,9 @@ export default function AnnouncementPage() {
            등록 바텀시트 모달
       ══════════════════════════════════════════════════════════ */}
       {showAdd && (
-        <div className="fixed inset-0 flex items-end z-[200]" style={{ background: 'rgba(0,0,0,0.82)' }}
-          onClick={() => setShowAdd(false)}>
-          <div className="w-full rounded-t-3xl animate-slide-up flex flex-col"
-            style={{
-              background: '#0a140a',
-              border: '1px solid rgba(34,197,94,0.18)',
-              borderBottom: 'none',
-              height: '92dvh',
-              maxHeight: '92dvh',
-            }}
-            onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[9999] flex flex-col"
+          style={{ background: '#0a140a' }}
+          onClick={e => e.stopPropagation()}>
 
             {/* ── 헤더 (고정 상단, 절대 안 잘림) ─────────────────────── */}
             <div className="px-5 pt-4 pb-3 flex-shrink-0" style={{ borderBottom: '1px solid rgba(34,197,94,0.08)' }}>
@@ -1311,7 +1303,6 @@ export default function AnnouncementPage() {
               )}
             </div>
           </div>
-        </div>
       )}
     </div>
   )
