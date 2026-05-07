@@ -932,14 +932,13 @@ export default function AnnouncementPage() {
            등록 바텀시트 모달
       ══════════════════════════════════════════════════════════ */}
       {showAdd && (
-        <div className="fixed inset-0 z-[9999]"
+        <div className="fixed inset-0 z-[9999] flex flex-col"
           style={{ background: '#0a140a' }}
           onClick={e => e.stopPropagation()}>
 
-            {/* ── 헤더 (absolute top, 절대 안 잘림) ─────────────────────── */}
-            <div className="absolute top-0 left-0 right-0 px-5 pt-4 pb-3 z-10"
+            {/* 헤더 — flex-shrink-0 (고정 상단) */}
+            <div className="flex-shrink-0 px-5 pt-4 pb-3"
               style={{
-                background: '#0a140a',
                 borderBottom: '1px solid rgba(34,197,94,0.08)',
                 paddingTop: 'calc(1rem + env(safe-area-inset-top))',
               }}>
@@ -958,12 +957,8 @@ export default function AnnouncementPage() {
               </div>
             </div>
 
-            {/* ── 스크롤 영역 (본문) — 헤더/푸터 사이 절대 위치 ──────── */}
-            <div className="absolute left-0 right-0 overflow-y-auto px-5 py-4 space-y-4"
-              style={{
-                top: 'calc(env(safe-area-inset-top) + 76px)',     // 헤더 높이
-                bottom: 'calc(env(safe-area-inset-bottom) + 76px)', // 푸터 높이
-              }}>
+            {/* 본문 — flex-1 + overflow-y-auto (가운데 스크롤 영역) */}
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0">
 
             {tab === 'notice' ? (
               /* ── 공지 폼 ──────────────────────────────────────── */
@@ -1343,13 +1338,13 @@ export default function AnnouncementPage() {
               </>
             )}
             </div>
-            {/* ── 푸터 (absolute bottom, 절대 안 잘림 + 무조건 보임) ── */}
-            <div className="absolute bottom-0 left-0 right-0 px-5 pt-3 flex gap-3 z-10"
+            {/* 푸터 — flex-shrink-0 (고정 하단, 절대 안 잘림) */}
+            <div className="flex-shrink-0 px-5 pt-3 flex gap-3"
               style={{
                 paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))',
-                borderTop: '1px solid rgba(34,197,94,0.20)',
+                borderTop: '1px solid rgba(34,197,94,0.25)',
                 background: '#0a140a',
-                boxShadow: '0 -8px 24px rgba(0,0,0,0.4)',
+                boxShadow: '0 -8px 24px rgba(0,0,0,0.5)',
               }}>
               <button onClick={() => setShowAdd(false)}
                 className="flex-1 py-3 rounded-xl text-sm font-medium"
