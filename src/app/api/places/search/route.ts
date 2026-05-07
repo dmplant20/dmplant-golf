@@ -10,12 +10,21 @@ export async function GET(req: NextRequest) {
 
   // ── 1. Google Places API (키가 유효한 경우 우선 사용) ─────────────────
   const googleKey = process.env.GOOGLE_PLACES_API_KEY
+  let googleDebug: { keyConfigured: boolean; status?: string; error_message?: string; results?: number } = {
+    keyConfigured: !!googleKey,
+  }
   if (googleKey) {
     try {
       const searchQuery = encodeURIComponent(`${q} ${near}`)
       const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${searchQuery}&language=ko&key=${googleKey}`
       const res  = await fetch(url, { cache: 'no-store' })
       const data = await res.json()
+      googleDebug = {
+        keyConfigured: true,
+        status: data.status,
+        error_message: data.error_message,
+        results: data.results?.length ?? 0,
+      }
 
       if (data.status === 'OK') {
         const results = (data.results ?? []).slice(0, 8).map((p: any) => ({
@@ -30,9 +39,10 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ results })
       }
       // Google 실패 시 Nominatim으로 폴백
-      console.warn('Google Places fallback to Nominatim:', data.status)
-    } catch (e) {
-      console.warn('Google Places error, falling back to Nominatim:', e)
+      console.warn('[places] Google fallback to Nominatim:', data.status, data.error_message)
+    } catch (e: any) {
+      googleDebug = { keyConfigured: true, status: 'fetch_error', error_message: e?.message }
+      console.warn('[places] Google fetch error, falling back to Nominatim:', e?.message)
     }
   }
 
@@ -67,9 +77,10 @@ export async function GET(req: NextRequest) {
       source:   'osm',
     }))
 
-    return NextResponse.json({ results })
-  } catch (err) {
+    // _debug 필드는 Google API 키 진단용 — 클라이언트에서 무시되지만 curl로 확인 가능
+    return NextResponse.json({ results, _debug: googleDebug })
+  } catch (err: any) {
     console.error('Nominatim error:', err)
-    return NextResponse.json({ results: [], error: 'search_failed' })
+    return NextResponse.json({ results: [], error: 'search_failed', _debug: googleDebug })
   }
 }
