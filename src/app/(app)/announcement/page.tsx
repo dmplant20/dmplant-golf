@@ -910,32 +910,35 @@ export default function AnnouncementPage() {
       {showAdd && (
         <div className="fixed inset-0 flex items-end z-[200]" style={{ background: 'rgba(0,0,0,0.82)' }}
           onClick={() => setShowAdd(false)}>
-          <div className="w-full rounded-t-3xl px-5 pt-5 space-y-4 animate-slide-up overflow-y-auto"
+          <div className="w-full rounded-t-3xl animate-slide-up flex flex-col"
             style={{
               background: '#0a140a',
               border: '1px solid rgba(34,197,94,0.18)',
               borderBottom: 'none',
+              height: '92dvh',
               maxHeight: '92dvh',
-              paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom))',
             }}
             onClick={e => e.stopPropagation()}>
 
-            {/* 핸들 */}
-            <div className="flex justify-center -mt-1 mb-0">
-              <div className="w-10 h-1 rounded-full" style={{ background: '#1a3a1a' }} />
+            {/* ── 헤더 (고정 상단, 절대 안 잘림) ─────────────────────── */}
+            <div className="px-5 pt-4 pb-3 flex-shrink-0" style={{ borderBottom: '1px solid rgba(34,197,94,0.08)' }}>
+              <div className="flex justify-center mb-3">
+                <div className="w-10 h-1 rounded-full" style={{ background: '#1a3a1a' }} />
+              </div>
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-bold text-white">
+                  {tab === 'notice' ? (ko ? '📢 공지 작성' : '📢 New Notice') : (ko ? '🎊 경조사 등록' : '🎊 Add Life Event')}
+                </h3>
+                <button onClick={() => setShowAdd(false)}
+                  className="w-8 h-8 rounded-xl flex items-center justify-center"
+                  style={{ background: 'rgba(255,255,255,0.05)', color: '#5a7a5a' }}>
+                  <X size={16} />
+                </button>
+              </div>
             </div>
 
-            {/* 모달 헤더 */}
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-white">
-                {tab === 'notice' ? (ko ? '📢 공지 작성' : '📢 New Notice') : (ko ? '🎊 경조사 등록' : '🎊 Add Life Event')}
-              </h3>
-              <button onClick={() => setShowAdd(false)}
-                className="w-8 h-8 rounded-xl flex items-center justify-center"
-                style={{ background: 'rgba(255,255,255,0.05)', color: '#5a7a5a' }}>
-                <X size={16} />
-              </button>
-            </div>
+            {/* ── 스크롤 영역 (본문) ─────────────────────────────── */}
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0">
 
             {tab === 'notice' ? (
               /* ── 공지 폼 ──────────────────────────────────────── */
@@ -957,19 +960,6 @@ export default function AnnouncementPage() {
                     onChange={e => setNForm(f => ({ ...f, content: e.target.value }))}
                     placeholder={ko ? NOTICE_PLACEHOLDER_KO : NOTICE_PLACEHOLDER_EN}
                     className="input-field resize-none text-sm leading-relaxed" />
-                </div>
-                {/* 푸터 버튼 — 모달 하단에 sticky로 항상 노출 */}
-                <div className="sticky bottom-0 -mx-5 px-5 pt-3 pb-1 flex gap-3"
-                  style={{ background: 'linear-gradient(to top, #0a140a 70%, rgba(10,20,10,0.95))', borderTop: '1px solid rgba(34,197,94,0.10)' }}>
-                  <button onClick={() => setShowAdd(false)}
-                    className="flex-1 py-3 rounded-xl text-sm font-medium"
-                    style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.15)', color: '#86efac' }}>
-                    {ko ? '취소' : 'Cancel'}
-                  </button>
-                  <button onClick={submitNotice} disabled={!nForm.title.trim()}
-                    className="flex-1 py-3 rounded-xl text-white text-sm font-semibold btn-primary disabled:opacity-50">
-                    {ko ? '공지 등록' : 'Post Notice'}
-                  </button>
                 </div>
               </>
             ) : (
@@ -1293,20 +1283,33 @@ export default function AnnouncementPage() {
                     {ko ? '원문이 자동 분석 텍스트로 저장됩니다.' : 'Original text will be saved from the analysis input.'}
                   </p>
                 )}
-
-                <div className="flex gap-3 pb-2">
-                  <button onClick={() => setShowAdd(false)}
-                    className="flex-1 py-3 rounded-xl text-sm font-medium"
-                    style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.15)', color: '#86efac' }}>
-                    {ko ? '취소' : 'Cancel'}
-                  </button>
-                  <button onClick={submitEvent} disabled={!eForm.title.trim() || !eForm.date}
-                    className="flex-1 py-3 rounded-xl text-white text-sm font-semibold btn-primary disabled:opacity-50">
-                    {ko ? '등록하기' : 'Register'}
-                  </button>
-                </div>
               </>
             )}
+            </div>
+            {/* ── 푸터 (고정 하단, 절대 안 잘림) ─────────────────────── */}
+            <div className="px-5 pt-3 flex-shrink-0 flex gap-3"
+              style={{
+                paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))',
+                borderTop: '1px solid rgba(34,197,94,0.12)',
+                background: '#0a140a',
+              }}>
+              <button onClick={() => setShowAdd(false)}
+                className="flex-1 py-3 rounded-xl text-sm font-medium"
+                style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.15)', color: '#86efac' }}>
+                {ko ? '취소' : 'Cancel'}
+              </button>
+              {tab === 'notice' ? (
+                <button onClick={submitNotice} disabled={!nForm.title.trim()}
+                  className="flex-1 py-3 rounded-xl text-white text-sm font-semibold btn-primary disabled:opacity-50">
+                  {ko ? '공지 등록' : 'Post Notice'}
+                </button>
+              ) : (
+                <button onClick={submitEvent} disabled={!eForm.title.trim() || !eForm.date}
+                  className="flex-1 py-3 rounded-xl text-white text-sm font-semibold btn-primary disabled:opacity-50">
+                  {ko ? '등록하기' : 'Register'}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
