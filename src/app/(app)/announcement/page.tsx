@@ -551,10 +551,13 @@ export default function AnnouncementPage() {
       location_url: locationUrl,
     })
     if (insertError) {
-      console.error('[notice insert]', insertError)
-      setSubmitError(`저장 실패: ${insertError.message}`)
+      // Supabase error 객체는 종종 enumerable이 아니라 console에 {}로 출력됨
+      // 명시적으로 모든 필드 추출
+      const errMsg = insertError.message || insertError.details || insertError.hint || insertError.code || JSON.stringify(insertError) || '알 수 없는 오류'
+      console.error('[notice insert]', { msg: insertError.message, code: insertError.code, details: insertError.details, hint: insertError.hint, raw: insertError })
+      setSubmitError(`저장 실패: ${errMsg}`)
       setSubmitting(false)
-      return  // 실패 시 모달 유지, 사용자에게 보여줌
+      return
     }
     // 푸시 발송 — 실패해도 공지 등록은 성공
     const pushBody = [content.slice(0, 80), locationName ? `📍 ${locationName}` : ''].filter(Boolean).join(' · ')
