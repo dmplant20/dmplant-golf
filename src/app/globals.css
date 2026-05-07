@@ -59,14 +59,16 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overscroll-behavior: none;
-  position: relative;
 }
 
 /* ── Per-club background accent (data-club-theme on body) ─── */
+/* z-index -1: 본문 콘텐츠 뒤에 깔리도록 → body > * 에 z-index 부여 불필요
+   (이전엔 body > * { z-index: 1 } 로 stacking context를 만들어서 fixed 모달이
+    layout root 안에 갇히는 버그가 있었음 — 제거) */
 body::before {
   content: '';
   position: fixed; inset: 0;
-  pointer-events: none; z-index: 0;
+  pointer-events: none; z-index: -1;
   background: radial-gradient(80vw 60vh at 50% -10%, rgba(201,168,76,0.06), transparent 70%);
   transition: background 0.5s ease;
 }
@@ -85,7 +87,6 @@ body[data-club-theme="4"]::before {
     radial-gradient(80vw 60vh at 50% -10%, rgba(244,114,182,0.07), transparent 70%),
     radial-gradient(60vw 50vh at 100% 80%, rgba(244,114,182,0.04), transparent 70%);
 }
-body > * { position: relative; z-index: 1; }
 
 /* ── Safe areas ─────────────────────────────────────────── */
 .safe-top    { padding-top:    env(safe-area-inset-top); }
