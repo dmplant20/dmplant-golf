@@ -394,19 +394,20 @@ export default function DashboardPage() {
               )}
             </div>
 
-            {/* 참석 / 불참 버튼 (D-14 부터 활성) */}
+            {/* 참석 / 불참 버튼 — 이미 선택된 쪽은 비활성, 반대쪽만 클릭해서 전환 */}
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => submitRsvp('attending')}
-                disabled={rsvpSubmitting || !rsvpOpen}
+                disabled={rsvpSubmitting || !rsvpOpen || myRsvp === 'attending'}
+                aria-pressed={myRsvp === 'attending'}
                 className="py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 transition active:scale-[0.97]"
                 style={
                   !rsvpOpen
                     ? { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-3)', cursor: 'not-allowed' }
                     : myRsvp === 'attending'
-                      ? { background: 'linear-gradient(135deg,#16a34a,#15803d)', color: '#fff', boxShadow: '0 2px 10px rgba(22,163,74,0.25)' }
-                      : { background: 'rgba(34,197,94,0.10)', border: '1px solid rgba(34,197,94,0.30)', color: '#86efac' }
+                      ? { background: 'linear-gradient(135deg,#16a34a,#15803d)', color: '#fff', boxShadow: '0 2px 10px rgba(22,163,74,0.25)', cursor: 'default' }
+                      : { background: 'rgba(34,197,94,0.10)', border: '1px solid rgba(34,197,94,0.30)', color: '#86efac', cursor: 'pointer' }
                 }
               >
                 <CheckCircle size={15} />
@@ -415,14 +416,15 @@ export default function DashboardPage() {
               <button
                 type="button"
                 onClick={() => submitRsvp('absent')}
-                disabled={rsvpSubmitting || !rsvpOpen}
+                disabled={rsvpSubmitting || !rsvpOpen || myRsvp === 'absent'}
+                aria-pressed={myRsvp === 'absent'}
                 className="py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 transition active:scale-[0.97]"
                 style={
                   !rsvpOpen
                     ? { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-3)', cursor: 'not-allowed' }
                     : myRsvp === 'absent'
-                      ? { background: 'linear-gradient(135deg,#dc2626,#991b1b)', color: '#fff', boxShadow: '0 2px 10px rgba(220,38,38,0.25)' }
-                      : { background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.30)', color: '#fca5a5' }
+                      ? { background: 'linear-gradient(135deg,#dc2626,#991b1b)', color: '#fff', boxShadow: '0 2px 10px rgba(220,38,38,0.25)', cursor: 'default' }
+                      : { background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.30)', color: '#fca5a5', cursor: 'pointer' }
                 }
               >
                 <XCircle size={15} />
