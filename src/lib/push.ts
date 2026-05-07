@@ -1,14 +1,27 @@
 // src/lib/push.ts
 // Web Push 클라이언트 헬퍼 — 권한 요청 + 구독 등록/해제 + 상태 조회
 
-const VAPID_PUBLIC = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? ''
+// 환경변수 값에 종종 따옴표/공백/개행이 섞여 들어와 atob가 실패함 → 정리
+const VAPID_PUBLIC = (process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? '')
+  .trim()
+  .replace(/^["']+|["']+$/g, '')   // 양끝 따옴표 제거
+  .replace(/\s+/g, '')              // 내부 공백/개행 제거
+
+// VAPID base64url 키는 보통 87자 (P-256 65 bytes → base64url)
+const VALID_B64URL = /^[A-Za-z0-9_-]+$/
 
 function urlBase64ToUint8Array(base64: string): Uint8Array {
+  if (!base64 || !VALID_B64URL.test(base64)) {
+    throw new Error('VAPID 공개 키 형식이 잘못되었습니다 (base64url이 아님)')
+  }
   const padding = '='.repeat((4 - base64.length % 4) % 4)
   const b64 = (base64 + padding).replace(/-/g, '+').replace(/_/g, '/')
-  const raw = atob(b64)
-  // 명시적 ArrayBuffer로 생성 — Uint8Array.from(...)이 광범위 타입을 반환해
-  // applicationServerKey의 BufferSource 타입과 호환되지 않는 문제 해결
+  let raw: string
+  try {
+    raw = atob(b64)
+  } catch {
+    throw new Error('VAPID 공개 키를 디코드할 수 없습니다 — Vercel 환경변수 값을 확인하세요')
+  }
   const bytes = new Uint8Array(raw.length)
   for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i)
   return bytes
