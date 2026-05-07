@@ -268,7 +268,7 @@ export default function DashboardPage() {
   return (
     <div className="px-4 pt-5 pb-6 space-y-5 animate-fade-in">
 
-      {/* ── 히어로 카드 (3단 컴팩트) ─────────────────────────────── */}
+      {/* ── 히어로 카드 (2단 미니멀) ─────────────────────────────── */}
       <div className="pro-card rounded-2xl px-4 py-3 relative overflow-hidden">
         <div className="flex items-center gap-3">
           {/* 아바타 */}
@@ -281,18 +281,23 @@ export default function DashboardPage() {
               : '⛳'}
           </div>
           <div className="flex-1 min-w-0">
-            {/* 1단: 이름 + 영문 (한 줄) */}
+            {/* 1단: 인사 + 한글 이름 + 영문 이름 */}
             <div className="flex items-baseline gap-2 flex-wrap">
-              <h2 className="text-lg font-extrabold leading-tight truncate" style={{ color: 'var(--text)' }}>
-                {ko ? '👋 ' : '👋 '}{user?.full_name ?? 'Golfer'}
+              <h2 className="text-lg font-semibold leading-tight tracking-tight"
+                style={{
+                  color: 'var(--text)',
+                  fontFamily: '"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",sans-serif',
+                  letterSpacing: '-0.01em',
+                }}>
+                <span className="mr-1">👋</span>{user?.full_name ?? 'Golfer'}
               </h2>
               {user?.full_name_en && (
-                <span className="text-xs truncate" style={{ color: 'var(--text-3)' }}>
+                <span className="text-sm truncate font-light" style={{ color: 'var(--text-2)' }}>
                   {user.full_name_en}
                 </span>
               )}
             </div>
-            {/* 2단: 역할 뱃지들 + 3단: 클럽 — 모바일에선 한 줄에 묶고 공간 부족 시 자동 줄바꿈 */}
+            {/* 2단: 역할 뱃지 + DEV (Inter Stellar 뱃지 제거) */}
             <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
               <span className={`badge border text-[10px] ${rc}`}>{roleName}</span>
               {isAdmin && (
@@ -302,9 +307,6 @@ export default function DashboardPage() {
                   🔧 DEV
                 </span>
               )}
-              <span className="badge text-[10px]" style={{ background: 'rgba(201,168,76,0.12)', color: 'var(--gold-l)', border: '1px solid rgba(201,168,76,0.28)' }}>
-                ⛳ Inter Stellar GOLF
-              </span>
             </div>
           </div>
         </div>
