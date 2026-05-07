@@ -8,6 +8,7 @@ import {
   Edit2, Upload, Building2, X, QrCode, Gift, AlertTriangle,
 } from 'lucide-react'
 import { OFFICER_ROLES } from '../members/page'
+import { isSuperAdmin } from '@/lib/superAdmin'
 
 const TYPE_LABELS: Record<string, [string, string]> = {
   fee:      ['회비', 'Fee'],
@@ -27,11 +28,12 @@ const CURRENCY_SYMBOL: Record<string, string> = { KRW: '₩', VND: '₫', IDR: '
 const INCOME_TYPES = ['fee', 'donation', 'fine', 'other']
 
 export default function FinancePage() {
-  const { currentClubId, lang, myClubs } = useAuthStore()
+  const { currentClubId, lang, myClubs, user } = useAuthStore()
   const ko = lang === 'ko'
   const myRole = myClubs.find((c) => c.id === currentClubId)?.role ?? 'member'
-  const canManage = ['president', 'secretary'].includes(myRole)
-  const isOfficer = OFFICER_ROLES.includes(myRole)
+  const isAdmin = isSuperAdmin(user)
+  const canManage = ['president', 'secretary'].includes(myRole) || isAdmin
+  const isOfficer = OFFICER_ROLES.includes(myRole) || isAdmin
 
   const [txns,         setTxns]         = useState<any[]>([])
   const [sponsorships, setSponsorships] = useState<any[]>([])

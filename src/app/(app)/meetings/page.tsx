@@ -13,6 +13,7 @@ import { useRouter } from 'next/navigation'
 import CourseSearchInput from '@/components/ui/CourseSearchInput'
 import PlaceSearchInput  from '@/components/ui/PlaceSearchInput'
 import MapEmbed          from '@/components/ui/MapEmbed'
+import { isSuperAdmin } from '@/lib/superAdmin'
 
 // ── push helpers ──────────────────────────────────────────────────────────
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
@@ -135,7 +136,8 @@ export default function MeetingsPage() {
   const { currentClubId, lang, myClubs, user } = useAuthStore()
   const ko = lang === 'ko'
   const myRole = myClubs.find(c => c.id === currentClubId)?.role ?? 'member'
-  const canManage = ['president', 'secretary'].includes(myRole)
+  const isAdmin = isSuperAdmin(user)
+  const canManage = ['president', 'secretary'].includes(myRole) || isAdmin
 
   const [pattern,     setPattern]     = useState<any>(null)
   const [overrides,   setOverrides]   = useState<any[]>([])

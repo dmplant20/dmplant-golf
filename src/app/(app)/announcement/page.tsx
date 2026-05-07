@@ -10,6 +10,7 @@ import {
 import { OFFICER_ROLES } from '../members/page'
 import { clearAppBadge, markSeen } from '@/lib/appBadge'
 import { sendClubPush } from '@/lib/push'
+import { isSuperAdmin } from '@/lib/superAdmin'
 
 // ── 생일 유틸 ────────────────────────────────────────────────────────────
 interface BirthdayMember {
@@ -268,7 +269,8 @@ export default function AnnouncementPage() {
   const { currentClubId, user, lang, myClubs } = useAuthStore()
   const ko = lang === 'ko'
   const myRole = myClubs.find(c => c.id === currentClubId)?.role ?? 'member'
-  const isOfficer = OFFICER_ROLES.includes(myRole)
+  const isAdmin = isSuperAdmin(user)
+  const isOfficer = OFFICER_ROLES.includes(myRole) || isAdmin
   // 공지사항: 임원 이상만 작성. 경조사: 모든 회원 등록 가능 (가족 행사 공유는 회원 자율).
   const canWrite = true
 

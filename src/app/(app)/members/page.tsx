@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores/authStore'
+import { isSuperAdmin } from '@/lib/superAdmin'
 import {
   UserCheck, Clock, UserX, Edit2, ShieldCheck, GaugeCircle,
   UserMinus, RotateCcw, AlertTriangle, History, Shield,
@@ -68,7 +69,8 @@ export default function MembersPage() {
   const ko       = lang === 'ko'
   const myMembership = myClubs.find(c => c.id === currentClubId)
   const myRole       = myMembership?.role ?? 'member'
-  const canManage    = ['president', 'secretary'].includes(myRole)
+  const isAdmin      = isSuperAdmin(user)
+  const canManage    = ['president', 'secretary'].includes(myRole) || isAdmin
 
   const [tab,           setTab]           = useState<'approved' | 'pending' | 'withdrawn' | 'log'>('approved')
   const [members,       setMembers]       = useState<any[]>([])

@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores/authStore'
 import { Plus, ChevronLeft, X, Upload, ImageIcon, Lock, Camera } from 'lucide-react'
 import { OFFICER_ROLES } from '../members/page'
+import { isSuperAdmin } from '@/lib/superAdmin'
 
 interface Album { id: string; title: string; cover_url?: string; created_at: string; photo_count?: number }
 interface AlbumPhoto { id: string; url: string; caption?: string; created_at: string; uploader?: any }
@@ -14,9 +15,10 @@ export default function AlbumPage() {
   const myRole = myClubs.find(c => c.id === currentClubId)?.role ?? 'member'
 
   // 권한 분리: 앨범 생성/삭제 = 회장·총무 / 사진 업로드 = 임원 이상 / 열람 = 전체
-  const canManageAlbum = ['president', 'secretary'].includes(myRole)
-  const canUploadPhoto = OFFICER_ROLES.includes(myRole)   // member 역할 제외
-  const isReadOnly     = !canUploadPhoto                   // 일반회원 = 열람 전용
+  const isAdmin = isSuperAdmin(user)
+  const canManageAlbum = ['president', 'secretary'].includes(myRole) || isAdmin
+  const canUploadPhoto = OFFICER_ROLES.includes(myRole) || isAdmin
+  const isReadOnly     = !canUploadPhoto
 
   const [albums,        setAlbums]        = useState<Album[]>([])
   const [selectedAlbum, setSelectedAlbum] = useState<Album | null>(null)

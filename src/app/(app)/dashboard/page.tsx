@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import PushNotificationToggle from '@/components/ui/PushNotificationToggle'
+import { isSuperAdmin } from '@/lib/superAdmin'
 
 // ── helpers ────────────────────────────────────────────────────────────────
 function getNthWeekday(year: number, month: number, week: number, dow: number): Date | null {
@@ -62,6 +63,7 @@ export default function DashboardPage() {
   const { currentClubId, user, lang, myClubs } = useAuthStore()
   const ko     = lang === 'ko'
   const myRole = myClubs.find(c => c.id === currentClubId)?.role ?? 'member'
+  const isAdmin = isSuperAdmin(user)
 
   // base stats
   const [stats,         setStats]         = useState({ members: 0, balance: 0 })
@@ -275,6 +277,13 @@ export default function DashboardPage() {
             {user?.full_name_en && <p className="text-sm mt-0.5" style={{ color: 'var(--text-2)' }}>{user.full_name_en}</p>}
             <div className="flex items-center gap-2 mt-3 flex-wrap">
               <span className={`badge border text-[11px] ${rc}`}>{roleName}</span>
+              {isAdmin && (
+                <span className="badge text-[11px]"
+                  title="개발자 슈퍼관리자 — 모든 클럽 모든 권한"
+                  style={{ background: 'rgba(244,63,94,0.15)', color: '#fb7185', border: '1px solid rgba(244,63,94,0.4)' }}>
+                  🔧 DEV
+                </span>
+              )}
               <span className="badge text-[11px]" style={{ background: 'rgba(201,168,76,0.12)', color: 'var(--gold-l)', border: '1px solid rgba(201,168,76,0.28)' }}>
                 ⛳ Inter Stellar GOLF
               </span>

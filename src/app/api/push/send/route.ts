@@ -3,6 +3,7 @@ import webpush from 'web-push'
 import { createServerClient } from '@supabase/ssr'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
+import { isSuperAdmin } from '@/lib/superAdmin'
 
 // VAPID 설정 — 키가 있을 때만 초기화 (빌드 시 크래시 방지)
 function initVapid() {
@@ -55,11 +56,12 @@ export async function POST(req: NextRequest) {
   const { club_id, title, body, url = '/' } = await req.json()
   if (!club_id || !title) return NextResponse.json({ error: 'club_id, title required' }, { status: 400 })
 
-  // 3. 발신자가 해당 클럽 임원인지 확인
+  // 3. 발신자가 해당 클럽 임원인지 또는 슈퍼관리자(개발자) 확인
   const { data: membership } = await anonSupa.from('club_memberships')
     .select('role').eq('club_id', club_id).eq('user_id', user.id).eq('status', 'approved').maybeSingle()
   const OFFICER_ROLES = ['president','vice_president','secretary','auditor','advisor','officer']
-  if (!membership || !OFFICER_ROLES.includes(membership.role)) {
+  const admin = isSuperAdmin(user)
+  if (!admin && (!membership || !OFFICER_ROLES.includes(membership.role))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

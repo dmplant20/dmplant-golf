@@ -9,6 +9,7 @@ import {
 import { useRouter } from 'next/navigation'
 import CourseSearchInput from '@/components/ui/CourseSearchInput'
 import PushNotificationToggle from '@/components/ui/PushNotificationToggle'
+import { isSuperAdmin } from '@/lib/superAdmin'
 
 // ── 골프장 폼 기본값 ──────────────────────────────────────────────────────
 const EMPTY_COURSE = {
@@ -33,10 +34,11 @@ const PROVINCES = [
 
 export default function SettingsPage() {
   const router = useRouter()
-  const { currentClubId, lang, myClubs, setMyClubs } = useAuthStore()
+  const { currentClubId, lang, myClubs, setMyClubs, user } = useAuthStore()
   const ko = lang === 'ko'
   const myRole = myClubs.find((c) => c.id === currentClubId)?.role ?? 'member'
-  const canManage = ['president', 'secretary'].includes(myRole)
+  const isAdmin = isSuperAdmin(user)
+  const canManage = ['president', 'secretary'].includes(myRole) || isAdmin
 
   // ── Club settings ─────────────────────────────────────────────────────
   const [club, setClub] = useState<any>(null)
