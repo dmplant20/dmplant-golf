@@ -299,6 +299,8 @@ export default function AnnouncementPage() {
   const [autoFilled,   setAutoFilled]   = useState<string[]>([])
   const [parseMsg,     setParseMsg]     = useState<string | null>(null)
   const [showAutoParse,setShowAutoParse]= useState<false | 'text' | 'url'>(false)
+  const [submitting,   setSubmitting]   = useState(false)
+  const [submitError,  setSubmitError]  = useState<string | null>(null)
   const [imgOcrLoading,setImgOcrLoading]= useState(false)
   const [imgOcrError,  setImgOcrError]  = useState<string | null>(null)
   const [urlInput,     setUrlInput]     = useState('')
@@ -532,39 +534,56 @@ export default function AnnouncementPage() {
   // ── 공지 등록 ────────────────────────────────────────────────────
   async function submitNotice() {
     if (!nForm.title.trim() || !currentClubId) return
+    setSubmitError(null)
+    setSubmitting(true)
     const supabase = createClient()
     const title = nForm.title.trim()
     const content = nForm.content.trim()
     const locationName = nForm.location_name.trim()
-    // place_id가 있으면 정확한 장소 URL, 없으면 텍스트 검색 URL
     const locationUrl = locationName
       ? (nForm.location_place_id
           ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationName)}&query_place_id=${nForm.location_place_id}`
           : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([locationName, nForm.location_address].filter(Boolean).join(' '))}`)
       : null
-    await supabase.from('announcements').insert({
+    const { error: insertError } = await supabase.from('announcements').insert({
       club_id: currentClubId, title, content, author_id: user!.id,
       location_name: locationName || null,
       location_url: locationUrl,
     })
-    // 클럽 전체에 푸시 발송 (실패해도 등록은 성공)
+    if (insertError) {
+      console.error('[notice insert]', insertError)
+      setSubmitError(`저장 실패: ${insertError.message}`)
+      setSubmitting(false)
+      return  // 실패 시 모달 유지, 사용자에게 보여줌
+    }
+    // 푸시 발송 — 실패해도 공지 등록은 성공
     const pushBody = [content.slice(0, 80), locationName ? `📍 ${locationName}` : ''].filter(Boolean).join(' · ')
-    sendClubPush({
-      club_id: currentClubId,
-      title: `📢 ${title}`,
-      body: pushBody || (ko ? '새 공지가 등록되었습니다' : 'New notice posted'),
-      url: '/announcement',
-    }).catch(() => {})
+    let pushResult = { sent: 0 }
+    try {
+      pushResult = await sendClubPush({
+        club_id: currentClubId,
+        title: `📢 ${title}`,
+        body: pushBody || (ko ? '새 공지가 등록되었습니다' : 'New notice posted'),
+        url: '/announcement',
+      })
+    } catch (e) {
+      console.error('[push send]', e)
+    }
+    setSubmitting(false)
     setShowAdd(false); setNForm(emptyNForm); load()
+    // 성공 toast (간단히 console + alert로 표시)
+    console.log(`[notice] saved. push sent to ${pushResult.sent} member(s)`)
   }
 
   // ── 경조사 등록 ──────────────────────────────────────────────────
   async function submitEvent() {
     if (!eForm.title.trim() || !eForm.date || !currentClubId) return
+    setSubmitError(null)
+    setSubmitting(true)
     const supabase = createClient()
     const eventDate = eForm.time ? `${eForm.date}T${eForm.time}:00` : eForm.date
     const raw = pasteText.trim() || eForm.raw_text.trim() || null
-    await supabase.from('events').insert({
+    const { error: insertError } = await supabase.from('events').insert({
       club_id: currentClubId,
       type: eForm.type,
       title: eForm.title.trim(),
@@ -573,23 +592,35 @@ export default function AnnouncementPage() {
       location_name: eForm.location_name.trim() || null,
       contact: eForm.contact.trim() || null,
       raw_text: raw,
-      description: raw,          // fallback for older columns
+      description: raw,
       created_by: user!.id,
     })
-    // 클럽 전체에 푸시 발송 (실패해도 등록은 성공)
+    if (insertError) {
+      console.error('[event insert]', insertError)
+      setSubmitError(`저장 실패: ${insertError.message}`)
+      setSubmitting(false)
+      return
+    }
     const eventTypeLabel = (eForm.type === 'wedding') ? '🎊 결혼'
                          : (eForm.type === 'condolence') ? '🕊️ 부고'
                          : (eForm.type === 'birth') ? '👶 출산'
                          : (eForm.type === 'birthday') ? '🎂 생일'
                          : (eForm.type === 'promotion') ? '🏆 승진'
                          : '✨ 경조사'
-    sendClubPush({
-      club_id: currentClubId,
-      title: `${eventTypeLabel} ${eForm.title.trim()}`,
-      body: [eForm.person_name, eForm.date, eForm.location_name].filter(Boolean).join(' · '),
-      url: '/announcement',
-    }).catch(() => {})
+    let pushResult = { sent: 0 }
+    try {
+      pushResult = await sendClubPush({
+        club_id: currentClubId,
+        title: `${eventTypeLabel} ${eForm.title.trim()}`,
+        body: [eForm.person_name, eForm.date, eForm.location_name].filter(Boolean).join(' · '),
+        url: '/announcement',
+      })
+    } catch (e) {
+      console.error('[push send]', e)
+    }
+    setSubmitting(false)
     setShowAdd(false); setEForm(emptyEForm); setPasteText(''); setAutoFilled([]); setParseMsg(null); setShowAutoParse(false); setUrlInput(''); setImgOcrError(null); load()
+    console.log(`[event] saved. push sent to ${pushResult.sent} member(s)`)
   }
 
   // ── 삭제 ─────────────────────────────────────────────────────────
@@ -1347,29 +1378,40 @@ export default function AnnouncementPage() {
             )}
             </div>
             {/* 푸터 — flex-shrink-0 (고정 하단, 절대 안 잘림) */}
-            <div className="flex-shrink-0 px-5 pt-3 flex gap-3"
+            <div className="flex-shrink-0 px-5 pt-3"
               style={{
                 paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))',
                 borderTop: '1px solid rgba(34,197,94,0.25)',
                 background: '#0a140a',
                 boxShadow: '0 -8px 24px rgba(0,0,0,0.5)',
               }}>
-              <button onClick={() => setShowAdd(false)}
-                className="flex-1 py-3 rounded-xl text-sm font-medium"
-                style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.15)', color: '#86efac' }}>
-                {ko ? '취소' : 'Cancel'}
-              </button>
-              {tab === 'notice' ? (
-                <button onClick={submitNotice} disabled={!nForm.title.trim()}
-                  className="flex-1 py-3 rounded-xl text-white text-sm font-semibold btn-primary disabled:opacity-50">
-                  {ko ? '공지 등록' : 'Post Notice'}
-                </button>
-              ) : (
-                <button onClick={submitEvent} disabled={!eForm.title.trim() || !eForm.date}
-                  className="flex-1 py-3 rounded-xl text-white text-sm font-semibold btn-primary disabled:opacity-50">
-                  {ko ? '등록하기' : 'Register'}
-                </button>
+              {/* 저장 에러 표시 */}
+              {submitError && (
+                <div className="mb-2 px-3 py-2 rounded-lg text-xs"
+                  style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)', color: '#fca5a5' }}>
+                  ⚠ {submitError}
+                </div>
               )}
+              <div className="flex gap-3">
+                <button onClick={() => setShowAdd(false)} disabled={submitting}
+                  className="flex-1 py-3 rounded-xl text-sm font-medium disabled:opacity-50"
+                  style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.15)', color: '#86efac' }}>
+                  {ko ? '취소' : 'Cancel'}
+                </button>
+                {tab === 'notice' ? (
+                  <button onClick={submitNotice} disabled={!nForm.title.trim() || submitting}
+                    className="flex-1 py-3 rounded-xl text-white text-sm font-semibold btn-primary disabled:opacity-50 flex items-center justify-center gap-2">
+                    {submitting && <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
+                    {submitting ? (ko ? '등록 중...' : 'Posting...') : (ko ? '공지 등록' : 'Post Notice')}
+                  </button>
+                ) : (
+                  <button onClick={submitEvent} disabled={!eForm.title.trim() || !eForm.date || submitting}
+                    className="flex-1 py-3 rounded-xl text-white text-sm font-semibold btn-primary disabled:opacity-50 flex items-center justify-center gap-2">
+                    {submitting && <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
+                    {submitting ? (ko ? '등록 중...' : 'Registering...') : (ko ? '등록하기' : 'Register')}
+                  </button>
+                )}
+              </div>
             </div>
           </div>,
         document.body
