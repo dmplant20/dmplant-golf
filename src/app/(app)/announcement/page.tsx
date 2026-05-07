@@ -11,6 +11,7 @@ import { OFFICER_ROLES } from '../members/page'
 import { clearAppBadge, markSeen } from '@/lib/appBadge'
 import { sendClubPush } from '@/lib/push'
 import { isSuperAdmin } from '@/lib/superAdmin'
+import PlaceSearchInput from '@/components/ui/PlaceSearchInput'
 
 // ── 생일 유틸 ────────────────────────────────────────────────────────────
 interface BirthdayMember {
@@ -286,7 +287,7 @@ export default function AnnouncementPage() {
   const [birthdays,  setBirthdays]  = useState<BirthdayMember[]>([])
 
   // ── 폼 상태 ─────────────────────────────────────────────────────
-  const emptyNForm = { title: '', content: '', location_name: '' }
+  const emptyNForm = { title: '', content: '', location_name: '', location_address: '', location_place_id: '', location_lat: null as number | null, location_lng: null as number | null }
   const emptyEForm = { type: 'wedding', title: '', date: '', time: '', person_name: '', location_name: '', contact: '', raw_text: '' }
   const [nForm, setNForm] = useState(emptyNForm)
   const [eForm, setEForm] = useState(emptyEForm)
@@ -534,8 +535,11 @@ export default function AnnouncementPage() {
     const title = nForm.title.trim()
     const content = nForm.content.trim()
     const locationName = nForm.location_name.trim()
+    // place_id가 있으면 정확한 장소 URL, 없으면 텍스트 검색 URL
     const locationUrl = locationName
-      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationName)}`
+      ? (nForm.location_place_id
+          ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationName)}&query_place_id=${nForm.location_place_id}`
+          : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([locationName, nForm.location_address].filter(Boolean).join(' '))}`)
       : null
     await supabase.from('announcements').insert({
       club_id: currentClubId, title, content, author_id: user!.id,
@@ -982,19 +986,35 @@ export default function AnnouncementPage() {
                     placeholder={ko ? NOTICE_PLACEHOLDER_KO : NOTICE_PLACEHOLDER_EN}
                     className="input-field resize-none text-sm leading-relaxed" />
                 </div>
-                {/* 장소 (선택) — 식사 장소·모임 장소 등 회원 길찾기 가능 */}
+                {/* 장소 (선택) — 구글 Places 검색 (베트남 호치민 기준), 회원 길찾기 가능 */}
                 <div>
                   <label className="text-xs font-semibold mb-1.5 block flex items-center gap-1" style={{ color: '#5a7a5a' }}>
                     <MapPin size={11} />
-                    {ko ? '장소 (선택)' : 'Location (optional)'}
+                    {ko ? '장소 (선택) — 검색 또는 직접 입력' : 'Location (optional) — search or type'}
                   </label>
-                  <input type="text" value={nForm.location_name}
-                    onChange={e => setNForm(f => ({ ...f, location_name: e.target.value }))}
-                    placeholder={ko ? '예: OO식당, 강남구 테헤란로 123' : 'e.g. Restaurant name, address'}
-                    className="input-field" />
-                  {nForm.location_name.trim() && (
+                  <PlaceSearchInput
+                    value={nForm.location_name}
+                    onChange={(v) => setNForm(f => ({ ...f, location_name: v, ...(v ? {} : { location_address: '', location_place_id: '', location_lat: null, location_lng: null }) }))}
+                    onSelect={(p) => setNForm(f => ({
+                      ...f,
+                      location_name: p.name,
+                      location_address: p.address ?? '',
+                      location_place_id: p.place_id ?? '',
+                      location_lat: p.lat,
+                      location_lng: p.lng,
+                    }))}
+                    placeholder={ko ? '식당·장소 검색 (예: 호호닭갈비)' : 'Search restaurants/places'}
+                    near="Ho Chi Minh City"
+                    useFixed
+                  />
+                  {nForm.location_address && (
+                    <p className="text-[11px] mt-1 px-1" style={{ color: '#86efac' }}>
+                      📍 {nForm.location_address}
+                    </p>
+                  )}
+                  {nForm.location_name.trim() && !nForm.location_address && (
                     <p className="text-[10px] mt-1 flex items-center gap-1" style={{ color: '#5a7a5a' }}>
-                      📍 {ko ? '회원이 탭하면 구글맵에서 길찾기 가능' : 'Members can tap to open in Google Maps'}
+                      💡 {ko ? '검색 결과에서 선택하면 정확한 주소가 저장됩니다' : 'Pick from search results for accurate address'}
                     </p>
                   )}
                 </div>

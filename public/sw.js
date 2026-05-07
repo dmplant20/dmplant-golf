@@ -1,6 +1,6 @@
 // ── 버전 관리 ─────────────────────────────────────────────────────────────
 // 배포할 때마다 이 값을 올리면 모든 설치된 앱이 강제 업데이트됨
-const APP_VERSION  = '2b2d6fb-modal-abs-footer-loc'
+const APP_VERSION  = '2b2d6fb-place-search-loc'
 const CACHE_NAME   = `is-golf-${APP_VERSION}`
 const STATIC_ASSETS = ['/', '/login', '/manifest.json']
 
