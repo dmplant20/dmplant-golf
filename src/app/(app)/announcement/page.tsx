@@ -953,12 +953,14 @@ export default function AnnouncementPage() {
                   <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#5a7a5a' }}>
                     {ko ? '내용' : 'Content'}
                   </label>
-                  <textarea rows={6} value={nForm.content}
+                  <textarea rows={4} value={nForm.content}
                     onChange={e => setNForm(f => ({ ...f, content: e.target.value }))}
                     placeholder={ko ? NOTICE_PLACEHOLDER_KO : NOTICE_PLACEHOLDER_EN}
                     className="input-field resize-none text-sm leading-relaxed" />
                 </div>
-                <div className="flex gap-3 pb-2">
+                {/* 푸터 버튼 — 모달 하단에 sticky로 항상 노출 */}
+                <div className="sticky bottom-0 -mx-5 px-5 pt-3 pb-1 flex gap-3"
+                  style={{ background: 'linear-gradient(to top, #0a140a 70%, rgba(10,20,10,0.95))', borderTop: '1px solid rgba(34,197,94,0.10)' }}>
                   <button onClick={() => setShowAdd(false)}
                     className="flex-1 py-3 rounded-xl text-sm font-medium"
                     style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.15)', color: '#86efac' }}>
