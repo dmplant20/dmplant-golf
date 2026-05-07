@@ -29,11 +29,18 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
 
 export type PushStatus = 'unsupported' | 'denied' | 'default' | 'subscribed'
 
+// VAPID 키 형식 사전 검증 — 환경변수 미설정/잘못된 값이면 푸시 기능 자체를 숨김
+function isValidVapidPublic(): boolean {
+  return Boolean(VAPID_PUBLIC) && VALID_B64URL.test(VAPID_PUBLIC) && VAPID_PUBLIC.length >= 80
+}
+
 export async function getPushStatus(): Promise<PushStatus> {
   if (typeof window === 'undefined') return 'unsupported'
   if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
     return 'unsupported'
   }
+  // VAPID 키 미설정/잘못됨 → 사용자에게 깨진 버튼 노출하지 않음
+  if (!isValidVapidPublic()) return 'unsupported'
   if (Notification.permission === 'denied') return 'denied'
   const reg = await navigator.serviceWorker.ready
   const sub = await reg.pushManager.getSubscription()
