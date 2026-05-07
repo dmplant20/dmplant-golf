@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores/authStore'
 import {
@@ -931,9 +932,16 @@ export default function AnnouncementPage() {
       {/* ══════════════════════════════════════════════════════════
            등록 바텀시트 모달
       ══════════════════════════════════════════════════════════ */}
-      {showAdd && (
-        <div className="fixed inset-0 z-[9999] flex flex-col"
-          style={{ background: '#0a140a' }}
+      {showAdd && typeof document !== 'undefined' && createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            top: 0, right: 0, bottom: 0, left: 0,
+            zIndex: 99999,
+            background: '#0a140a',
+            display: 'flex',
+            flexDirection: 'column',
+          }}
           onClick={e => e.stopPropagation()}>
 
             {/* 헤더 — flex-shrink-0 (고정 상단) */}
@@ -1363,7 +1371,8 @@ export default function AnnouncementPage() {
                 </button>
               )}
             </div>
-          </div>
+          </div>,
+        document.body
       )}
     </div>
   )
