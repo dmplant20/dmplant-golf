@@ -121,6 +121,12 @@ CREATE POLICY "mal_insert" ON member_activity_log FOR INSERT
   WITH CHECK (actor_id = auth.uid());
 
 -- ────────────────────────────────────────────────────────────────────────────
+-- announcements: 장소 추가 (모임/식사/행사 등 후 회원이 길찾기 가능)
+-- ────────────────────────────────────────────────────────────────────────────
+ALTER TABLE announcements ADD COLUMN IF NOT EXISTS location_name text;
+ALTER TABLE announcements ADD COLUMN IF NOT EXISTS location_url text;
+
+-- ────────────────────────────────────────────────────────────────────────────
 -- finance_transactions: 지출 분류 + 물품명 (경조사·상품·화환 등)
 -- ────────────────────────────────────────────────────────────────────────────
 ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS expense_category text;

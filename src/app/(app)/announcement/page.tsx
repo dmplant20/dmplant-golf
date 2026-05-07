@@ -256,6 +256,7 @@ const rawPlaceholder = (type: string, ko: boolean) => {
 interface Notice {
   id: string; title: string; title_en?: string
   content?: string; content_en?: string; created_at: string
+  location_name?: string | null; location_url?: string | null
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   users?: any
 }
@@ -285,7 +286,7 @@ export default function AnnouncementPage() {
   const [birthdays,  setBirthdays]  = useState<BirthdayMember[]>([])
 
   // ── 폼 상태 ─────────────────────────────────────────────────────
-  const emptyNForm = { title: '', content: '' }
+  const emptyNForm = { title: '', content: '', location_name: '' }
   const emptyEForm = { type: 'wedding', title: '', date: '', time: '', person_name: '', location_name: '', contact: '', raw_text: '' }
   const [nForm, setNForm] = useState(emptyNForm)
   const [eForm, setEForm] = useState(emptyEForm)
@@ -481,7 +482,7 @@ export default function AnnouncementPage() {
     const supabase = createClient()
     const [{ data: n }, { data: e }, { data: bdMembers }] = await Promise.all([
       supabase.from('announcements')
-        .select('id,title,title_en,content,content_en,created_at,users!author_id(full_name,full_name_en)')
+        .select('id,title,title_en,content,content_en,location_name,location_url,created_at,users!author_id(full_name,full_name_en)')
         .eq('club_id', currentClubId).order('created_at', { ascending: false }),
       supabase.from('events')
         .select('id,type,title,title_en,description,event_date,person_name,location_name,contact,raw_text')
@@ -532,14 +533,21 @@ export default function AnnouncementPage() {
     const supabase = createClient()
     const title = nForm.title.trim()
     const content = nForm.content.trim()
+    const locationName = nForm.location_name.trim()
+    const locationUrl = locationName
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationName)}`
+      : null
     await supabase.from('announcements').insert({
       club_id: currentClubId, title, content, author_id: user!.id,
+      location_name: locationName || null,
+      location_url: locationUrl,
     })
     // 클럽 전체에 푸시 발송 (실패해도 등록은 성공)
+    const pushBody = [content.slice(0, 80), locationName ? `📍 ${locationName}` : ''].filter(Boolean).join(' · ')
     sendClubPush({
       club_id: currentClubId,
       title: `📢 ${title}`,
-      body: content.slice(0, 100) || (ko ? '새 공지가 등록되었습니다' : 'New notice posted'),
+      body: pushBody || (ko ? '새 공지가 등록되었습니다' : 'New notice posted'),
       url: '/announcement',
     }).catch(() => {})
     setShowAdd(false); setNForm(emptyNForm); load()
@@ -783,6 +791,18 @@ export default function AnnouncementPage() {
                       {content}
                     </div>
                   )}
+                  {n.location_name && (
+                    <a
+                      href={n.location_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(n.location_name)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-3 flex items-center gap-2 px-3 py-2 rounded-xl text-xs transition active:scale-[0.98]"
+                      style={{ background: 'rgba(96,165,250,0.10)', border: '1px solid rgba(96,165,250,0.30)', color: '#93c5fd' }}>
+                      <MapPin size={13} />
+                      <span className="flex-1 font-medium truncate">{n.location_name}</span>
+                      <span className="text-[10px]" style={{ color: '#60a5fa' }}>{ko ? '구글맵 →' : 'Map →'}</span>
+                    </a>
+                  )}
                 </div>
               </div>
             )
@@ -908,12 +928,17 @@ export default function AnnouncementPage() {
            등록 바텀시트 모달
       ══════════════════════════════════════════════════════════ */}
       {showAdd && (
-        <div className="fixed inset-0 z-[9999] flex flex-col"
+        <div className="fixed inset-0 z-[9999]"
           style={{ background: '#0a140a' }}
           onClick={e => e.stopPropagation()}>
 
-            {/* ── 헤더 (고정 상단, 절대 안 잘림) ─────────────────────── */}
-            <div className="px-5 pt-4 pb-3 flex-shrink-0" style={{ borderBottom: '1px solid rgba(34,197,94,0.08)' }}>
+            {/* ── 헤더 (absolute top, 절대 안 잘림) ─────────────────────── */}
+            <div className="absolute top-0 left-0 right-0 px-5 pt-4 pb-3 z-10"
+              style={{
+                background: '#0a140a',
+                borderBottom: '1px solid rgba(34,197,94,0.08)',
+                paddingTop: 'calc(1rem + env(safe-area-inset-top))',
+              }}>
               <div className="flex justify-center mb-3">
                 <div className="w-10 h-1 rounded-full" style={{ background: '#1a3a1a' }} />
               </div>
@@ -929,8 +954,12 @@ export default function AnnouncementPage() {
               </div>
             </div>
 
-            {/* ── 스크롤 영역 (본문) ─────────────────────────────── */}
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0">
+            {/* ── 스크롤 영역 (본문) — 헤더/푸터 사이 절대 위치 ──────── */}
+            <div className="absolute left-0 right-0 overflow-y-auto px-5 py-4 space-y-4"
+              style={{
+                top: 'calc(env(safe-area-inset-top) + 76px)',     // 헤더 높이
+                bottom: 'calc(env(safe-area-inset-bottom) + 76px)', // 푸터 높이
+              }}>
 
             {tab === 'notice' ? (
               /* ── 공지 폼 ──────────────────────────────────────── */
@@ -952,6 +981,22 @@ export default function AnnouncementPage() {
                     onChange={e => setNForm(f => ({ ...f, content: e.target.value }))}
                     placeholder={ko ? NOTICE_PLACEHOLDER_KO : NOTICE_PLACEHOLDER_EN}
                     className="input-field resize-none text-sm leading-relaxed" />
+                </div>
+                {/* 장소 (선택) — 식사 장소·모임 장소 등 회원 길찾기 가능 */}
+                <div>
+                  <label className="text-xs font-semibold mb-1.5 block flex items-center gap-1" style={{ color: '#5a7a5a' }}>
+                    <MapPin size={11} />
+                    {ko ? '장소 (선택)' : 'Location (optional)'}
+                  </label>
+                  <input type="text" value={nForm.location_name}
+                    onChange={e => setNForm(f => ({ ...f, location_name: e.target.value }))}
+                    placeholder={ko ? '예: OO식당, 강남구 테헤란로 123' : 'e.g. Restaurant name, address'}
+                    className="input-field" />
+                  {nForm.location_name.trim() && (
+                    <p className="text-[10px] mt-1 flex items-center gap-1" style={{ color: '#5a7a5a' }}>
+                      📍 {ko ? '회원이 탭하면 구글맵에서 길찾기 가능' : 'Members can tap to open in Google Maps'}
+                    </p>
+                  )}
                 </div>
               </>
             ) : (
@@ -1278,12 +1323,13 @@ export default function AnnouncementPage() {
               </>
             )}
             </div>
-            {/* ── 푸터 (고정 하단, 절대 안 잘림) ─────────────────────── */}
-            <div className="px-5 pt-3 flex-shrink-0 flex gap-3"
+            {/* ── 푸터 (absolute bottom, 절대 안 잘림 + 무조건 보임) ── */}
+            <div className="absolute bottom-0 left-0 right-0 px-5 pt-3 flex gap-3 z-10"
               style={{
                 paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))',
-                borderTop: '1px solid rgba(34,197,94,0.12)',
+                borderTop: '1px solid rgba(34,197,94,0.20)',
                 background: '#0a140a',
+                boxShadow: '0 -8px 24px rgba(0,0,0,0.4)',
               }}>
               <button onClick={() => setShowAdd(false)}
                 className="flex-1 py-3 rounded-xl text-sm font-medium"
