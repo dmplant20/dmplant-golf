@@ -37,17 +37,25 @@ export async function GET(req: NextRequest) {
   }
 
   // ── 2. OpenStreetMap Nominatim (무료, API 키 불필요) ──────────────────
-  try {
-    const searchQuery = encodeURIComponent(`${q} ${near}`)
-    const url = `https://nominatim.openstreetmap.org/search?q=${searchQuery}&format=json&limit=8&addressdetails=1&accept-language=ko`
-    const res  = await fetch(url, {
+  // 1차: near 지역 우선 검색 → 0건이면 2차: 전 세계 검색 (한식 등 글로벌 매칭)
+  async function nominatim(query: string) {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=8&addressdetails=1&accept-language=ko`
+    const res = await fetch(url, {
       cache: 'no-store',
       headers: {
         'User-Agent': 'ISGolf/1.0 (golf club management; contact admin@isgolf.app)',
         'Accept-Language': 'ko,en',
       },
     })
-    const data: any[] = await res.json()
+    return (await res.json()) as any[]
+  }
+
+  try {
+    let data = await nominatim(`${q} ${near}`)
+    // near 지역에 없으면 전 세계 검색으로 fallback
+    if (data.length === 0) {
+      data = await nominatim(q)
+    }
 
     const results = data.slice(0, 8).map((p: any) => ({
       place_id: `osm_${p.osm_id}`,
