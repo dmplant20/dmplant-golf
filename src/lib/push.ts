@@ -7,7 +7,11 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
   const padding = '='.repeat((4 - base64.length % 4) % 4)
   const b64 = (base64 + padding).replace(/-/g, '+').replace(/_/g, '/')
   const raw = atob(b64)
-  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)))
+  // 명시적 ArrayBuffer로 생성 — Uint8Array.from(...)이 광범위 타입을 반환해
+  // applicationServerKey의 BufferSource 타입과 호환되지 않는 문제 해결
+  const bytes = new Uint8Array(raw.length)
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i)
+  return bytes
 }
 
 export type PushStatus = 'unsupported' | 'denied' | 'default' | 'subscribed'
@@ -46,7 +50,8 @@ export async function subscribePush(): Promise<{ ok: boolean; reason?: string }>
     try {
       sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC),
+        // TS 5.7+ Uint8Array<ArrayBufferLike> vs BufferSource 타입 mismatch 회피
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC) as BufferSource,
       })
     } catch (e: any) {
       return { ok: false, reason: e?.message ?? '구독 실패' }
