@@ -357,8 +357,7 @@ export default function FinancePage() {
         </div>
       </div>
 
-      {/* ━━ 회비 납부 현황 — 회장·총무·감사만 열람 가능 ━━━━━━━━━━━━━━━━━━━━━ */}
-      {canViewFinance && (
+      {/* ━━ 회비 납부 현황 — 모두 열람 가능, 미납자 명단은 임원만 ━━━━━━━━━━ */}
       <div className="glass-card rounded-2xl overflow-hidden">
         <button
           className="w-full px-4 py-3.5 flex items-center gap-3"
@@ -398,41 +397,51 @@ export default function FinancePage() {
                 </div>
               </div>
             )}
-            {/* 미납 — admin은 탭으로 납부확인 모달 오픈, 일반회원은 표시만 */}
+            {/* 미납 —
+                - 회장·총무·감사: 명단 표시 (canManage 는 탭으로 납부확인 모달)
+                - 일반 회원: 명수만 표시 (개인정보 보호) */}
             {unpaidMembers.length > 0 && (
               <div className="mt-2">
                 <p className="text-xs font-semibold mb-2" style={{ color: '#f87171' }}>
                   ❌ {ko ? `미납 (${unpaidMembers.length}명)` : `Unpaid (${unpaidMembers.length})`}
                 </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {unpaidMembers.map((m: any) => canManage ? (
-                    <button
-                      key={m.user_id}
-                      type="button"
-                      onClick={() => {
-                        setPayingMember(m)
-                        const defaultAmt = clubFees.annual || clubFees.monthly || 0
-                        setPayingAmount(defaultAmt ? String(defaultAmt) : '')
-                        setPayingDate(new Date().toISOString().split('T')[0])
-                      }}
-                      className="inline-flex flex-col items-start px-2.5 py-1.5 rounded-xl text-xs font-medium transition hover:opacity-80 active:scale-95"
-                      style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}
-                    >
-                      <span>{lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}</span>
-                      <span className="text-[10px] mt-0.5" style={{ color: '#fca5a5' }}>
-                        {ko ? '탭하여 납부확인' : 'Tap to confirm'}
+                {canViewFinance ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {unpaidMembers.map((m: any) => canManage ? (
+                      <button
+                        key={m.user_id}
+                        type="button"
+                        onClick={() => {
+                          setPayingMember(m)
+                          const defaultAmt = clubFees.annual || clubFees.monthly || 0
+                          setPayingAmount(defaultAmt ? String(defaultAmt) : '')
+                          setPayingDate(new Date().toISOString().split('T')[0])
+                        }}
+                        className="inline-flex flex-col items-start px-2.5 py-1.5 rounded-xl text-xs font-medium transition hover:opacity-80 active:scale-95"
+                        style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}
+                      >
+                        <span>{lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}</span>
+                        <span className="text-[10px] mt-0.5" style={{ color: '#fca5a5' }}>
+                          {ko ? '탭하여 납부확인' : 'Tap to confirm'}
+                        </span>
+                      </button>
+                    ) : (
+                      <span
+                        key={m.user_id}
+                        className="inline-flex items-center px-2.5 py-1.5 rounded-xl text-xs font-medium"
+                        style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}
+                      >
+                        {lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}
                       </span>
-                    </button>
-                  ) : (
-                    <span
-                      key={m.user_id}
-                      className="inline-flex items-center px-2.5 py-1.5 rounded-xl text-xs font-medium"
-                      style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}
-                    >
-                      {lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}
-                    </span>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs" style={{ color: '#fca5a5' }}>
+                    {ko
+                      ? `미납자 명단은 회장·총무·감사만 볼 수 있습니다.`
+                      : `Only president/secretary/auditor can see the unpaid list.`}
+                  </p>
+                )}
               </div>
             )}
             {paidMembers.length === 0 && unpaidMembers.length === 0 && (
@@ -441,7 +450,6 @@ export default function FinancePage() {
           </div>
         )}
       </div>
-      )}
 
       {/* ── 송금 정보 카드 ── */}
       {(payInfo || canManage) && (
