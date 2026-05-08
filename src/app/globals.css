@@ -357,6 +357,10 @@ body[data-club-theme="4"]::before {
   50%  { opacity: 1; }
   100% { opacity: 0.6; }
 }
+@keyframes pulse {
+  0%, 100% { opacity: 1;   transform: scale(1); }
+  50%      { opacity: 0.7; transform: scale(1.18); }
+}
 
 .animate-fade-in    { animation: fadeIn  0.2s ease both; }
 .animate-slide-up   { animation: slideUp 0.28s cubic-bezier(0.32,0.72,0,1) both; }

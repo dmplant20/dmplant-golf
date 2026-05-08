@@ -73,6 +73,28 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     document.body.setAttribute('data-club-theme', String(theme))
   }, [currentClubId])
 
+  // 접속 표시 — 본인 last_seen_at 갱신 (60초마다 + 탭 visible 전환 시)
+  useEffect(() => {
+    if (!user?.id) return
+    let cancelled = false
+    function ping() {
+      if (cancelled) return
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
+      fetch('/api/users/heartbeat', { method: 'POST' }).catch(() => {})
+    }
+    ping()
+    const id = setInterval(ping, 60_000)
+    function onWake() { if (document.visibilityState === 'visible') ping() }
+    document.addEventListener('visibilitychange', onWake)
+    window.addEventListener('focus', onWake)
+    return () => {
+      cancelled = true
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', onWake)
+      window.removeEventListener('focus', onWake)
+    }
+  }, [user?.id])
+
   // 앱 배지: 마지막 방문 이후 새로 올라온 공지/경조사 개수
   useEffect(() => {
     const userId = user?.id

@@ -98,7 +98,7 @@ export default function MembersPage() {
     const supabase = createClient()
     const [{ data: approved }, { data: pend }, { data: withdr }, { data: log }] = await Promise.all([
       supabase.from('club_memberships')
-        .select('*, users(full_name, full_name_en, name_abbr, avatar_url, phone)')
+        .select('*, users(full_name, full_name_en, name_abbr, avatar_url, phone, last_seen_at)')
         .eq('club_id', currentClubId).eq('status', 'approved'),
       supabase.from('club_memberships')
         .select('*, users(full_name, full_name_en, name_abbr, phone)')
@@ -314,11 +314,29 @@ export default function MembersPage() {
 
         /* ── 활성 회원 ── */
         <div className="space-y-2">
-          {members.map(m => (
+          {members.map(m => {
+            // 접속 표시: 마지막 활동이 3분 이내면 온라인
+            const lastSeen = m.users?.last_seen_at
+            const isOnline = lastSeen && (Date.now() - new Date(lastSeen).getTime()) < 3 * 60_000
+            return (
             <div key={m.id} className="glass-card rounded-2xl px-4 py-3 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg flex-shrink-0 overflow-hidden"
-                style={{ background: 'rgba(201,168,76,0.10)', border: '1px solid rgba(201,168,76,0.20)' }}>
-                {m.users?.avatar_url ? <img src={m.users.avatar_url} className="w-10 h-10 rounded-full object-cover" alt="" /> : '👤'}
+              <div className="relative w-10 h-10 flex-shrink-0">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg overflow-hidden"
+                  style={{ background: 'rgba(201,168,76,0.10)', border: '1px solid rgba(201,168,76,0.20)' }}>
+                  {m.users?.avatar_url ? <img src={m.users.avatar_url} className="w-10 h-10 rounded-full object-cover" alt="" /> : '👤'}
+                </div>
+                {/* 접속 중 표시 — 우하단 초록 점 (펄스) */}
+                {isOnline && (
+                  <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full"
+                    style={{
+                      background: '#22c55e',
+                      border: '2px solid #0a140a',
+                      boxShadow: '0 0 8px rgba(34,197,94,0.7)',
+                      animation: 'pulse 2s ease-in-out infinite',
+                    }}
+                    title={ko ? '접속 중' : 'Online'}
+                  />
+                )}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5 flex-wrap">
@@ -326,6 +344,12 @@ export default function MembersPage() {
                     {lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}
                   </span>
                   {m.users?.name_abbr && <span className="text-xs text-gray-500">({m.users.name_abbr})</span>}
+                  {isOnline && (
+                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
+                      style={{ background: 'rgba(34,197,94,0.15)', color: '#86efac', border: '1px solid rgba(34,197,94,0.35)' }}>
+                      {ko ? '접속중' : 'Online'}
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                   <RoleBadge role={m.role} ko={ko} />
@@ -374,7 +398,7 @@ export default function MembersPage() {
                 </div>
               )}
             </div>
-          ))}
+          )})}
           {members.length === 0 && (
             <div className="glass-card rounded-2xl p-8 text-center">
               <p className="text-gray-500">{ko ? '회원이 없습니다' : 'No members'}</p>

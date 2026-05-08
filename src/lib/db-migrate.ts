@@ -30,6 +30,10 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_date date;
 -- default true → 기존 사용자는 영향 없음. 관리자가 새로 만든 계정만 false 로 설정.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS password_set boolean DEFAULT true NOT NULL;
 
+-- 회원 접속 표시 (마지막 활동 시각)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at timestamptz;
+CREATE INDEX IF NOT EXISTS idx_users_last_seen_at ON users(last_seen_at DESC NULLS LAST);
+
 -- 생일 알림 기록 테이블 (없으면 생성)
 CREATE TABLE IF NOT EXISTS birthday_notifications (
   id          uuid DEFAULT gen_random_uuid() PRIMARY KEY,
