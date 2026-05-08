@@ -720,16 +720,18 @@ export default function FinancePage() {
         </div>
       )}
 
-      {/* 거래 내역 — 회비는 위 "회비 납부 현황" 섹션에서 별도로 정리되므로 여기서 제외 */}
+      {/* 거래 내역 — 개인 회비 납부(member_id 있는 fee)는 회비 납부 현황에서 정리되므로 제외.
+          단, 클럽 전체 적립회비처럼 member_id 없는 fee 는 여기에 표시 */}
       <div className="space-y-2">
         <h3 className="text-sm font-semibold text-gray-400 flex items-center gap-2">
           {ko ? '거래 내역' : 'Transactions'}
           <span className="text-[10px] font-normal" style={{ color: '#5a7a5a' }}>
-            {ko ? '(회비 제외)' : '(excl. fees)'}
+            {ko ? '(개인 회비 제외)' : '(excl. personal fees)'}
           </span>
         </h3>
         {(() => {
-          const visibleTxns = txns.filter(t => t.type !== 'fee')
+          // 회원별 회비 납부 (type=fee + member_id) 만 거래 내역에서 숨김
+          const visibleTxns = txns.filter(t => !(t.type === 'fee' && t.member_id))
           if (loading) return <p className="text-center text-gray-600 py-6">{ko ? '로딩 중...' : 'Loading...'}</p>
           if (visibleTxns.length === 0) return <p className="text-center text-gray-600 py-6">{ko ? '내역이 없습니다' : 'No transactions'}</p>
           return visibleTxns.map((t) => {
