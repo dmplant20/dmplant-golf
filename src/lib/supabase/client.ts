@@ -1,21 +1,12 @@
 import { createBrowserClient } from '@supabase/ssr'
 
-// 세션 유지 강화 — 로그아웃 전에는 절대 끊기지 않게
-//   persistSession: true   → localStorage 에 세션 저장 (브라우저 닫아도 유지)
-//   autoRefreshToken: true → 만료 전 백그라운드 자동 갱신 (2주 default refresh)
-//   detectSessionInUrl: true → magic-link / OAuth 콜백 자동 처리
+// @supabase/ssr 의 기본값을 사용:
+//   persistSession=true / autoRefreshToken=true / cookie 자동 동기화
+// 커스텀 storageKey · flowType=pkce 지정 금지 — verifyOtp(magiclink) 후
+// 서버 API 가 cookie 세션을 못 읽어 '로그인 필요' 401 발생함
 export function createClient() {
   return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-        storageKey: 'isgolf-supabase-auth',
-        flowType: 'pkce',
-      },
-    }
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
 }
