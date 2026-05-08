@@ -72,7 +72,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   });
 
   // ── 3) Service Worker + 자동 업데이트 ───────────────────────────────────
+  // dev (Turbopack) 에서는 SW 가 HMR 와 충돌 + /sw.js fetch 에러 → 프로덕션에서만 등록.
+  // 이미 등록된 dev 잔여물이 있으면 깔끔히 해제.
+  var __isProd = ${process.env.NODE_ENV === 'production' ? 'true' : 'false'};
   if (!('serviceWorker' in navigator)) return;
+  if (!__isProd) {
+    navigator.serviceWorker.getRegistrations().then(function(regs){
+      regs.forEach(function(r){ r.unregister(); });
+    }).catch(function(){});
+    return;
+  }
   window.addEventListener('load', function() {
     navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
       .then(function(reg) {

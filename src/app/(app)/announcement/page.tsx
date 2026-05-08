@@ -259,6 +259,8 @@ interface Notice {
   id: string; title: string; title_en?: string
   content?: string; content_en?: string; created_at: string
   location_name?: string | null; location_url?: string | null
+  is_meeting?: boolean
+  expires_at?: string | null
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   users?: any
 }
@@ -286,9 +288,20 @@ export default function AnnouncementPage() {
   const [expandedRaw,setExpandedRaw]= useState<string | null>(null)
   const [deleting,   setDeleting]   = useState<string | null>(null)
   const [birthdays,  setBirthdays]  = useState<BirthdayMember[]>([])
+  // 푸시 알림 클릭 → ?notice=<id> 또는 ?event=<id> 로 이 페이지에 도착
+  // 해당 카드를 자동으로 펼치고, 스크롤하고, 노란색 링으로 강조 (4초간)
+  const [highlightId, setHighlightId] = useState<string | null>(null)
 
   // ── 폼 상태 ─────────────────────────────────────────────────────
-  const emptyNForm = { title: '', content: '', location_name: '', location_address: '', location_place_id: '', location_lat: null as number | null, location_lng: null as number | null }
+  const emptyNForm = {
+    title: '', content: '',
+    location_name: '', location_address: '', location_place_id: '',
+    location_lat: null as number | null, location_lng: null as number | null,
+    // 정기모임 토글 + 관련 날짜 + 유지 기간 (날짜 없을 때)
+    is_meeting: false,
+    event_date: '',          // YYYY-MM-DD (선택)
+    retention_days: 7,       // 날짜 없으면 N일 후 자동 만료
+  }
   const emptyEForm = { type: 'wedding', title: '', date: '', time: '', person_name: '', location_name: '', contact: '', raw_text: '' }
   const [nForm, setNForm] = useState(emptyNForm)
   const [eForm, setEForm] = useState(emptyEForm)
@@ -486,8 +499,13 @@ export default function AnnouncementPage() {
     const supabase = createClient()
     const [{ data: n }, { data: e }, { data: bdMembers }] = await Promise.all([
       supabase.from('announcements')
-        .select('id,title,title_en,content,content_en,location_name,location_url,created_at,users!author_id(full_name,full_name_en)')
-        .eq('club_id', currentClubId).order('created_at', { ascending: false }),
+        .select('id,title,title_en,content,content_en,location_name,location_url,created_at,is_meeting,expires_at,users!author_id(full_name,full_name_en)')
+        .eq('club_id', currentClubId)
+        // 만료된 공지는 숨김 (expires_at 이 NULL 이면 영구)
+        .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
+        // 1순위: 정기모임 (is_meeting=true), 2순위: 최신순
+        .order('is_meeting', { ascending: false })
+        .order('created_at', { ascending: false }),
       supabase.from('events')
         .select('id,type,title,title_en,description,event_date,person_name,location_name,contact,raw_text')
         .eq('club_id', currentClubId).order('event_date', { ascending: true }),
@@ -531,6 +549,41 @@ export default function AnnouncementPage() {
     }
   }, [currentClubId, user?.id])
 
+  // ── 푸시 알림 → 딥링크 처리 ──────────────────────────────────────────
+  // /announcement?notice=<id>  또는  /announcement?event=<id>  로 진입 시
+  // 1) 해당 탭으로 전환  2) 카드 자동 펼치기  3) 스크롤 + 4초간 노란색 링
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const noticeId = params.get('notice')
+    const eventId  = params.get('event')
+    if (!noticeId && !eventId) return
+    if (noticeId) {
+      setTab('notice')
+      setExpandedId(noticeId)
+      setHighlightId(noticeId)
+    } else if (eventId) {
+      setTab('event')
+      setExpandedRaw(eventId)
+      setHighlightId(eventId)
+    }
+    // URL 정리 — 새로고침 시 다시 트리거되지 않도록
+    const url = new URL(window.location.href)
+    url.searchParams.delete('notice')
+    url.searchParams.delete('event')
+    window.history.replaceState({}, '', url.pathname + (url.search ? url.search : '') + url.hash)
+  }, [])
+
+  // 데이터가 로드된 뒤 실제 카드로 스크롤 + 4초 후 하이라이트 해제
+  useEffect(() => {
+    if (!highlightId) return
+    if (loading) return
+    const el = document.getElementById(`card-${highlightId}`)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    const t = setTimeout(() => setHighlightId(null), 4000)
+    return () => clearTimeout(t)
+  }, [highlightId, loading, notices, events, tab])
+
   // ── 공지 등록 ────────────────────────────────────────────────────
   async function submitNotice() {
     if (!nForm.title.trim() || !currentClubId) return
@@ -545,11 +598,30 @@ export default function AnnouncementPage() {
           ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationName)}&query_place_id=${nForm.location_place_id}`
           : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([locationName, nForm.location_address].filter(Boolean).join(' '))}`)
       : null
-    const { error: insertError } = await supabase.from('announcements').insert({
-      club_id: currentClubId, title, content, author_id: user!.id,
-      location_name: locationName || null,
-      location_url: locationUrl,
-    })
+    // ── 만료 시각 계산 ───────────────────────────────────────────
+    // 우선순위 1) event_date 입력됨 → 그날 23:59 까지 유지
+    //          2) 그 외엔 retention_days 후 만료 (기본 7일)
+    //          3) retention_days 가 0 이하 → 영구 (expires_at = null)
+    let expiresAt: string | null = null
+    if (nForm.event_date) {
+      const d = new Date(`${nForm.event_date}T23:59:59`)
+      expiresAt = d.toISOString()
+    } else if (nForm.retention_days > 0) {
+      const d = new Date()
+      d.setDate(d.getDate() + nForm.retention_days)
+      expiresAt = d.toISOString()
+    }
+    const { data: newNotice, error: insertError } = await supabase
+      .from('announcements')
+      .insert({
+        club_id: currentClubId, title, content, author_id: user!.id,
+        location_name: locationName || null,
+        location_url: locationUrl,
+        is_meeting: nForm.is_meeting,
+        expires_at: expiresAt,
+      })
+      .select('id')
+      .single()
     if (insertError) {
       // Supabase error 객체는 종종 enumerable이 아니라 console에 {}로 출력됨
       // 명시적으로 모든 필드 추출
@@ -559,7 +631,7 @@ export default function AnnouncementPage() {
       setSubmitting(false)
       return
     }
-    // 푸시 발송 — 실패해도 공지 등록은 성공
+    // 푸시 발송 — 실패해도 공지 등록은 성공. URL에 새 공지 id 포함 → 클릭 시 그 공지로 점프
     const pushBody = [content.slice(0, 80), locationName ? `📍 ${locationName}` : ''].filter(Boolean).join(' · ')
     let pushResult = { sent: 0 }
     try {
@@ -567,7 +639,7 @@ export default function AnnouncementPage() {
         club_id: currentClubId,
         title: `📢 ${title}`,
         body: pushBody || (ko ? '새 공지가 등록되었습니다' : 'New notice posted'),
-        url: '/announcement',
+        url: newNotice?.id ? `/announcement?notice=${newNotice.id}` : '/announcement',
       })
     } catch (e) {
       console.error('[push send]', e)
@@ -586,18 +658,22 @@ export default function AnnouncementPage() {
     const supabase = createClient()
     const eventDate = eForm.time ? `${eForm.date}T${eForm.time}:00` : eForm.date
     const raw = pasteText.trim() || eForm.raw_text.trim() || null
-    const { error: insertError } = await supabase.from('events').insert({
-      club_id: currentClubId,
-      type: eForm.type,
-      title: eForm.title.trim(),
-      event_date: eventDate,
-      person_name: eForm.person_name.trim() || null,
-      location_name: eForm.location_name.trim() || null,
-      contact: eForm.contact.trim() || null,
-      raw_text: raw,
-      description: raw,
-      created_by: user!.id,
-    })
+    const { data: newEvent, error: insertError } = await supabase
+      .from('events')
+      .insert({
+        club_id: currentClubId,
+        type: eForm.type,
+        title: eForm.title.trim(),
+        event_date: eventDate,
+        person_name: eForm.person_name.trim() || null,
+        location_name: eForm.location_name.trim() || null,
+        contact: eForm.contact.trim() || null,
+        raw_text: raw,
+        description: raw,
+        created_by: user!.id,
+      })
+      .select('id')
+      .single()
     if (insertError) {
       console.error('[event insert]', insertError)
       setSubmitError(`저장 실패: ${insertError.message}`)
@@ -616,7 +692,7 @@ export default function AnnouncementPage() {
         club_id: currentClubId,
         title: `${eventTypeLabel} ${eForm.title.trim()}`,
         body: [eForm.person_name, eForm.date, eForm.location_name].filter(Boolean).join(' · '),
-        url: '/announcement',
+        url: newEvent?.id ? `/announcement?event=${newEvent.id}` : '/announcement',
       })
     } catch (e) {
       console.error('[push send]', e)
@@ -792,16 +868,41 @@ export default function AnnouncementPage() {
             const content = ko ? n.content : (n.content_en || n.content)
             const u = Array.isArray(n.users) ? n.users[0] : n.users
             const author  = ko ? u?.full_name : (u?.full_name_en || u?.full_name)
+            const isHighlighted = highlightId === n.id
+            const hasContent = !!content
             return (
-              <div key={n.id} className="glass-card rounded-2xl overflow-hidden">
+              <div
+                key={n.id}
+                id={`card-${n.id}`}
+                className="glass-card rounded-2xl overflow-hidden transition-all"
+                style={isHighlighted ? {
+                  boxShadow: '0 0 0 3px #fbbf24, 0 0 32px rgba(251,191,36,0.55)',
+                  outline: 'none',
+                } : undefined}
+              >
                 <div className="px-4 py-4">
-                  <div className="flex items-start gap-3">
+                  <div
+                    className={`flex items-start gap-3 ${hasContent ? 'cursor-pointer select-none' : ''}`}
+                    onClick={hasContent ? () => setExpandedId(isOpen ? null : n.id) : undefined}
+                    role={hasContent ? 'button' : undefined}
+                    tabIndex={hasContent ? 0 : undefined}
+                  >
                     <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
                       style={{ background: 'rgba(167,139,250,0.15)' }}>
                       <Bell size={13} style={{ color: '#a78bfa' }} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-white font-semibold text-sm leading-snug">{title}</p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {n.is_meeting && (
+                          <span
+                            className="text-[10px] font-bold px-1.5 py-0.5 rounded-md flex-shrink-0"
+                            style={{ background: 'rgba(34,197,94,0.18)', color: '#86efac', border: '1px solid rgba(34,197,94,0.35)' }}
+                          >
+                            📌 {ko ? '정기모임' : 'Meeting'}
+                          </span>
+                        )}
+                        <p className="text-white font-semibold text-sm leading-snug">{title}</p>
+                      </div>
                       <p className="text-xs mt-1" style={{ color: '#5a7a5a' }}>
                         {author && <span>{author} · </span>}
                         {new Date(n.created_at).toLocaleDateString(ko ? 'ko-KR' : 'en-US', { month: 'short', day: 'numeric' })}
@@ -809,14 +910,17 @@ export default function AnnouncementPage() {
                     </div>
                     <div className="flex items-center gap-1.5 flex-shrink-0">
                       {canWrite && (
-                        <button onClick={() => delNotice(n.id)} disabled={deleting === n.id}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); delNotice(n.id) }}
+                          disabled={deleting === n.id}
                           className="w-7 h-7 rounded-lg flex items-center justify-center transition disabled:opacity-40"
                           style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171' }}>
                           <Trash2 size={12} />
                         </button>
                       )}
-                      {content && (
-                        <button onClick={() => setExpandedId(isOpen ? null : n.id)}
+                      {hasContent && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setExpandedId(isOpen ? null : n.id) }}
                           className="w-7 h-7 rounded-lg flex items-center justify-center transition"
                           style={{ background: 'rgba(34,197,94,0.1)', color: '#22c55e' }}>
                           {isOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -862,13 +966,19 @@ export default function AnnouncementPage() {
             const title   = ko ? ev.title : (ev.title_en || ev.title)
             const timeStr = fmtTime(ev.event_date)
             const rawBody = ev.raw_text || ev.description
+            const isHighlighted = highlightId === ev.id
 
             return (
-              <div key={ev.id} className="rounded-2xl overflow-hidden"
+              <div
+                key={ev.id}
+                id={`card-${ev.id}`}
+                className="rounded-2xl overflow-hidden transition-all"
                 style={{
                   background: `linear-gradient(160deg, ${et.theme.bg} 0%, rgba(6,13,6,0.97) 60%)`,
                   border: `1px solid ${et.theme.border}`,
-                  boxShadow: `0 4px 20px ${et.theme.glow}`,
+                  boxShadow: isHighlighted
+                    ? `0 0 0 3px #fbbf24, 0 0 32px rgba(251,191,36,0.55)`
+                    : `0 4px 20px ${et.theme.glow}`,
                 }}>
 
                 {/* 카드 본문 */}
@@ -1053,6 +1163,67 @@ export default function AnnouncementPage() {
                     <p className="text-[10px] mt-1 flex items-center gap-1" style={{ color: '#5a7a5a' }}>
                       💡 {ko ? '검색 결과에서 선택하면 정확한 주소가 저장됩니다' : 'Pick from search results for accurate address'}
                     </p>
+                  )}
+                </div>
+
+                {/* ━━━ 정기모임 우선순위 + 자동 만료 ━━━━━━━━━━━━━━━━━━ */}
+                <div className="rounded-xl p-3" style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)' }}>
+                  {/* 정기모임 토글 */}
+                  <label className="flex items-center justify-between cursor-pointer select-none">
+                    <span className="text-sm font-semibold" style={{ color: '#86efac' }}>
+                      📌 {ko ? '정기모임 안내' : 'Pin as regular meeting'}
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={nForm.is_meeting}
+                      onChange={e => setNForm(f => ({ ...f, is_meeting: e.target.checked }))}
+                      className="w-5 h-5 accent-green-500"
+                    />
+                  </label>
+                  <p className="text-[11px] mt-1" style={{ color: '#5a7a5a' }}>
+                    {ko ? '체크하면 공지 목록 맨 위에 고정됩니다' : 'Pinned to the top of the notices list'}
+                  </p>
+
+                  {/* 날짜 (선택) */}
+                  <div className="mt-3">
+                    <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#5a7a5a' }}>
+                      {ko ? '관련 날짜 (선택)' : 'Related date (optional)'}
+                    </label>
+                    <input
+                      type="date"
+                      value={nForm.event_date}
+                      onChange={e => setNForm(f => ({ ...f, event_date: e.target.value }))}
+                      className="input-field"
+                    />
+                    <p className="text-[11px] mt-1" style={{ color: '#5a7a5a' }}>
+                      {ko ? '날짜 입력 시 그 날까지 유지 후 자동 숨김' : 'Hidden automatically the day after'}
+                    </p>
+                  </div>
+
+                  {/* 유지 기간 — 날짜 없을 때만 활성 */}
+                  {!nForm.event_date && (
+                    <div className="mt-3">
+                      <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#5a7a5a' }}>
+                        {ko ? '유지 기간 (일)' : 'Retention (days)'}
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={0}
+                          max={365}
+                          value={nForm.retention_days}
+                          onChange={e => setNForm(f => ({ ...f, retention_days: Math.max(0, Number(e.target.value) || 0) }))}
+                          className="input-field flex-1"
+                          placeholder="7"
+                        />
+                        <span className="text-xs whitespace-nowrap" style={{ color: '#86efac' }}>
+                          {ko ? '일 후 자동 숨김' : 'days then hide'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] mt-1" style={{ color: '#5a7a5a' }}>
+                        {ko ? '0 = 영구 보관' : '0 = keep forever'}
+                      </p>
+                    </div>
                   )}
                 </div>
               </>

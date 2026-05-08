@@ -127,6 +127,16 @@ ALTER TABLE announcements ADD COLUMN IF NOT EXISTS location_name text;
 ALTER TABLE announcements ADD COLUMN IF NOT EXISTS location_url text;
 
 -- ────────────────────────────────────────────────────────────────────────────
+-- announcements: 정기모임 우선순위 + 자동 만료
+--   is_meeting=true → 목록 1순위
+--   expires_at 지나면 목록에서 자동 숨김 (실제 row 는 유지 — 감사 추적 목적)
+-- ────────────────────────────────────────────────────────────────────────────
+ALTER TABLE announcements ADD COLUMN IF NOT EXISTS is_meeting boolean DEFAULT false NOT NULL;
+ALTER TABLE announcements ADD COLUMN IF NOT EXISTS expires_at timestamptz;
+CREATE INDEX IF NOT EXISTS idx_announcements_club_pinned_recent
+  ON announcements(club_id, is_meeting DESC, created_at DESC);
+
+-- ────────────────────────────────────────────────────────────────────────────
 -- finance_transactions: 지출 분류 + 물품명 (경조사·상품·화환 등)
 -- ────────────────────────────────────────────────────────────────────────────
 ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS expense_category text;
@@ -142,6 +152,141 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_finance_transactions_expense_category
   ON finance_transactions(club_id, expense_category)
   WHERE expense_category IS NOT NULL;
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- chat: 1:1 DM + 그룹 채팅 (club_wide 외 추가 룸 타입)
+-- ────────────────────────────────────────────────────────────────────────────
+
+-- type 체크 확장: dm 추가
+DO $$ BEGIN
+  ALTER TABLE chat_rooms DROP CONSTRAINT IF EXISTS chat_rooms_type_check;
+  ALTER TABLE chat_rooms ADD CONSTRAINT chat_rooms_type_check
+    CHECK (type IN ('club_wide','group','tournament_group','dm'));
+EXCEPTION WHEN others THEN NULL;
+END $$;
+
+-- 룸 메타: 작성자 + 마지막 메시지 캐시 (목록 정렬·미리보기용)
+ALTER TABLE chat_rooms ADD COLUMN IF NOT EXISTS created_by uuid REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE chat_rooms ADD COLUMN IF NOT EXISTS last_message_at timestamptz;
+ALTER TABLE chat_rooms ADD COLUMN IF NOT EXISTS last_message_preview text;
+
+-- chat_messages: 첨부파일 (사진·파일)
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS attachment_url   text;
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS attachment_type  text;
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS attachment_name  text;
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS attachment_size  int;
+
+-- 첨부만 있고 텍스트 없을 때 허용
+DO $$ BEGIN
+  ALTER TABLE chat_messages ALTER COLUMN content DROP NOT NULL;
+EXCEPTION WHEN others THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE chat_messages DROP CONSTRAINT IF EXISTS chat_messages_attachment_type_check;
+  ALTER TABLE chat_messages ADD CONSTRAINT chat_messages_attachment_type_check
+    CHECK (attachment_type IS NULL OR attachment_type IN ('image','file'));
+EXCEPTION WHEN others THEN NULL;
+END $$;
+
+-- DM·group 참가자 테이블 (club_wide 는 club_memberships 로 대체)
+CREATE TABLE IF NOT EXISTS chat_room_members (
+  room_id      uuid REFERENCES chat_rooms(id) ON DELETE CASCADE NOT NULL,
+  user_id      uuid REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+  joined_at    timestamptz DEFAULT now() NOT NULL,
+  last_read_at timestamptz,
+  PRIMARY KEY (room_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_chat_room_members_user ON chat_room_members(user_id);
+
+-- chat_messages 발송 시 룸의 last_message_* 자동 갱신 (목록 정렬용)
+CREATE OR REPLACE FUNCTION chat_room_touch_last_message()
+RETURNS trigger AS $$
+BEGIN
+  UPDATE chat_rooms
+     SET last_message_at = NEW.created_at,
+         last_message_preview = LEFT(NEW.content, 80)
+   WHERE id = NEW.room_id;
+  RETURN NEW;
+END
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_chat_room_touch ON chat_messages;
+CREATE TRIGGER trg_chat_room_touch
+AFTER INSERT ON chat_messages
+FOR EACH ROW EXECUTE FUNCTION chat_room_touch_last_message();
+
+-- RLS — chat_room_members 본인이 속한 룸 멤버만 조회 가능
+ALTER TABLE chat_room_members ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "crm_select" ON chat_room_members;
+CREATE POLICY "crm_select" ON chat_room_members FOR SELECT
+  USING (
+    user_id = auth.uid()
+    OR EXISTS (
+      SELECT 1 FROM chat_room_members crm
+      WHERE crm.room_id = chat_room_members.room_id AND crm.user_id = auth.uid()
+    )
+  );
+DROP POLICY IF EXISTS "crm_update_self" ON chat_room_members;
+CREATE POLICY "crm_update_self" ON chat_room_members FOR UPDATE
+  USING (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid());
+
+-- chat_rooms RLS — DM·group 룸은 멤버만, club_wide 는 클럽 멤버만
+ALTER TABLE chat_rooms ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "cr_select_member" ON chat_rooms;
+CREATE POLICY "cr_select_member" ON chat_rooms FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM chat_room_members
+      WHERE room_id = chat_rooms.id AND user_id = auth.uid()
+    )
+    OR (
+      type = 'club_wide' AND EXISTS (
+        SELECT 1 FROM club_memberships
+        WHERE club_id = chat_rooms.club_id
+          AND user_id = auth.uid()
+          AND status = 'approved'
+      )
+    )
+  );
+
+-- chat_messages RLS — 룸에 접근 가능하면 메시지도 가능
+ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "cm_select_member" ON chat_messages;
+CREATE POLICY "cm_select_member" ON chat_messages FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM chat_room_members
+      WHERE room_id = chat_messages.room_id AND user_id = auth.uid()
+    )
+    OR EXISTS (
+      SELECT 1 FROM chat_rooms cr
+      JOIN club_memberships cm ON cm.club_id = cr.club_id
+      WHERE cr.id = chat_messages.room_id
+        AND cr.type = 'club_wide'
+        AND cm.user_id = auth.uid()
+        AND cm.status = 'approved'
+    )
+  );
+DROP POLICY IF EXISTS "cm_insert_member" ON chat_messages;
+CREATE POLICY "cm_insert_member" ON chat_messages FOR INSERT
+  WITH CHECK (
+    user_id = auth.uid() AND (
+      EXISTS (
+        SELECT 1 FROM chat_room_members
+        WHERE room_id = chat_messages.room_id AND user_id = auth.uid()
+      )
+      OR EXISTS (
+        SELECT 1 FROM chat_rooms cr
+        JOIN club_memberships cm ON cm.club_id = cr.club_id
+        WHERE cr.id = chat_messages.room_id
+          AND cr.type = 'club_wide'
+          AND cm.user_id = auth.uid()
+          AND cm.status = 'approved'
+      )
+    )
+  );
 `
 
 export async function autoMigrate(): Promise<void> {

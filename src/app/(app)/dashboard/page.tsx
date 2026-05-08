@@ -262,8 +262,13 @@ export default function DashboardPage() {
   const rc       = ROLE_COLOR[myRole] ?? ROLE_COLOR.member
   const roleName = ko ? (ROLE_KO[myRole] ?? myRole) : myRole
 
-  // date formatted
+  // date formatted (긴 버전 = 모임 카드, 짧은 버전 = 통계 카드)
   const nextDateStr = nextMtg?.date.toLocaleDateString(ko ? 'ko-KR' : 'en-US', { month: 'long', day: 'numeric', weekday: 'short' }) ?? ''
+  const nextDateShort = nextMtg
+    ? (ko
+        ? `${nextMtg.date.getMonth() + 1}/${nextMtg.date.getDate()}`
+        : nextMtg.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))
+    : ''
 
   return (
     <div className="px-4 pt-5 pb-6 space-y-5 animate-fade-in">
@@ -315,20 +320,24 @@ export default function DashboardPage() {
       {/* ── 푸시 알림 활성화 배너 (default 상태에서만 자동 노출) ─── */}
       <PushNotificationToggle variant="banner" />
 
-      {/* ── 통계 ─────────────────────────────────────────────────── */}
+      {/* ── 통계 ── 클릭 시 해당 페이지로 이동, 컴팩트 카드 ────────────── */}
       <div className="grid grid-cols-3 gap-2.5">
         {[
-          { icon: Users,       label: ko ? '총 회원'  : 'Members', value: `${stats.members}${ko ? '명' : ''}`,                              color: '#60a5fa', bg: 'rgba(59,130,246,0.1)' },
-          { icon: Wallet,      label: ko ? '클럽 잔액': 'Balance',  value: stats.balance === 0 ? `${sym}0` : `${sym}${(stats.balance/1000).toFixed(0)}K`, color: '#fbbf24', bg: 'rgba(251,191,36,0.1)' },
-          { icon: CalendarDays,label: ko ? '다음 모임': 'Next',     value: nextDateStr || '—',                                               color: 'var(--gold-l)', bg: 'rgba(201,168,76,0.1)' },
-        ].map(({ icon: Icon, label, value, color, bg }) => (
-          <div key={label} className="stat-card rounded-2xl p-3.5">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center mb-2.5 flex-shrink-0" style={{ background: bg }}>
-              <Icon size={16} style={{ color }} />
+          { icon: Users,       label: ko ? '총 회원'  : 'Members', value: `${stats.members}${ko ? '명' : ''}`,                              color: '#60a5fa', bg: 'rgba(59,130,246,0.1)', href: '/members'  },
+          { icon: Wallet,      label: ko ? '클럽 잔액': 'Balance',  value: stats.balance === 0 ? `${sym}0` : `${sym}${(stats.balance/1000).toFixed(0)}K`, color: '#fbbf24', bg: 'rgba(251,191,36,0.1)', href: '/finance'  },
+          { icon: CalendarDays,label: ko ? '다음 모임': 'Next',     value: nextDateShort || '—',                                              color: 'var(--gold-l)', bg: 'rgba(201,168,76,0.1)', href: '/meetings' },
+        ].map(({ icon: Icon, label, value, color, bg, href }) => (
+          <Link
+            key={label}
+            href={href}
+            className="stat-card rounded-2xl px-3 py-2.5 flex flex-col items-start transition active:scale-[0.97] hover:bg-white/[0.02]"
+          >
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center mb-1.5 flex-shrink-0" style={{ background: bg }}>
+              <Icon size={14} style={{ color }} />
             </div>
-            <p className="font-bold text-sm leading-tight truncate" style={{ color: 'var(--text)' }}>{value}</p>
-            <p className="text-[10px] mt-0.5 truncate" style={{ color: 'var(--text-3)' }}>{label}</p>
-          </div>
+            <p className="font-bold text-[15px] leading-none truncate w-full" style={{ color: 'var(--text)' }}>{value}</p>
+            <p className="text-[10px] mt-1 truncate w-full" style={{ color: 'var(--text-3)' }}>{label}</p>
+          </Link>
         ))}
       </div>
 
@@ -406,43 +415,40 @@ export default function DashboardPage() {
               )}
             </div>
 
-            {/* 참석 / 불참 버튼 — 이미 선택된 쪽은 비활성, 반대쪽만 클릭해서 전환 */}
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => submitRsvp('attending')}
-                disabled={rsvpSubmitting || !rsvpOpen || myRsvp === 'attending'}
-                aria-pressed={myRsvp === 'attending'}
-                className="py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 transition active:scale-[0.97]"
-                style={
-                  !rsvpOpen
-                    ? { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-3)', cursor: 'not-allowed' }
-                    : myRsvp === 'attending'
-                      ? { background: 'linear-gradient(135deg,#16a34a,#15803d)', color: '#fff', boxShadow: '0 2px 10px rgba(22,163,74,0.25)', cursor: 'default' }
+            {/* 참석 / 불참 버튼 — 한 번 응답하면 숨김 (카운터·라벨은 유지). */}
+            {/* 응답 변경이 필요하면 /meetings 페이지에서 수정. */}
+            {!myRsvp && (
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => submitRsvp('attending')}
+                  disabled={rsvpSubmitting || !rsvpOpen}
+                  className="py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 transition active:scale-[0.97]"
+                  style={
+                    !rsvpOpen
+                      ? { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-3)', cursor: 'not-allowed' }
                       : { background: 'rgba(34,197,94,0.10)', border: '1px solid rgba(34,197,94,0.30)', color: '#86efac', cursor: 'pointer' }
-                }
-              >
-                <CheckCircle size={15} />
-                {ko ? '참석' : 'Attending'}
-              </button>
-              <button
-                type="button"
-                onClick={() => submitRsvp('absent')}
-                disabled={rsvpSubmitting || !rsvpOpen || myRsvp === 'absent'}
-                aria-pressed={myRsvp === 'absent'}
-                className="py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 transition active:scale-[0.97]"
-                style={
-                  !rsvpOpen
-                    ? { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-3)', cursor: 'not-allowed' }
-                    : myRsvp === 'absent'
-                      ? { background: 'linear-gradient(135deg,#dc2626,#991b1b)', color: '#fff', boxShadow: '0 2px 10px rgba(220,38,38,0.25)', cursor: 'default' }
+                  }
+                >
+                  <CheckCircle size={15} />
+                  {ko ? '참석' : 'Attending'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => submitRsvp('absent')}
+                  disabled={rsvpSubmitting || !rsvpOpen}
+                  className="py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 transition active:scale-[0.97]"
+                  style={
+                    !rsvpOpen
+                      ? { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-3)', cursor: 'not-allowed' }
                       : { background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.30)', color: '#fca5a5', cursor: 'pointer' }
-                }
-              >
-                <XCircle size={15} />
-                {ko ? '불참' : 'Absent'}
-              </button>
-            </div>
+                  }
+                >
+                  <XCircle size={15} />
+                  {ko ? '불참' : 'Absent'}
+                </button>
+              </div>
+            )}
 
             {/* 비활성 안내: D-14 이후부터 활성화 */}
             {!rsvpOpen && daysUntilMtg !== null && daysUntilMtg > 14 && (
