@@ -62,8 +62,8 @@ export default function FinancePage() {
   const qrInputRef = useRef<HTMLInputElement>(null)
 
   // ── fee payment status ────────────────────────────────────────────────
-  // 회장·총무에게는 기본 펼침 (납부확인 워크플로우 빠른 접근)
-  const [showFeeStatus,   setShowFeeStatus]    = useState(canManage)
+  // 항상 기본 접힘 — 화면 정리 위해 사용자가 직접 펼쳐서 확인
+  const [showFeeStatus,   setShowFeeStatus]    = useState(false)
   const [clubFees,        setClubFees]         = useState<{annual: number; monthly: number}>({ annual: 0, monthly: 0 })
 
   // ── 납부확인 모달 ──────────────────────────────────────────────────────
