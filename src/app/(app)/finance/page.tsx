@@ -150,23 +150,26 @@ export default function FinancePage() {
     load()
   }
 
-  // ── 찬조 저장 (현금/상품 공용) ────────────────────────────────────────
+  // ── 찬조 저장 (현금·상품 동시 가능) ─────────────────────────────────
   async function saveSponsorship() {
     if (!spForm.member_name.trim()) { alert(ko ? '찬조한 회원 이름을 입력하세요' : 'Member name required'); return }
-    if (spForm.type === 'cash' && !spForm.amount) { alert(ko ? '현금 금액을 입력하세요' : 'Cash amount required'); return }
-    if (spForm.type === 'item' && !spForm.item_description.trim()) { alert(ko ? '상품 내용을 입력하세요' : 'Item description required'); return }
+    const cashAmt = parseInt(spForm.amount || '0') || 0
+    const hasCash = cashAmt > 0
+    const hasItem = !!spForm.item_description.trim()
+    if (!hasCash && !hasItem) { alert(ko ? '현금 금액 또는 상품 내용 중 하나는 입력하세요' : 'Provide cash or item'); return }
     setSpSaving(true)
     const supabase = createClient()
+    // type: 'cash' = 현금만, 'item' = 상품만 — 양쪽 다 있는 경우는 'cash' 로 저장하되 item 필드 함께 채움
     const payload: any = {
       club_id: currentClubId,
-      type: spForm.type,
+      type: hasCash ? 'cash' : 'item',
       member_name: spForm.member_name.trim(),
       sponsor_date: spForm.sponsor_date,
       note: spForm.note.trim() || null,
       currency,
-      amount: spForm.type === 'cash' ? parseInt(spForm.amount || '0') : null,
-      item_description: spForm.type === 'item' ? spForm.item_description.trim() : null,
-      estimated_value: spForm.type === 'item' && spForm.estimated_value ? parseInt(spForm.estimated_value) : null,
+      amount: hasCash ? cashAmt : null,
+      item_description: hasItem ? spForm.item_description.trim() : null,
+      estimated_value: hasItem && spForm.estimated_value ? parseInt(spForm.estimated_value) : null,
     }
     const { error } = editingSpId
       ? await supabase.from('sponsorships').update(payload).eq('id', editingSpId)
@@ -1133,23 +1136,40 @@ export default function FinancePage() {
             </div>
           ) : sponsorships.map(s => {
             const cSym = { KRW: '₩', VND: '₫', IDR: 'Rp' }[s.currency as string] ?? sym
-            const isItem = s.type === 'item'
+            const hasCash = s.amount != null && Number(s.amount) > 0
+            const hasItem = !!s.item_description
             return (
               <div key={s.id} className="rounded-xl overflow-hidden"
                 style={{ background: 'linear-gradient(135deg,rgba(124,58,237,0.1),rgba(6,13,6,0.95))', border: '1px solid rgba(124,58,237,0.25)' }}>
                 <div className="px-4 py-3 flex items-start gap-3">
-                  <span className="text-2xl flex-shrink-0 leading-none mt-0.5">{isItem ? '🎁' : '💰'}</span>
+                  <span className="text-2xl flex-shrink-0 leading-none mt-0.5">
+                    {hasCash && hasItem ? '💝' : hasItem ? '🎁' : '💰'}
+                  </span>
                   <div className="flex-1 min-w-0">
-                    {/* 1행: 회원 이름 + 유형 뱃지 */}
+                    {/* 1행: 회원 이름 + 유형 뱃지(들) */}
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <p className="text-white font-bold text-sm">{s.member_name}</p>
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md"
-                        style={{ background: isItem ? 'rgba(244,114,182,0.2)' : 'rgba(34,197,94,0.2)', color: isItem ? '#f9a8d4' : '#86efac', border: `1px solid ${isItem ? 'rgba(244,114,182,0.4)' : 'rgba(34,197,94,0.4)'}` }}>
-                        {isItem ? (ko ? '상품' : 'Item') : (ko ? '현금' : 'Cash')}
-                      </span>
+                      {hasCash && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md"
+                          style={{ background: 'rgba(34,197,94,0.2)', color: '#86efac', border: '1px solid rgba(34,197,94,0.4)' }}>
+                          💰 {ko ? '현금' : 'Cash'}
+                        </span>
+                      )}
+                      {hasItem && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md"
+                          style={{ background: 'rgba(244,114,182,0.2)', color: '#f9a8d4', border: '1px solid rgba(244,114,182,0.4)' }}>
+                          🎁 {ko ? '상품' : 'Item'}
+                        </span>
+                      )}
                     </div>
-                    {/* 2행: 금액 또는 상품명 */}
-                    {isItem ? (
+                    {/* 2행: 현금 금액 (있으면) */}
+                    {hasCash && (
+                      <p className="text-base font-bold mt-1" style={{ color: '#86efac' }}>
+                        +{cSym}{Number(s.amount).toLocaleString()}
+                      </p>
+                    )}
+                    {/* 3행: 상품 정보 (있으면) */}
+                    {hasItem && (
                       <div className="mt-1">
                         <p className="text-sm font-semibold" style={{ color: '#fbbf24' }}>{s.item_description}</p>
                         {s.estimated_value && (
@@ -1158,14 +1178,10 @@ export default function FinancePage() {
                           </p>
                         )}
                       </div>
-                    ) : (
-                      <p className="text-base font-bold mt-0.5" style={{ color: '#86efac' }}>
-                        +{cSym}{Number(s.amount).toLocaleString()}
-                      </p>
                     )}
-                    {/* 3행: 메모 */}
+                    {/* 4행: 메모 */}
                     {s.note && <p className="text-[11px] italic mt-1" style={{ color: '#9b8eb8' }}>“{s.note}”</p>}
-                    {/* 4행: 날짜 + 임원 액션 */}
+                    {/* 5행: 날짜 + 임원 액션 */}
                     <div className="flex items-center justify-between mt-2">
                       <span className="text-[11px]" style={{ color: '#7a6a9a' }}>📅 {s.sponsor_date}</span>
                       {canManage && (
@@ -1198,26 +1214,9 @@ export default function FinancePage() {
             <h3 className="text-lg font-bold text-white">
               {editingSpId ? (ko ? '찬조 수정' : 'Edit Sponsorship') : (ko ? '찬조 추가' : 'Add Sponsorship')}
             </h3>
-
-            {/* 유형 선택 — 현금 / 상품 */}
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => setSpForm(f => ({ ...f, type: 'cash' }))}
-                className="py-2.5 rounded-xl text-sm font-bold transition"
-                style={spForm.type === 'cash'
-                  ? { background: 'linear-gradient(135deg,#16a34a,#15803d)', color: '#fff' }
-                  : { background: 'rgba(255,255,255,0.05)', color: '#86efac', border: '1px solid rgba(34,197,94,0.3)' }}>
-                💰 {ko ? '현금' : 'Cash'}
-              </button>
-              <button
-                onClick={() => setSpForm(f => ({ ...f, type: 'item' }))}
-                className="py-2.5 rounded-xl text-sm font-bold transition"
-                style={spForm.type === 'item'
-                  ? { background: 'linear-gradient(135deg,#ec4899,#be185d)', color: '#fff' }
-                  : { background: 'rgba(255,255,255,0.05)', color: '#f9a8d4', border: '1px solid rgba(244,114,182,0.3)' }}>
-                🎁 {ko ? '상품' : 'Item'}
-              </button>
-            </div>
+            <p className="text-[11px] -mt-2" style={{ color: '#86efac' }}>
+              💡 {ko ? '한 회원이 현금·상품을 같이 찬조한 경우 양쪽 모두 입력하세요' : 'Fill both if cash + item donated together'}
+            </p>
 
             <div>
               <label className="text-sm text-gray-400 block mb-1">{ko ? '찬조한 회원' : 'Sponsor'}</label>
@@ -1226,34 +1225,41 @@ export default function FinancePage() {
                 className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white" />
             </div>
 
-            {spForm.type === 'cash' ? (
-              <div>
-                <label className="text-sm text-gray-400 block mb-1">{ko ? `금액 (${sym})` : `Amount (${sym})`}</label>
-                <input type="number" inputMode="numeric" value={spForm.amount}
-                  onChange={e => setSpForm(f => ({ ...f, amount: e.target.value }))}
-                  placeholder="500000"
-                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white" />
+            {/* 💰 현금 섹션 */}
+            <div className="rounded-2xl p-4 space-y-2"
+              style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.25)' }}>
+              <div className="flex items-center gap-2">
+                <span className="text-lg">💰</span>
+                <p className="text-sm font-bold text-white">{ko ? '현금' : 'Cash'}</p>
+                <span className="text-[10px] ml-auto" style={{ color: '#86efac' }}>
+                  {ko ? '비워두면 현금 없음' : 'Leave blank if no cash'}
+                </span>
               </div>
-            ) : (
-              <>
-                <div>
-                  <label className="text-sm text-gray-400 block mb-1">{ko ? '상품명' : 'Item'}</label>
-                  <input value={spForm.item_description}
-                    onChange={e => setSpForm(f => ({ ...f, item_description: e.target.value }))}
-                    placeholder={ko ? '예: 상품권, 골프공 한 박스, 와인 등' : 'e.g. Gift card, golf balls, wine'}
-                    className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white" />
-                </div>
-                <div>
-                  <label className="text-sm text-gray-400 block mb-1">
-                    {ko ? `상당 가치 (${sym}, 선택)` : `Estimated value (${sym}, optional)`}
-                  </label>
-                  <input type="number" inputMode="numeric" value={spForm.estimated_value}
-                    onChange={e => setSpForm(f => ({ ...f, estimated_value: e.target.value }))}
-                    placeholder="100000"
-                    className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white" />
-                </div>
-              </>
-            )}
+              <input type="number" inputMode="numeric" value={spForm.amount}
+                onChange={e => setSpForm(f => ({ ...f, amount: e.target.value }))}
+                placeholder={ko ? `금액 (${sym})` : `Amount (${sym})`}
+                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm" />
+            </div>
+
+            {/* 🎁 상품 섹션 */}
+            <div className="rounded-2xl p-4 space-y-2"
+              style={{ background: 'rgba(244,114,182,0.06)', border: '1px solid rgba(244,114,182,0.25)' }}>
+              <div className="flex items-center gap-2">
+                <span className="text-lg">🎁</span>
+                <p className="text-sm font-bold text-white">{ko ? '상품' : 'Item'}</p>
+                <span className="text-[10px] ml-auto" style={{ color: '#f9a8d4' }}>
+                  {ko ? '비워두면 상품 없음' : 'Leave blank if no item'}
+                </span>
+              </div>
+              <input value={spForm.item_description}
+                onChange={e => setSpForm(f => ({ ...f, item_description: e.target.value }))}
+                placeholder={ko ? '상품명 (예: 상품권, 골프공, 와인)' : 'Item (e.g. gift card, golf balls)'}
+                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm" />
+              <input type="number" inputMode="numeric" value={spForm.estimated_value}
+                onChange={e => setSpForm(f => ({ ...f, estimated_value: e.target.value }))}
+                placeholder={ko ? `상당 가치 (${sym}, 선택)` : `Estimated value (${sym}, optional)`}
+                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm" />
+            </div>
 
             <div>
               <label className="text-sm text-gray-400 block mb-1">{ko ? '찬조 날짜' : 'Date'}</label>
