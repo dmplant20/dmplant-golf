@@ -91,6 +91,21 @@ export default function FinancePage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
 
+  // 찬조 추가/수정 — 현금 또는 상품
+  const [showSpModal, setShowSpModal] = useState(false)
+  const [editingSpId, setEditingSpId] = useState<string | null>(null)
+  const [spForm, setSpForm] = useState({
+    type: 'cash' as 'cash' | 'item',
+    member_name: '',
+    amount: '',
+    item_description: '',
+    estimated_value: '',
+    sponsor_date: new Date().toISOString().split('T')[0],
+    note: '',
+  })
+  const [spSaving, setSpSaving] = useState(false)
+  const emptySpForm = { type: 'cash' as 'cash' | 'item', member_name: '', amount: '', item_description: '', estimated_value: '', sponsor_date: new Date().toISOString().split('T')[0], note: '' }
+
   // ── sync fineForm when fineRules loads ────────────────────────────────
   useEffect(() => {
     if (fineRules) {
@@ -132,6 +147,57 @@ export default function FinancePage() {
     setDeleting(null)
     if (error) { alert(ko ? `삭제 실패: ${error.message}` : `Delete failed: ${error.message}`); return }
     setExpandedId(null)
+    load()
+  }
+
+  // ── 찬조 저장 (현금/상품 공용) ────────────────────────────────────────
+  async function saveSponsorship() {
+    if (!spForm.member_name.trim()) { alert(ko ? '찬조한 회원 이름을 입력하세요' : 'Member name required'); return }
+    if (spForm.type === 'cash' && !spForm.amount) { alert(ko ? '현금 금액을 입력하세요' : 'Cash amount required'); return }
+    if (spForm.type === 'item' && !spForm.item_description.trim()) { alert(ko ? '상품 내용을 입력하세요' : 'Item description required'); return }
+    setSpSaving(true)
+    const supabase = createClient()
+    const payload: any = {
+      club_id: currentClubId,
+      type: spForm.type,
+      member_name: spForm.member_name.trim(),
+      sponsor_date: spForm.sponsor_date,
+      note: spForm.note.trim() || null,
+      currency,
+      amount: spForm.type === 'cash' ? parseInt(spForm.amount || '0') : null,
+      item_description: spForm.type === 'item' ? spForm.item_description.trim() : null,
+      estimated_value: spForm.type === 'item' && spForm.estimated_value ? parseInt(spForm.estimated_value) : null,
+    }
+    const { error } = editingSpId
+      ? await supabase.from('sponsorships').update(payload).eq('id', editingSpId)
+      : await supabase.from('sponsorships').insert(payload)
+    setSpSaving(false)
+    if (error) { alert(ko ? `저장 실패: ${error.message}` : `Save failed: ${error.message}`); return }
+    setShowSpModal(false)
+    setEditingSpId(null)
+    setSpForm(emptySpForm)
+    load()
+  }
+
+  function startEditSponsorship(s: any) {
+    setSpForm({
+      type: (s.type === 'item' ? 'item' : 'cash'),
+      member_name: s.member_name ?? '',
+      amount: s.amount != null ? String(s.amount) : '',
+      item_description: s.item_description ?? '',
+      estimated_value: s.estimated_value != null ? String(s.estimated_value) : '',
+      sponsor_date: (s.sponsor_date ?? '').slice(0, 10) || new Date().toISOString().split('T')[0],
+      note: s.note ?? '',
+    })
+    setEditingSpId(s.id)
+    setShowSpModal(true)
+  }
+
+  async function deleteSponsorship(id: string) {
+    if (!confirm(ko ? '이 찬조 내역을 삭제하시겠습니까?' : 'Delete this sponsorship?')) return
+    const supabase = createClient()
+    const { error } = await supabase.from('sponsorships').delete().eq('id', id)
+    if (error) { alert(ko ? `삭제 실패: ${error.message}` : `Delete failed: ${error.message}`); return }
     load()
   }
 
@@ -670,8 +736,12 @@ export default function FinancePage() {
             const isIncome  = INCOME_TYPES.includes(t.type)
             const isExpanded = expandedId === t.id
             const freeTextName = extractMemberName(t)
+            const isGift = t.expense_category === 'gift' && t.item_name
             return (
-              <div key={t.id} className="glass-card rounded-xl overflow-hidden">
+              <div key={t.id}
+                className={isGift ? 'rounded-xl overflow-hidden' : 'glass-card rounded-xl overflow-hidden'}
+                style={isGift ? { background: 'linear-gradient(135deg, rgba(168,85,247,0.10), rgba(6,13,6,0.95))', border: '1px solid rgba(168,85,247,0.25)' } : undefined}
+              >
                 <div className="px-4 py-3 flex items-center gap-3">
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0 ${isIncome ? 'bg-green-900/60' : 'bg-red-900/60'}`}>
                     {isIncome ? '↑' : '↓'}
@@ -1035,18 +1105,24 @@ export default function FinancePage() {
         </div>
       )}
 
-      {/* ━━ 찬조 내역 (전 회원 열람) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      {/* ━━ 찬조 내역 (전 회원 열람, 임원이 추가/수정/삭제) ━━━━━━━━━━━━━━ */}
       {(sponsorships.length > 0 || canManage) && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Gift size={14} style={{ color: '#a78bfa' }} />
               <h3 className="text-sm font-semibold" style={{ color: '#a3b8a3' }}>{ko ? '찬조 내역' : 'Sponsorships'}</h3>
+              <span className="text-[11px]" style={{ color: '#5a7a5a' }}>
+                ({sponsorships.length})
+              </span>
             </div>
             {canManage && (
-              <span className="text-xs" style={{ color: '#5a7a5a' }}>
-                {ko ? '(클럽 설정에서 등록)' : '(Register in Settings)'}
-              </span>
+              <button
+                onClick={() => { setSpForm(emptySpForm); setEditingSpId(null); setShowSpModal(true) }}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition active:scale-95"
+                style={{ background: 'rgba(167,139,250,0.15)', border: '1px solid rgba(167,139,250,0.4)', color: '#c4b5fd' }}>
+                <Plus size={12} /> {ko ? '찬조 추가' : 'Add'}
+              </button>
             )}
           </div>
           {sponsorships.length === 0 ? (
@@ -1056,24 +1132,152 @@ export default function FinancePage() {
           ) : sponsorships.map(s => {
             const cSym = { KRW: '₩', VND: '₫', IDR: 'Rp' }[s.currency as string] ?? sym
             const isItem = s.type === 'item'
-            const valueStr = isItem
-              ? `${s.item_description ?? ''}${s.estimated_value ? ` (${cSym}${Number(s.estimated_value).toLocaleString()} ${ko ? '상당' : 'est.'})` : ''}`
-              : `${cSym}${Number(s.amount).toLocaleString()}`
             return (
               <div key={s.id} className="rounded-xl overflow-hidden"
-                style={{ background: 'linear-gradient(135deg,rgba(124,58,237,0.1),rgba(6,13,6,0.95))', border: '1px solid rgba(124,58,237,0.2)' }}>
-                <div className="px-4 py-3 flex items-center gap-3">
-                  <span className="text-xl flex-shrink-0">{isItem ? '🎁' : '💰'}</span>
+                style={{ background: 'linear-gradient(135deg,rgba(124,58,237,0.1),rgba(6,13,6,0.95))', border: '1px solid rgba(124,58,237,0.25)' }}>
+                <div className="px-4 py-3 flex items-start gap-3">
+                  <span className="text-2xl flex-shrink-0 leading-none mt-0.5">{isItem ? '🎁' : '💰'}</span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-white font-semibold text-sm">{s.member_name} {ko ? '회원' : ''}</p>
-                    <p className="text-xs mt-0.5" style={{ color: '#c4b5fd' }}>{valueStr}</p>
-                    {s.note && <p className="text-xs italic mt-0.5" style={{ color: '#7a6a9a' }}>{s.note}</p>}
+                    {/* 1행: 회원 이름 + 유형 뱃지 */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="text-white font-bold text-sm">{s.member_name}</p>
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md"
+                        style={{ background: isItem ? 'rgba(244,114,182,0.2)' : 'rgba(34,197,94,0.2)', color: isItem ? '#f9a8d4' : '#86efac', border: `1px solid ${isItem ? 'rgba(244,114,182,0.4)' : 'rgba(34,197,94,0.4)'}` }}>
+                        {isItem ? (ko ? '상품' : 'Item') : (ko ? '현금' : 'Cash')}
+                      </span>
+                    </div>
+                    {/* 2행: 금액 또는 상품명 */}
+                    {isItem ? (
+                      <div className="mt-1">
+                        <p className="text-sm font-semibold" style={{ color: '#fbbf24' }}>{s.item_description}</p>
+                        {s.estimated_value && (
+                          <p className="text-[11px] mt-0.5" style={{ color: '#c4b5fd' }}>
+                            ≈ {cSym}{Number(s.estimated_value).toLocaleString()} {ko ? '상당' : 'est.'}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-base font-bold mt-0.5" style={{ color: '#86efac' }}>
+                        +{cSym}{Number(s.amount).toLocaleString()}
+                      </p>
+                    )}
+                    {/* 3행: 메모 */}
+                    {s.note && <p className="text-[11px] italic mt-1" style={{ color: '#9b8eb8' }}>“{s.note}”</p>}
+                    {/* 4행: 날짜 + 임원 액션 */}
+                    <div className="flex items-center justify-between mt-2">
+                      <span className="text-[11px]" style={{ color: '#7a6a9a' }}>📅 {s.sponsor_date}</span>
+                      {canManage && (
+                        <div className="flex gap-1">
+                          <button onClick={() => startEditSponsorship(s)}
+                            className="w-7 h-7 rounded-lg flex items-center justify-center transition active:scale-95"
+                            style={{ background: 'rgba(96,165,250,0.12)', color: '#93c5fd' }}>
+                            <Edit2 size={11} />
+                          </button>
+                          <button onClick={() => deleteSponsorship(s.id)}
+                            className="w-7 h-7 rounded-lg flex items-center justify-center transition active:scale-95"
+                            style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171' }}>
+                            <Trash2 size={11} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <p className="text-xs flex-shrink-0" style={{ color: '#5a4a7a' }}>{s.sponsor_date}</p>
                 </div>
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* ━━ 찬조 추가/수정 모달 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      {showSpModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-end z-[200]" onClick={() => { setShowSpModal(false); setEditingSpId(null) }}>
+          <div className="bg-gray-900 rounded-t-3xl px-6 pt-6 modal-sheet-pb w-full space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-white">
+              {editingSpId ? (ko ? '찬조 수정' : 'Edit Sponsorship') : (ko ? '찬조 추가' : 'Add Sponsorship')}
+            </h3>
+
+            {/* 유형 선택 — 현금 / 상품 */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setSpForm(f => ({ ...f, type: 'cash' }))}
+                className="py-2.5 rounded-xl text-sm font-bold transition"
+                style={spForm.type === 'cash'
+                  ? { background: 'linear-gradient(135deg,#16a34a,#15803d)', color: '#fff' }
+                  : { background: 'rgba(255,255,255,0.05)', color: '#86efac', border: '1px solid rgba(34,197,94,0.3)' }}>
+                💰 {ko ? '현금' : 'Cash'}
+              </button>
+              <button
+                onClick={() => setSpForm(f => ({ ...f, type: 'item' }))}
+                className="py-2.5 rounded-xl text-sm font-bold transition"
+                style={spForm.type === 'item'
+                  ? { background: 'linear-gradient(135deg,#ec4899,#be185d)', color: '#fff' }
+                  : { background: 'rgba(255,255,255,0.05)', color: '#f9a8d4', border: '1px solid rgba(244,114,182,0.3)' }}>
+                🎁 {ko ? '상품' : 'Item'}
+              </button>
+            </div>
+
+            <div>
+              <label className="text-sm text-gray-400 block mb-1">{ko ? '찬조한 회원' : 'Sponsor'}</label>
+              <input value={spForm.member_name} onChange={e => setSpForm(f => ({ ...f, member_name: e.target.value }))}
+                placeholder={ko ? '회원 이름' : 'Member name'}
+                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white" />
+            </div>
+
+            {spForm.type === 'cash' ? (
+              <div>
+                <label className="text-sm text-gray-400 block mb-1">{ko ? `금액 (${sym})` : `Amount (${sym})`}</label>
+                <input type="number" inputMode="numeric" value={spForm.amount}
+                  onChange={e => setSpForm(f => ({ ...f, amount: e.target.value }))}
+                  placeholder="500000"
+                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white" />
+              </div>
+            ) : (
+              <>
+                <div>
+                  <label className="text-sm text-gray-400 block mb-1">{ko ? '상품명' : 'Item'}</label>
+                  <input value={spForm.item_description}
+                    onChange={e => setSpForm(f => ({ ...f, item_description: e.target.value }))}
+                    placeholder={ko ? '예: 상품권, 골프공 한 박스, 와인 등' : 'e.g. Gift card, golf balls, wine'}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white" />
+                </div>
+                <div>
+                  <label className="text-sm text-gray-400 block mb-1">
+                    {ko ? `상당 가치 (${sym}, 선택)` : `Estimated value (${sym}, optional)`}
+                  </label>
+                  <input type="number" inputMode="numeric" value={spForm.estimated_value}
+                    onChange={e => setSpForm(f => ({ ...f, estimated_value: e.target.value }))}
+                    placeholder="100000"
+                    className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white" />
+                </div>
+              </>
+            )}
+
+            <div>
+              <label className="text-sm text-gray-400 block mb-1">{ko ? '찬조 날짜' : 'Date'}</label>
+              <input type="date" value={spForm.sponsor_date}
+                onChange={e => setSpForm(f => ({ ...f, sponsor_date: e.target.value }))}
+                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white" />
+            </div>
+
+            <div>
+              <label className="text-sm text-gray-400 block mb-1">{ko ? '메모 (선택)' : 'Note (optional)'}</label>
+              <input value={spForm.note}
+                onChange={e => setSpForm(f => ({ ...f, note: e.target.value }))}
+                placeholder={ko ? '특이사항' : 'Notes'}
+                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white" />
+            </div>
+
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => { setShowSpModal(false); setEditingSpId(null) }}
+                className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300">{ko ? '취소' : 'Cancel'}</button>
+              <button onClick={saveSponsorship} disabled={spSaving}
+                className="flex-1 py-3 rounded-xl text-white font-semibold disabled:opacity-50"
+                style={{ background: 'linear-gradient(135deg,#a78bfa,#7c3aed)' }}>
+                {spSaving ? (ko ? '저장 중...' : 'Saving...') : (editingSpId ? (ko ? '수정 저장' : 'Update') : (ko ? '저장' : 'Save'))}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
