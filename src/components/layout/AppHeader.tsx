@@ -1,7 +1,9 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuthStore } from '@/stores/authStore'
 import { ChevronDown, Bell, Globe, Check } from 'lucide-react'
+import NotificationsPanel from './NotificationsPanel'
+import { createClient } from '@/lib/supabase/client'
 
 const ROLE_KO: Record<string, string> = {
   president: '회장', vice_president: '부회장', secretary: '총무',
@@ -18,9 +20,41 @@ const ROLE_COLOR: Record<string, string> = {
 }
 
 export default function AppHeader() {
-  const { myClubs, currentClubId, setCurrentClub, lang, setLang } = useAuthStore()
+  const { myClubs, currentClubId, setCurrentClub, lang, setLang, user } = useAuthStore()
   const [open, setOpen] = useState(false)
+  const [notifOpen, setNotifOpen] = useState(false)
+  const [hasUnread, setHasUnread] = useState(false)
   const currentClub = myClubs.find(c => c.id === currentClubId)
+
+  // 알림 점 표시 — 본인 미납·미응답 정기모임 또는 최근 14일 신규 공지·경조사가 있으면 점 노출
+  useEffect(() => {
+    if (!user?.id || !currentClubId) { setHasUnread(false); return }
+    let cancelled = false
+    async function check() {
+      try {
+        const supabase = createClient()
+        const sinceDate = new Date(Date.now() - 14 * 86400_000).toISOString()
+        const [n, e, unpaid, pend] = await Promise.all([
+          supabase.from('announcements').select('id', { head: true, count: 'exact' })
+            .eq('club_id', currentClubId)
+            .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
+            .gt('created_at', sinceDate),
+          supabase.from('events').select('id', { head: true, count: 'exact' })
+            .eq('club_id', currentClubId).gt('created_at', sinceDate),
+          fetch('/api/finance/my-unpaid').then(r => r.ok ? r.json() : null).catch(() => null),
+          fetch('/api/notifications/pending').then(r => r.ok ? r.json() : null).catch(() => null),
+        ])
+        if (cancelled) return
+        const total = (n.count ?? 0) + (e.count ?? 0)
+          + (unpaid?.has_any ? 1 : 0)
+          + (pend?.meeting ? 1 : 0)
+        setHasUnread(total > 0)
+      } catch { /* ignore */ }
+    }
+    check()
+    const id = setInterval(() => { if (document.visibilityState === 'visible') check() }, 60_000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [user?.id, currentClubId])
 
   return (
     <header
@@ -146,27 +180,32 @@ export default function AppHeader() {
             <Globe size={18} />
           </button>
           <button
+            onClick={() => setNotifOpen(true)}
             className="relative w-9 h-9 rounded-xl flex items-center justify-center transition-colors"
             style={{ color: 'var(--silver)' }}
             onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface)' }}
             onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = '' }}
+            aria-label="알림"
           >
             <Bell size={18} />
-            <span
-              className="absolute"
-              style={{
-                top: 7, right: 7,
-                width: 7, height: 7,
-                borderRadius: '50%',
-                background: '#f59e0b',
-                border: '1.5px solid var(--bg-2)',
-              }}
-            />
+            {hasUnread && (
+              <span
+                className="absolute"
+                style={{
+                  top: 7, right: 7,
+                  width: 7, height: 7,
+                  borderRadius: '50%',
+                  background: '#f59e0b',
+                  border: '1.5px solid var(--bg-2)',
+                }}
+              />
+            )}
           </button>
         </div>
       </div>
 
       {open && <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />}
+      <NotificationsPanel open={notifOpen} onClose={() => setNotifOpen(false)} />
     </header>
   )
 }
