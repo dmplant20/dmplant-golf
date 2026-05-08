@@ -162,6 +162,12 @@ CREATE INDEX IF NOT EXISTS idx_finance_transactions_expense_category
   WHERE expense_category IS NOT NULL;
 
 -- ────────────────────────────────────────────────────────────────────────────
+-- clubs: 이전 이월금 (전기 이월) — 잔액 계산에 자동 포함
+-- ────────────────────────────────────────────────────────────────────────────
+ALTER TABLE clubs ADD COLUMN IF NOT EXISTS carryover_amount bigint DEFAULT 0;
+ALTER TABLE clubs ADD COLUMN IF NOT EXISTS carryover_note   text;
+
+-- ────────────────────────────────────────────────────────────────────────────
 -- chat: 1:1 DM + 그룹 채팅 (club_wide 외 추가 룸 타입)
 -- ────────────────────────────────────────────────────────────────────────────
 
