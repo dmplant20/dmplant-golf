@@ -1,10 +1,31 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores/authStore'
 import { Eye, EyeOff } from 'lucide-react'
+
+// 자동 채우기 — 로컬 스토리지 키 (개인 기기 PWA 가정)
+// 비밀번호는 btoa 로 미세 난독화. 진짜 암호화는 아니지만, 회원이 같은 기기에서
+// 매번 타이핑하지 않게 하려는 목적. 공용 기기에서는 위험할 수 있음을 사용자가 인지.
+const LS_EMAIL = 'isgolf-saved-email'
+const LS_PW    = 'isgolf-saved-pw'
+
+function readSaved() {
+  if (typeof window === 'undefined') return { email: '', password: '' }
+  try {
+    const e = localStorage.getItem(LS_EMAIL) ?? ''
+    const p = localStorage.getItem(LS_PW)
+    return { email: e, password: p ? atob(p) : '' }
+  } catch { return { email: '', password: '' } }
+}
+function saveCreds(email: string, password: string) {
+  try {
+    if (email) localStorage.setItem(LS_EMAIL, email)
+    if (password) localStorage.setItem(LS_PW, btoa(password))
+  } catch {}
+}
 
 export default function LoginPage() {
   const router = useRouter()
@@ -15,6 +36,21 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const ko = lang === 'ko'
+
+  // 마운트 시 저장된 이메일·비밀번호 자동 로드
+  useEffect(() => {
+    const saved = readSaved()
+    if (saved.email) setEmail(saved.email)
+    if (saved.password) setPassword(saved.password)
+  }, [])
+
+  // 이미 로그인된 세션 있으면 대시보드로 자동 이동 (불필요한 로그인 화면 노출 방지)
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) router.replace('/dashboard')
+    })
+  }, [router])
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -45,6 +81,7 @@ export default function LoginPage() {
           setError(ko ? '인증 실패: ' + otpErr.message : 'Verification failed: ' + otpErr.message)
           setLoading(false); return
         }
+        saveCreds(email, '')  // 첫 로그인은 비밀번호 없으니 이메일만 저장
         router.push('/dashboard')
         return
       } catch (err: any) {
@@ -59,6 +96,8 @@ export default function LoginPage() {
       setError(ko ? '이메일 또는 비밀번호가 올바르지 않습니다.' : 'Invalid email or password.')
       setLoading(false)
     } else {
+      // 다음 로그인부터 자동 채우기 — 같은 기기에서는 클릭 한 번으로 입장
+      saveCreds(email, password)
       router.push('/dashboard')
     }
   }
