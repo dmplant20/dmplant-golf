@@ -92,10 +92,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             if (sw.state === 'installed') sw.postMessage({ type: 'SKIP_WAITING' });
           });
         });
-        setInterval(function() { reg.update(); }, 60000);
+        // 30초마다 SW 갱신 체크 — 새 빌드가 올라오면 즉시 업데이트
+        setInterval(function() { reg.update(); }, 30000);
         document.addEventListener('visibilitychange', function() {
           if (document.visibilityState === 'visible') reg.update();
         });
+        window.addEventListener('focus', function() { reg.update(); });
+        window.addEventListener('online', function() { reg.update(); });
       });
     var refreshing = false;
     // /install 페이지에서는 리로드 금지 — SW 리로드가 beforeinstallprompt 를 날려버림

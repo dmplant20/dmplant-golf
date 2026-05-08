@@ -73,17 +73,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     document.body.setAttribute('data-club-theme', String(theme))
   }, [currentClubId])
 
-  // 접속 표시 — 본인 last_seen_at 갱신 (60초마다 + 탭 visible 전환 시)
+  // 접속 표시 — 본인 last_seen_at 갱신 (30초마다 + 탭 visible 전환 / 페이지 변경 시 즉시)
   useEffect(() => {
     if (!user?.id) return
     let cancelled = false
     function ping() {
       if (cancelled) return
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
-      fetch('/api/users/heartbeat', { method: 'POST' }).catch(() => {})
+      fetch('/api/users/heartbeat', { method: 'POST', keepalive: true }).catch(() => {})
     }
     ping()
-    const id = setInterval(ping, 60_000)
+    const id = setInterval(ping, 30_000)
     function onWake() { if (document.visibilityState === 'visible') ping() }
     document.addEventListener('visibilitychange', onWake)
     window.addEventListener('focus', onWake)
@@ -94,6 +94,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       window.removeEventListener('focus', onWake)
     }
   }, [user?.id])
+
+  // 페이지 변경 시에도 즉시 heartbeat — 회원이 메뉴 이동할 때마다 갱신되어 거의 실시간
+  useEffect(() => {
+    if (!user?.id) return
+    fetch('/api/users/heartbeat', { method: 'POST', keepalive: true }).catch(() => {})
+  }, [pathname, user?.id])
 
   // 앱 배지: 마지막 방문 이후 새로 올라온 공지/경조사 개수
   useEffect(() => {

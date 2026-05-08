@@ -166,12 +166,24 @@ export default function MembersPage() {
     document.addEventListener('visibilitychange', onWake)
     window.addEventListener('focus', onWake)
     window.addEventListener('pageshow', onWake)
+    // 30초마다 자동 폴링 — 누가 새로 들어오는지 거의 실시간 반영
+    const pollId = setInterval(() => {
+      if (document.visibilityState === 'visible') load()
+    }, 30_000)
     return () => {
       document.removeEventListener('visibilitychange', onWake)
       window.removeEventListener('focus', onWake)
       window.removeEventListener('pageshow', onWake)
+      clearInterval(pollId)
     }
   }, [currentClubId])
+
+  // 시계 tick — 데이터 재호출 없이 isOnline 표시만 15초마다 재계산 (TimeNow 갱신)
+  const [, forceTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => forceTick(t => t + 1), 15_000)
+    return () => clearInterval(id)
+  }, [])
 
   // ── actions ────────────────────────────────────────────────────────────────
   async function logAction(target_user_id: string | null, action: string, old_value?: string, new_value?: string, note?: string) {
@@ -315,9 +327,9 @@ export default function MembersPage() {
         /* ── 활성 회원 ── */
         <div className="space-y-2">
           {members.map(m => {
-            // 접속 표시: 마지막 활동이 3분 이내면 온라인
+            // 접속 표시: 마지막 활동이 90초 이내면 온라인 (heartbeat 30s × 3 = 1회 누락 허용)
             const lastSeen = m.users?.last_seen_at
-            const isOnline = lastSeen && (Date.now() - new Date(lastSeen).getTime()) < 3 * 60_000
+            const isOnline = lastSeen && (Date.now() - new Date(lastSeen).getTime()) < 90_000
             return (
             <div key={m.id} className="glass-card rounded-2xl px-4 py-3 flex items-center gap-3">
               <div className="relative w-10 h-10 flex-shrink-0">
