@@ -5,7 +5,7 @@ import { useAuthStore } from '@/stores/authStore'
 import {
   Plus, Camera, TrendingUp, TrendingDown, Wallet,
   ChevronDown, ChevronUp, Receipt, Copy, Check,
-  Edit2, Upload, Building2, X, QrCode, Gift, AlertTriangle,
+  Edit2, Upload, Building2, X, QrCode, Gift, AlertTriangle, Trash2,
 } from 'lucide-react'
 import { OFFICER_ROLES } from '../members/page'
 import { isSuperAdmin } from '@/lib/superAdmin'
@@ -87,6 +87,9 @@ export default function FinancePage() {
     expense_category: 'event',  // only used when type === 'expense'
     item_name: '',               // only used when expense_category === 'gift'
   })
+  // 거래 수정/삭제 — editingId 가 있으면 수정 모드
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
 
   // ── sync fineForm when fineRules loads ────────────────────────────────
   useEffect(() => {
@@ -98,6 +101,39 @@ export default function FinancePage() {
       })
     }
   }, [fineRules])
+
+  // ── 거래 수정 시작 ─────────────────────────────────────────────────────
+  function startEdit(t: any) {
+    // 자유 텍스트로 들어간 회원명 분리: 설명 앞쪽 [이름] 패턴
+    let desc = t.description ?? ''
+    let nameText = ''
+    const m = desc.match(/^\[([^\]]+)\]\s*(.*)$/)
+    if (m && !t.member_id) { nameText = m[1]; desc = m[2] }
+    setForm({
+      type: t.type ?? 'fee',
+      amount: String(t.amount ?? ''),
+      description: desc,
+      date: (t.transaction_date ?? '').slice(0, 10) || new Date().toISOString().split('T')[0],
+      memberId: t.member_id ?? '',
+      memberNameText: nameText,
+      expense_category: t.expense_category ?? 'event',
+      item_name: t.item_name ?? '',
+    })
+    setMemberInputTab(nameText ? 'text' : 'select')
+    setEditingId(t.id)
+    setShowAdd(true)
+  }
+
+  async function deleteTransaction(id: string) {
+    if (!confirm(ko ? '이 거래 내역을 삭제하시겠습니까?' : 'Delete this transaction?')) return
+    setDeleting(id)
+    const supabase = createClient()
+    const { error } = await supabase.from('finance_transactions').delete().eq('id', id)
+    setDeleting(null)
+    if (error) { alert(ko ? `삭제 실패: ${error.message}` : `Delete failed: ${error.message}`); return }
+    setExpandedId(null)
+    load()
+  }
 
   // ── load ──────────────────────────────────────────────────────────────
   async function load() {
@@ -185,15 +221,26 @@ export default function FinancePage() {
       memberId = null
     }
 
-    await supabase.from('finance_transactions').insert({
+    const payload = {
       club_id: currentClubId, type: form.type, amount: parseInt(form.amount),
       currency, description: desc, transaction_date: form.date,
-      recorded_by: user!.id, member_id: memberId,
+      member_id: memberId,
       expense_category: form.type === 'expense' ? form.expense_category : null,
       item_name: form.type === 'expense' && form.expense_category === 'gift' && form.item_name.trim()
         ? form.item_name.trim() : null,
-    })
+    }
+
+    if (editingId) {
+      // 수정 — recorded_by 는 그대로 유지
+      const { error } = await supabase.from('finance_transactions').update(payload).eq('id', editingId)
+      if (error) { console.error('[finance update]', error); alert(ko ? `저장 실패: ${error.message}` : `Save failed: ${error.message}`); return }
+    } else {
+      const { error } = await supabase.from('finance_transactions').insert({ ...payload, recorded_by: user!.id })
+      if (error) { console.error('[finance insert]', error); alert(ko ? `저장 실패: ${error.message}` : `Save failed: ${error.message}`); return }
+    }
+
     setShowAdd(false)
+    setEditingId(null)
     setForm({
       type: 'fee', amount: '', description: '',
       date: new Date().toISOString().split('T')[0], memberId: '', memberNameText: '',
@@ -682,6 +729,24 @@ export default function FinancePage() {
                         <Receipt size={12} /> {ko ? '영수증 보기' : 'View Receipt'}
                       </button>
                     )}
+                    {/* 수정·삭제 — 회장·총무만 (canManage) */}
+                    {canManage && (
+                      <div className="flex gap-2 pt-2">
+                        <button
+                          onClick={() => startEdit(t)}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition active:scale-[0.97]"
+                          style={{ background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.3)', color: '#93c5fd' }}>
+                          <Edit2 size={12} />{ko ? '수정' : 'Edit'}
+                        </button>
+                        <button
+                          onClick={() => deleteTransaction(t.id)}
+                          disabled={deleting === t.id}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition active:scale-[0.97] disabled:opacity-50"
+                          style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}>
+                          <Trash2 size={12} />{ko ? '삭제' : 'Delete'}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -690,11 +755,15 @@ export default function FinancePage() {
         })()}
       </div>
 
-      {/* ── 내역 추가 모달 ── */}
+      {/* ── 내역 추가/수정 모달 ── */}
       {showAdd && (
-        <div className="fixed inset-0 bg-black/70 flex items-end z-[200]" onClick={() => setShowAdd(false)}>
+        <div className="fixed inset-0 bg-black/70 flex items-end z-[200]" onClick={() => { setShowAdd(false); setEditingId(null) }}>
           <div className="bg-gray-900 rounded-t-3xl px-6 pt-6 modal-sheet-pb w-full space-y-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-white">{ko ? '내역 추가' : 'Add Transaction'}</h3>
+            <h3 className="text-lg font-bold text-white">
+              {editingId
+                ? (ko ? '내역 수정' : 'Edit Transaction')
+                : (ko ? '내역 추가' : 'Add Transaction')}
+            </h3>
             <div>
               <label className="text-sm text-gray-400 block mb-1">{ko ? '유형' : 'Type'}</label>
               <select value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
@@ -785,8 +854,10 @@ export default function FinancePage() {
                 className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white" />
             </div>
             <div className="flex gap-3 pt-1">
-              <button onClick={() => { setShowAdd(false); setMemberInputTab('select') }} className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300">{ko ? '취소' : 'Cancel'}</button>
-              <button onClick={addTransaction} className="flex-1 py-3 rounded-xl bg-green-700 text-white font-semibold">{ko ? '저장' : 'Save'}</button>
+              <button onClick={() => { setShowAdd(false); setEditingId(null); setMemberInputTab('select') }} className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300">{ko ? '취소' : 'Cancel'}</button>
+              <button onClick={addTransaction} className="flex-1 py-3 rounded-xl bg-green-700 text-white font-semibold">
+                {editingId ? (ko ? '수정 저장' : 'Update') : (ko ? '저장' : 'Save')}
+              </button>
             </div>
           </div>
         </div>
