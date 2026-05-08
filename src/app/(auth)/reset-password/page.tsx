@@ -13,13 +13,22 @@ export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [ready, setReady] = useState(false)
+  const [email, setEmail] = useState<string>('')
 
   useEffect(() => {
-    // Supabase puts tokens in the URL hash after redirect
     const supabase = createClient()
-    supabase.auth.onAuthStateChange((event) => {
-      if (event === 'PASSWORD_RECOVERY') setReady(true)
+    // 1) onAuthStateChange — 리디렉트 직후 PASSWORD_RECOVERY 이벤트
+    const sub = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY' || (session && event === 'INITIAL_SESSION')) {
+        setReady(true)
+        if (session?.user?.email) setEmail(session.user.email)
+      }
     })
+    // 2) 페이지 진입 즉시 세션도 확인 (이벤트 미스 케이스 대비)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) { setReady(true); if (session.user?.email) setEmail(session.user.email) }
+    })
+    return () => sub.data.subscription.unsubscribe()
   }, [])
 
   async function handleReset(e: React.FormEvent) {
@@ -28,20 +37,31 @@ export default function ResetPasswordPage() {
       setError(ko ? '비밀번호가 일치하지 않습니다.' : 'Passwords do not match.')
       return
     }
-    if (password.length < 6) {
-      setError(ko ? '비밀번호는 6자 이상이어야 합니다.' : 'Password must be at least 6 characters.')
+    if (password.length < 8) {
+      setError(ko ? '비밀번호는 8자 이상이어야 합니다.' : 'Password must be at least 8 characters.')
       return
     }
     setLoading(true)
     setError('')
     const supabase = createClient()
-    const { error } = await supabase.auth.updateUser({ password })
+    const { data: { user }, error } = await supabase.auth.updateUser({ password })
     if (error) {
       setError(ko ? '비밀번호 변경에 실패했습니다.' : 'Failed to reset password.')
       setLoading(false)
-    } else {
-      router.push('/dashboard')
+      return
     }
+    // password_set=true 마킹 → 강제 비밀번호 설정 팝업 다시 안 뜸
+    try {
+      if (user?.id) {
+        await supabase.from('users').update({ password_set: true }).eq('id', user.id)
+      }
+    } catch { /* ignore — 다음 로그인 시 자동 복구 */ }
+    // 저장된 자격증명도 갱신 (자동 채우기 호환)
+    try {
+      if (email) localStorage.setItem('isgolf-saved-email', email)
+      localStorage.setItem('isgolf-saved-pw', btoa(password))
+    } catch { /* ignore */ }
+    router.push('/dashboard')
   }
 
   return (
