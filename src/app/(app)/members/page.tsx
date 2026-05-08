@@ -344,12 +344,6 @@ export default function MembersPage() {
                     {lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}
                   </span>
                   {m.users?.name_abbr && <span className="text-xs text-gray-500">({m.users.name_abbr})</span>}
-                  {isOnline && (
-                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
-                      style={{ background: 'rgba(34,197,94,0.15)', color: '#86efac', border: '1px solid rgba(34,197,94,0.35)' }}>
-                      {ko ? '접속중' : 'Online'}
-                    </span>
-                  )}
                 </div>
                 <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                   <RoleBadge role={m.role} ko={ko} />
