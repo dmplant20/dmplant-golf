@@ -57,6 +57,8 @@ export default function ChatPage() {
   const [showCreateMenu, setShowCreateMenu] = useState(false)
   const [showDmPicker, setShowDmPicker] = useState(false)
   const [showGroupCreator, setShowGroupCreator] = useState(false)
+  // DM·그룹 룸 피커 (전체 대화에서 ☰ 탭 시 노출)
+  const [showRoomPicker, setShowRoomPicker] = useState(false)
   const [groupName, setGroupName] = useState('')
   const [groupSelectedIds, setGroupSelectedIds] = useState<string[]>([])
   const [memberSearch, setMemberSearch] = useState('')
@@ -147,6 +149,13 @@ export default function ChatPage() {
     setLoadingRooms(false)
   }
   useEffect(() => { loadRooms() }, [currentClubId, user?.id])
+
+  // /chat 진입 시 자동으로 전체 대화방(club_wide) 활성화
+  useEffect(() => {
+    if (!rooms.length || activeRoom) return
+    const club = rooms.find(r => r.type === 'club_wide')
+    if (club) setActiveRoom(club)
+  }, [rooms, activeRoom])
 
   // ── 클럽 멤버 로드 (DM/그룹 만들 때 사용) ────────────────────────────────
   useEffect(() => {
@@ -394,176 +403,61 @@ export default function ChatPage() {
 
   // ─── RENDER ───────────────────────────────────────────────────────────────
 
-  // 활성 룸이 있으면 채팅 뷰
-  if (activeRoom) {
-    return (
-      <div className="flex flex-col h-[calc(100vh-8rem)]">
-        {/* 헤더 — 뒤로가기 + 룸 이름 */}
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-green-900/30 flex-shrink-0">
-          <button onClick={() => setActiveRoom(null)} className="w-8 h-8 rounded-lg flex items-center justify-center transition active:scale-95"
-            style={{ background: 'rgba(255,255,255,0.04)' }}>
-            <ArrowLeft size={16} className="text-white" />
-          </button>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-white truncate">
-              {activeRoom.type === 'dm' ? '💬 ' : activeRoom.type === 'group' ? '👥 ' : '🏌️ '}
-              {activeRoom.display_name ?? (ko ? activeRoom.name : (activeRoom.name_en ?? activeRoom.name))}
-            </p>
-            {activeRoom.type === 'group' && activeRoom.member_count != null && (
-              <p className="text-[11px] text-gray-500">{activeRoom.member_count}{ko ? '명' : ' members'}</p>
-            )}
-          </div>
-        </div>
+  // DM·그룹 룸만 필터 (전체 대화방은 자동 활성화되므로 리스트에서 제외)
+  const dmGroupRooms = rooms.filter(r => r.type === 'dm' || r.type === 'group')
 
-        {/* 메시지 목록 */}
-        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-          {messages.map((msg) => {
-            const isMe = msg.user_id === user?.id
-            const name = ko ? msg.users?.full_name : (msg.users?.full_name_en || msg.users?.full_name)
-            return (
-              <div key={msg.id} className={`flex gap-2 ${isMe ? 'flex-row-reverse' : ''}`}>
-                {!isMe && (
-                  <div className="w-8 h-8 bg-green-800 rounded-full flex items-center justify-center text-sm flex-shrink-0">👤</div>
-                )}
-                <div className={`max-w-[75%] flex flex-col gap-0.5 ${isMe ? 'items-end' : 'items-start'}`}>
-                  {!isMe && <span className="text-xs text-gray-500 px-1">{name}</span>}
-                  {/* 이미지 첨부 — 인라인 표시 */}
-                  {msg.attachment_type === 'image' && msg.attachment_url && (
-                    <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer"
-                      className="block rounded-2xl overflow-hidden border border-white/10 active:scale-[0.98] transition"
-                      style={{ maxWidth: 240 }}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={msg.attachment_url} alt={msg.attachment_name ?? 'image'}
-                        loading="lazy" className="block w-full h-auto" style={{ maxHeight: 320, objectFit: 'cover' }} />
-                    </a>
-                  )}
-                  {/* 파일 첨부 — 다운로드 카드 */}
-                  {msg.attachment_type === 'file' && msg.attachment_url && (
-                    <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer" download={msg.attachment_name ?? undefined}
-                      className={`flex items-center gap-2 px-3 py-2.5 rounded-2xl border transition active:scale-[0.98] ${isMe ? 'bg-green-700/40 border-green-700/60' : 'bg-gray-800 border-gray-700'}`}
-                      style={{ maxWidth: 260 }}>
-                      <FileText size={18} className="flex-shrink-0 text-blue-300" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-white truncate">{msg.attachment_name}</p>
-                        {msg.attachment_size != null && (
-                          <p className="text-[10px] text-gray-400">{(msg.attachment_size / 1024).toFixed(0)} KB</p>
-                        )}
-                      </div>
-                    </a>
-                  )}
-                  {/* 텍스트 본문 (있을 때만) */}
-                  {msg.content && (
-                    <div className={`px-4 py-2.5 rounded-2xl text-sm break-words ${isMe ? 'bg-green-700 text-white rounded-tr-sm' : 'bg-gray-800 text-white rounded-tl-sm'}`}>
-                      {msg.content}
-                    </div>
-                  )}
-                  <span className="text-[10px] text-gray-600 px-1">
-                    {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                </div>
-              </div>
-            )
-          })}
-          {messages.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-600">
-              <MessageCircle size={40} />
-              <p className="text-sm">{ko ? '첫 메시지를 보내보세요!' : 'Send the first message!'}</p>
-            </div>
-          )}
-          <div ref={bottomRef} />
-        </div>
-
-        {/* 입력 */}
-        <div className="flex-shrink-0 border-t border-green-900/30 bg-gray-950">
-          {uploadError && (
-            <p className="text-xs text-red-400 px-4 pt-2">{uploadError}</p>
-          )}
-          <div className="flex items-center gap-2 px-4 py-3">
-            {/* 숨겨진 file inputs */}
-            <input ref={imageInputRef} type="file" accept="image/*" className="hidden"
-              onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f, 'image') }} />
-            <input ref={fileInputRef} type="file" className="hidden"
-              onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f, 'file') }} />
-            {/* 사진 버튼 */}
-            <button type="button" onClick={() => imageInputRef.current?.click()} disabled={uploading}
-              className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition active:scale-95 disabled:opacity-50"
-              style={{ background: 'rgba(96,165,250,0.15)', border: '1px solid rgba(96,165,250,0.3)' }}
-              title={ko ? '사진' : 'Photo'}>
-              {uploading ? <Loader2 size={16} className="text-blue-300 animate-spin" /> : <ImageIcon size={16} className="text-blue-300" />}
-            </button>
-            {/* 파일 버튼 */}
-            <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploading}
-              className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition active:scale-95 disabled:opacity-50"
-              style={{ background: 'rgba(167,139,250,0.15)', border: '1px solid rgba(167,139,250,0.3)' }}
-              title={ko ? '파일' : 'File'}>
-              <Paperclip size={16} className="text-violet-300" />
-            </button>
-            <input
-              value={input} onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }}
-              placeholder={ko ? '메시지를 입력하세요...' : 'Type a message...'}
-              className="flex-1 bg-gray-900 border border-gray-700 rounded-2xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-green-500"
-            />
-            <button onClick={sendMessage} disabled={!input.trim() || uploading} className="w-10 h-10 bg-green-700 disabled:opacity-50 rounded-full flex items-center justify-center flex-shrink-0">
-              <Send size={16} className="text-white" />
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // 룸 리스트 뷰
-  return (
-    <div className="px-4 pt-4 pb-6 space-y-3">
-      {/* 헤더 + 새 대화 버튼 */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-white">{ko ? '채팅' : 'Chat'}</h1>
-        <button onClick={() => setShowCreateMenu(true)}
-          className="w-9 h-9 rounded-xl flex items-center justify-center transition active:scale-95"
-          style={{ background: 'linear-gradient(135deg,#16a34a,#15803d)' }}>
-          <Plus size={18} className="text-white" />
-        </button>
-      </div>
-
-      {/* 룸 리스트 */}
-      {loadingRooms ? (
-        <div className="text-center py-12 text-gray-500 text-sm">{ko ? '불러오는 중...' : 'Loading...'}</div>
-      ) : rooms.length === 0 ? (
-        <div className="text-center py-12 text-gray-500 text-sm flex flex-col items-center gap-2">
-          <MessageCircle size={36} className="opacity-30" />
-          <p>{ko ? '대화방이 없습니다' : 'No chats yet'}</p>
-          <p className="text-xs">{ko ? '＋ 버튼으로 시작하세요' : 'Tap + to start'}</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {rooms.map(r => {
-            const icon = r.type === 'dm' ? '💬' : r.type === 'group' ? '👥' : '🏌️'
-            const subtitle = r.last_message_preview ?? (
-              r.type === 'group' ? `${r.member_count ?? '?'}${ko ? '명' : ' members'}` :
-              r.type === 'club_wide' ? (ko ? '클럽 전체 채팅' : 'Club-wide chat') :
-              ''
-            )
-            const time = r.last_message_at ? new Date(r.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
-            return (
-              <button key={r.id} onClick={() => setActiveRoom(r)}
-                className="w-full glass-card rounded-2xl px-4 py-3 flex items-center gap-3 text-left transition active:scale-[0.98] hover:bg-white/[0.03]">
-                <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
-                  style={{ background: r.type === 'dm' ? 'rgba(96,165,250,0.15)' : r.type === 'group' ? 'rgba(167,139,250,0.15)' : 'rgba(34,197,94,0.15)' }}>
-                  {icon}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-white truncate">{r.display_name}</p>
-                  {subtitle && <p className="text-xs text-gray-500 truncate mt-0.5">{subtitle}</p>}
-                </div>
-                {time && <span className="text-[10px] text-gray-600 flex-shrink-0">{time}</span>}
+  // ── 공통 모달들 — chat·list 양쪽에서 노출 가능 ─────────────────────────
+  const modals = (
+    <>
+      {/* 내 대화방 (DM·그룹) 피커 — 전체 대화 헤더 ☰ 버튼에서 호출 */}
+      {showRoomPicker && (
+        <div onClick={() => setShowRoomPicker(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 9998, background: 'rgba(0,0,0,0.7)' }}>
+          <div onClick={e => e.stopPropagation()}
+            className="absolute bottom-20 left-4 right-4 rounded-2xl overflow-hidden bg-gray-900 border border-gray-800 max-h-[60vh] flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800 flex-shrink-0">
+              <p className="text-sm font-bold text-white">{ko ? '내 대화방' : 'My rooms'}</p>
+              <button onClick={() => setShowRoomPicker(false)} className="w-7 h-7 rounded-lg flex items-center justify-center"
+                style={{ background: 'rgba(255,255,255,0.04)' }}>
+                <X size={14} className="text-white" />
               </button>
-            )
-          })}
+            </div>
+            <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
+              {dmGroupRooms.length === 0 ? (
+                <div className="text-center py-8 text-gray-500 text-sm flex flex-col items-center gap-2">
+                  <MessageCircle size={28} className="opacity-30" />
+                  <p className="text-xs">{ko ? 'DM·그룹 채팅이 없습니다' : 'No DM/group chats'}</p>
+                </div>
+              ) : dmGroupRooms.map(r => {
+                const icon = r.type === 'dm' ? '💬' : '👥'
+                const sub = r.last_message_preview ?? (r.type === 'group' ? `${r.member_count ?? '?'}${ko ? '명' : ' members'}` : '')
+                const time = r.last_message_at ? new Date(r.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
+                return (
+                  <button key={r.id} onClick={() => { setActiveRoom(r); setShowRoomPicker(false) }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-900/50 hover:bg-gray-800 transition active:scale-[0.98] text-left">
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center text-base flex-shrink-0"
+                      style={{ background: r.type === 'dm' ? 'rgba(96,165,250,0.15)' : 'rgba(167,139,250,0.15)' }}>
+                      {icon}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-white truncate">{r.display_name}</p>
+                      {sub && <p className="text-xs text-gray-500 truncate mt-0.5">{sub}</p>}
+                    </div>
+                    {time && <span className="text-[10px] text-gray-600 flex-shrink-0">{time}</span>}
+                  </button>
+                )
+              })}
+            </div>
+            <button onClick={() => { setShowRoomPicker(false); setShowCreateMenu(true) }}
+              className="flex-shrink-0 flex items-center justify-center gap-2 py-3 border-t border-gray-800 hover:bg-white/5 transition">
+              <Plus size={14} className="text-green-400" />
+              <span className="text-sm font-medium text-green-400">{ko ? '새 대화 시작' : 'Start new chat'}</span>
+            </button>
+          </div>
         </div>
       )}
 
-      {/* + 메뉴 (시트) */}
+      {/* + 메뉴 (DM·그룹 만들기 선택) */}
       {showCreateMenu && (
         <div onClick={() => setShowCreateMenu(false)}
           style={{ position: 'fixed', inset: 0, zIndex: 9998, background: 'rgba(0,0,0,0.6)' }}>
@@ -685,6 +579,199 @@ export default function ChatPage() {
           </div>
         </div>
       )}
-    </div>
+    </>
   )
+
+  // 활성 룸이 있으면 채팅 뷰
+  if (activeRoom) {
+    const isClubWide = activeRoom.type === 'club_wide'
+    const dmGroupCount = dmGroupRooms.length
+    return (<>
+      <div className="flex flex-col h-[calc(100vh-8rem)]">
+        {/* 헤더 — club_wide: ☰ 피커 + ➕ / DM·group: ← 백 + ➕ */}
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-green-900/30 flex-shrink-0">
+          {isClubWide ? (
+            <button onClick={() => setShowRoomPicker(true)} className="w-8 h-8 rounded-lg flex items-center justify-center transition active:scale-95 relative"
+              style={{ background: 'rgba(255,255,255,0.04)' }} title={ko ? '내 대화방' : 'My rooms'}>
+              <MessageCircle size={16} className="text-white" />
+              {dmGroupCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full text-[9px] font-bold flex items-center justify-center"
+                  style={{ background: '#16a34a', color: '#fff' }}>{dmGroupCount}</span>
+              )}
+            </button>
+          ) : (
+            <button onClick={() => {
+              const club = rooms.find(r => r.type === 'club_wide')
+              if (club) setActiveRoom(club); else setActiveRoom(null)
+            }} className="w-8 h-8 rounded-lg flex items-center justify-center transition active:scale-95"
+              style={{ background: 'rgba(255,255,255,0.04)' }}>
+              <ArrowLeft size={16} className="text-white" />
+            </button>
+          )}
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-white truncate">
+              {activeRoom.type === 'dm' ? '💬 ' : activeRoom.type === 'group' ? '👥 ' : '🏌️ '}
+              {activeRoom.display_name ?? (ko ? activeRoom.name : (activeRoom.name_en ?? activeRoom.name))}
+            </p>
+            {activeRoom.type === 'group' && activeRoom.member_count != null && (
+              <p className="text-[11px] text-gray-500">{activeRoom.member_count}{ko ? '명' : ' members'}</p>
+            )}
+          </div>
+          {/* + 새 대화 (DM·그룹 만들기) — 항상 사용 가능 */}
+          <button onClick={() => setShowCreateMenu(true)} className="w-8 h-8 rounded-lg flex items-center justify-center transition active:scale-95"
+            style={{ background: 'linear-gradient(135deg,#16a34a,#15803d)' }} title={ko ? '새 대화' : 'New chat'}>
+            <Plus size={16} className="text-white" />
+          </button>
+        </div>
+
+        {/* 메시지 목록 */}
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+          {messages.map((msg) => {
+            const isMe = msg.user_id === user?.id
+            const name = ko ? msg.users?.full_name : (msg.users?.full_name_en || msg.users?.full_name)
+            return (
+              <div key={msg.id} className={`flex gap-2 ${isMe ? 'flex-row-reverse' : ''}`}>
+                {!isMe && (
+                  <div className="w-8 h-8 bg-green-800 rounded-full flex items-center justify-center text-sm flex-shrink-0">👤</div>
+                )}
+                <div className={`max-w-[75%] flex flex-col gap-0.5 ${isMe ? 'items-end' : 'items-start'}`}>
+                  {!isMe && <span className="text-xs text-gray-500 px-1">{name}</span>}
+                  {/* 이미지 첨부 — 인라인 표시 */}
+                  {msg.attachment_type === 'image' && msg.attachment_url && (
+                    <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer"
+                      className="block rounded-2xl overflow-hidden border border-white/10 active:scale-[0.98] transition"
+                      style={{ maxWidth: 240 }}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={msg.attachment_url} alt={msg.attachment_name ?? 'image'}
+                        loading="lazy" className="block w-full h-auto" style={{ maxHeight: 320, objectFit: 'cover' }} />
+                    </a>
+                  )}
+                  {/* 파일 첨부 — 다운로드 카드 */}
+                  {msg.attachment_type === 'file' && msg.attachment_url && (
+                    <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer" download={msg.attachment_name ?? undefined}
+                      className={`flex items-center gap-2 px-3 py-2.5 rounded-2xl border transition active:scale-[0.98] ${isMe ? 'bg-green-700/40 border-green-700/60' : 'bg-gray-800 border-gray-700'}`}
+                      style={{ maxWidth: 260 }}>
+                      <FileText size={18} className="flex-shrink-0 text-blue-300" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-white truncate">{msg.attachment_name}</p>
+                        {msg.attachment_size != null && (
+                          <p className="text-[10px] text-gray-400">{(msg.attachment_size / 1024).toFixed(0)} KB</p>
+                        )}
+                      </div>
+                    </a>
+                  )}
+                  {/* 텍스트 본문 (있을 때만) */}
+                  {msg.content && (
+                    <div className={`px-4 py-2.5 rounded-2xl text-sm break-words ${isMe ? 'bg-green-700 text-white rounded-tr-sm' : 'bg-gray-800 text-white rounded-tl-sm'}`}>
+                      {msg.content}
+                    </div>
+                  )}
+                  <span className="text-[10px] text-gray-600 px-1">
+                    {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+              </div>
+            )
+          })}
+          {messages.length === 0 && (
+            <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-600">
+              <MessageCircle size={40} />
+              <p className="text-sm">{ko ? '첫 메시지를 보내보세요!' : 'Send the first message!'}</p>
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
+
+        {/* 입력 */}
+        <div className="flex-shrink-0 border-t border-green-900/30 bg-gray-950">
+          {uploadError && (
+            <p className="text-xs text-red-400 px-4 pt-2">{uploadError}</p>
+          )}
+          <div className="flex items-center gap-2 px-4 py-3">
+            {/* 숨겨진 file inputs */}
+            <input ref={imageInputRef} type="file" accept="image/*" className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f, 'image') }} />
+            <input ref={fileInputRef} type="file" className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f, 'file') }} />
+            {/* 사진 버튼 */}
+            <button type="button" onClick={() => imageInputRef.current?.click()} disabled={uploading}
+              className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition active:scale-95 disabled:opacity-50"
+              style={{ background: 'rgba(96,165,250,0.15)', border: '1px solid rgba(96,165,250,0.3)' }}
+              title={ko ? '사진' : 'Photo'}>
+              {uploading ? <Loader2 size={16} className="text-blue-300 animate-spin" /> : <ImageIcon size={16} className="text-blue-300" />}
+            </button>
+            {/* 파일 버튼 */}
+            <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploading}
+              className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition active:scale-95 disabled:opacity-50"
+              style={{ background: 'rgba(167,139,250,0.15)', border: '1px solid rgba(167,139,250,0.3)' }}
+              title={ko ? '파일' : 'File'}>
+              <Paperclip size={16} className="text-violet-300" />
+            </button>
+            <input
+              value={input} onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }}
+              placeholder={ko ? '메시지를 입력하세요...' : 'Type a message...'}
+              className="flex-1 bg-gray-900 border border-gray-700 rounded-2xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-green-500"
+            />
+            <button onClick={sendMessage} disabled={!input.trim() || uploading} className="w-10 h-10 bg-green-700 disabled:opacity-50 rounded-full flex items-center justify-center flex-shrink-0">
+              <Send size={16} className="text-white" />
+            </button>
+          </div>
+        </div>
+      </div>
+      {modals}
+    </>)
+  }
+
+  // 룸 리스트 뷰 — 전체 대화방이 없을 때만 보임 (fallback)
+  // 정상 케이스에서는 위의 auto-select effect 가 club_wide 룸을 활성화
+  return (<>
+    <div className="px-4 pt-4 pb-6 space-y-3">
+      {/* 헤더 + 새 대화 버튼 */}
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-bold text-white">{ko ? '채팅' : 'Chat'}</h1>
+        <button onClick={() => setShowCreateMenu(true)}
+          className="w-9 h-9 rounded-xl flex items-center justify-center transition active:scale-95"
+          style={{ background: 'linear-gradient(135deg,#16a34a,#15803d)' }}>
+          <Plus size={18} className="text-white" />
+        </button>
+      </div>
+
+      {loadingRooms ? (
+        <div className="text-center py-12 text-gray-500 text-sm">{ko ? '불러오는 중...' : 'Loading...'}</div>
+      ) : dmGroupRooms.length === 0 ? (
+        <div className="text-center py-12 text-gray-500 text-sm flex flex-col items-center gap-2">
+          <MessageCircle size={36} className="opacity-30" />
+          <p>{ko ? '대화방이 없습니다' : 'No chats yet'}</p>
+          <p className="text-xs">{ko ? '＋ 버튼으로 시작하세요' : 'Tap + to start'}</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {dmGroupRooms.map(r => {
+            const icon = r.type === 'dm' ? '💬' : '👥'
+            const subtitle = r.last_message_preview ?? (
+              r.type === 'group' ? `${r.member_count ?? '?'}${ko ? '명' : ' members'}` : ''
+            )
+            const time = r.last_message_at ? new Date(r.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
+            return (
+              <button key={r.id} onClick={() => setActiveRoom(r)}
+                className="w-full glass-card rounded-2xl px-4 py-3 flex items-center gap-3 text-left transition active:scale-[0.98] hover:bg-white/[0.03]">
+                <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
+                  style={{ background: r.type === 'dm' ? 'rgba(96,165,250,0.15)' : 'rgba(167,139,250,0.15)' }}>
+                  {icon}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-white truncate">{r.display_name}</p>
+                  {subtitle && <p className="text-xs text-gray-500 truncate mt-0.5">{subtitle}</p>}
+                </div>
+                {time && <span className="text-[10px] text-gray-600 flex-shrink-0">{time}</span>}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+    </div>
+    {modals}
+  </>)
 }
