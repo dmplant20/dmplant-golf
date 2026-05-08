@@ -29,8 +29,19 @@ export async function POST(req: NextRequest) {
   const cleanEmail = email.trim().toLowerCase()
 
   // 1. users 테이블에서 password_set=false 인 행 확인
-  const { data: row } = await service.from('users')
+  const { data: row, error: lookupErr } = await service.from('users')
     .select('id, password_set, email').eq('email', cleanEmail).maybeSingle()
+  if (lookupErr) {
+    console.error('[first-login lookup]', lookupErr)
+    // 컬럼 없음 등 스키마 오류는 원인 노출 (관리자가 즉시 SQL 실행해 해결 가능)
+    if (lookupErr.message?.includes('column') || lookupErr.code === 'PGRST204' || lookupErr.code === '42703') {
+      return NextResponse.json({
+        error: 'DB 스키마 미적용 — 관리자가 auth_password_setup.sql 을 실행해야 합니다',
+        detail: lookupErr.message,
+      }, { status: 500 })
+    }
+    return NextResponse.json({ error: lookupErr.message }, { status: 500 })
+  }
   if (!row) {
     return NextResponse.json({ error: '등록되지 않은 이메일입니다' }, { status: 404 })
   }
