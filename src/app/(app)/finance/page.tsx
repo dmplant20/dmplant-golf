@@ -591,15 +591,19 @@ export default function FinancePage() {
         </div>
       )}
 
-      {/* 거래 내역 */}
+      {/* 거래 내역 — 회비는 위 "회비 납부 현황" 섹션에서 별도로 정리되므로 여기서 제외 */}
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-gray-400">{ko ? '거래 내역' : 'Transactions'}</h3>
-        {loading ? (
-          <p className="text-center text-gray-600 py-6">{ko ? '로딩 중...' : 'Loading...'}</p>
-        ) : txns.length === 0 ? (
-          <p className="text-center text-gray-600 py-6">{ko ? '내역이 없습니다' : 'No transactions'}</p>
-        ) : (
-          txns.map((t) => {
+        <h3 className="text-sm font-semibold text-gray-400 flex items-center gap-2">
+          {ko ? '거래 내역' : 'Transactions'}
+          <span className="text-[10px] font-normal" style={{ color: '#5a7a5a' }}>
+            {ko ? '(회비 제외)' : '(excl. fees)'}
+          </span>
+        </h3>
+        {(() => {
+          const visibleTxns = txns.filter(t => t.type !== 'fee')
+          if (loading) return <p className="text-center text-gray-600 py-6">{ko ? '로딩 중...' : 'Loading...'}</p>
+          if (visibleTxns.length === 0) return <p className="text-center text-gray-600 py-6">{ko ? '내역이 없습니다' : 'No transactions'}</p>
+          return visibleTxns.map((t) => {
             const isIncome  = INCOME_TYPES.includes(t.type)
             const isExpanded = expandedId === t.id
             const freeTextName = extractMemberName(t)
@@ -667,7 +671,7 @@ export default function FinancePage() {
               </div>
             )
           })
-        )}
+        })()}
       </div>
 
       {/* ── 내역 추가 모달 ── */}
