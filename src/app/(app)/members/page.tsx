@@ -70,6 +70,8 @@ export default function MembersPage() {
   const myMembership = myClubs.find(c => c.id === currentClubId)
   const myRole       = myMembership?.role ?? 'member'
   const isAdmin      = isSuperAdmin(user)
+  // 회비/벌금 미납 정보 열람 권한 — 회장, 총무, 감사만 (본인 자신은 항상 볼 수 있음)
+  const canViewFinance = ['president', 'secretary', 'auditor'].includes(myRole) || isAdmin
   const canManage    = ['president', 'secretary'].includes(myRole) || isAdmin
 
   const [tab,           setTab]           = useState<'approved' | 'pending' | 'withdrawn' | 'log'>('approved')
@@ -330,17 +332,20 @@ export default function MembersPage() {
                   {m.fee_type === 'annual'  && <span className="text-[11px] px-2 py-0.5 rounded-full bg-yellow-900/50 text-yellow-300">{ko ? '년회비' : 'Annual'}</span>}
                   {m.fee_type === 'monthly' && <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-900/50  text-blue-300">{ko ? '월회비' : 'Monthly'}</span>}
                   {m.club_handicap != null && <span className="text-[11px]" style={{ color: 'var(--gold-l)' }}>HC {m.club_handicap}</span>}
-                  {/* 회비 납부 현황 (전 회원 표시) */}
+                  {/* 회비 납부 현황 — 미납 정보는 회장·총무·감사 또는 본인만 볼 수 있음
+                      (다른 회원의 미납을 일반 회원에게 노출하지 않음) */}
                   {feeStatusByUser[m.user_id] && (
                     feeStatusByUser[m.user_id].paid
                       ? <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-900/60 text-green-300">✓ {ko ? '납부완료' : 'Paid'}</span>
-                      : feeStatusByUser[m.user_id].feeType === 'annual'
-                        ? <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-900/60 text-red-300">{ko ? '연회비 미납' : 'Annual unpaid'}</span>
-                        : <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-900/60 text-red-300">
-                            {ko
-                              ? `${feeStatusByUser[m.user_id].unpaidMonths.join(',')}월 미납`
-                              : `Unpaid ${feeStatusByUser[m.user_id].unpaidMonths.join(',')}`}
-                          </span>
+                      : (canViewFinance || m.user_id === user?.id) && (
+                        feeStatusByUser[m.user_id].feeType === 'annual'
+                          ? <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-900/60 text-red-300">{ko ? '연회비 미납' : 'Annual unpaid'}</span>
+                          : <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-900/60 text-red-300">
+                              {ko
+                                ? `${feeStatusByUser[m.user_id].unpaidMonths.join(',')}월 미납`
+                                : `Unpaid ${feeStatusByUser[m.user_id].unpaidMonths.join(',')}`}
+                            </span>
+                      )
                   )}
                 </div>
               </div>

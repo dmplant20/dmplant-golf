@@ -97,14 +97,16 @@ export async function POST(req: NextRequest) {
   } else {
     authUserId = created.user.id
 
-    // 4. Insert into public.users
-    const { error: userInsertErr } = await admin.from('users').insert({
+    // 4. Insert into public.users (또는 트리거가 이미 만든 행을 update)
+    // password_set=false 로 마킹 → 본인이 첫 로그인 시 강제 비밀번호 설정 팝업이 뜸
+    const { error: userInsertErr } = await admin.from('users').upsert({
       id: authUserId,
       email,
       full_name,
       full_name_en: full_name_en || null,
       name_abbr: name_abbr || null,
-    })
+      password_set: false,
+    }, { onConflict: 'id' })
 
     if (userInsertErr) {
       // Roll back auth user creation on failure

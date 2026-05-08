@@ -34,6 +34,8 @@ export default function FinancePage() {
   const isAdmin = isSuperAdmin(user)
   const canManage = ['president', 'secretary'].includes(myRole) || isAdmin
   const isOfficer = OFFICER_ROLES.includes(myRole) || isAdmin
+  // 회비/벌금 미납자 명단 열람 권한 — 회장·총무·감사만
+  const canViewFinance = ['president', 'secretary', 'auditor'].includes(myRole) || isAdmin
 
   const [txns,         setTxns]         = useState<any[]>([])
   const [sponsorships, setSponsorships] = useState<any[]>([])
@@ -355,7 +357,8 @@ export default function FinancePage() {
         </div>
       </div>
 
-      {/* ━━ 회비 납부 현황 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      {/* ━━ 회비 납부 현황 — 회장·총무·감사만 열람 가능 ━━━━━━━━━━━━━━━━━━━━━ */}
+      {canViewFinance && (
       <div className="glass-card rounded-2xl overflow-hidden">
         <button
           className="w-full px-4 py-3.5 flex items-center gap-3"
@@ -438,6 +441,7 @@ export default function FinancePage() {
           </div>
         )}
       </div>
+      )}
 
       {/* ── 송금 정보 카드 ── */}
       {(payInfo || canManage) && (

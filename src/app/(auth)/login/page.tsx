@@ -21,6 +21,39 @@ export default function LoginPage() {
     setLoading(true)
     setError('')
     const supabase = createClient()
+
+    // 비밀번호가 비어있으면 → 첫 로그인 시도 (관리자 사전 등록 회원만 통과)
+    if (!password) {
+      try {
+        const res = await fetch('/api/auth/first-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          setError(data.already_set
+            ? (ko ? '이미 비밀번호가 설정된 계정입니다. 비밀번호를 입력해 주세요.' : 'Password already set. Please enter your password.')
+            : (data.error ?? (ko ? '첫 로그인 실패' : 'First-login failed')))
+          setLoading(false); return
+        }
+        // 받은 hashed_token 으로 OTP 검증 → 세션 획득
+        const { error: otpErr } = await supabase.auth.verifyOtp({
+          token_hash: data.token_hash, type: 'magiclink',
+        })
+        if (otpErr) {
+          setError(ko ? '인증 실패: ' + otpErr.message : 'Verification failed: ' + otpErr.message)
+          setLoading(false); return
+        }
+        router.push('/dashboard')
+        return
+      } catch (err: any) {
+        setError(ko ? '오류: ' + (err?.message ?? '') : 'Error: ' + (err?.message ?? ''))
+        setLoading(false); return
+      }
+    }
+
+    // 비밀번호가 있으면 → 일반 로그인
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) {
       setError(ko ? '이메일 또는 비밀번호가 올바르지 않습니다.' : 'Invalid email or password.')
@@ -102,10 +135,9 @@ export default function LoginPage() {
                     type={showPw ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    required
                     autoComplete="current-password"
                     className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 pr-12 text-white text-sm focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500/30 transition placeholder-gray-600"
-                    placeholder="••••••••"
+                    placeholder={ko ? '처음이면 비워두세요' : 'Leave blank if first login'}
                   />
                   <button
                     type="button"
@@ -125,13 +157,18 @@ export default function LoginPage() {
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || !email}
                 className="w-full bg-green-600 hover:bg-green-500 active:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition text-sm shadow-lg shadow-green-900/30"
               >
                 {loading
                   ? (ko ? '로그인 중...' : 'Signing in...')
                   : (ko ? '로그인' : 'Sign In')}
               </button>
+              <p className="text-[11px] text-center" style={{ color: '#86efac' }}>
+                {ko
+                  ? '✨ 처음이면 비밀번호 비워두고 로그인 → 화면에서 비밀번호 등록'
+                  : '✨ First time? Leave password blank → set password on screen'}
+              </p>
             </form>
 
             <div className="mt-4 text-right">

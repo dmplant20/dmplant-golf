@@ -17,6 +17,8 @@ export interface User {
   phone?: string
   avatar_url?: string
   birth_date?: string | null
+  /** 관리자 사전 등록 후 본인이 비밀번호를 설정했는지 여부. false면 첫 로그인 후 강제 비밀번호 설정 팝업이 뜸. */
+  password_set?: boolean
   created_at: string
 }
 

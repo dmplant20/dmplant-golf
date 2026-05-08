@@ -26,6 +26,10 @@ ALTER TABLE personal_round_holes ADD COLUMN IF NOT EXISTS yardage int
 -- users 생년월일 컬럼
 ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_date date;
 
+-- 비밀번호 설정 여부 (관리자 일괄 등록 후 첫 로그인 시 강제 비밀번호 설정)
+-- default true → 기존 사용자는 영향 없음. 관리자가 새로 만든 계정만 false 로 설정.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_set boolean DEFAULT true NOT NULL;
+
 -- 생일 알림 기록 테이블 (없으면 생성)
 CREATE TABLE IF NOT EXISTS birthday_notifications (
   id          uuid DEFAULT gen_random_uuid() PRIMARY KEY,

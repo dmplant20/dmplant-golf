@@ -6,6 +6,8 @@ import { useAuthStore } from '@/stores/authStore'
 import AppHeader from '@/components/layout/AppHeader'
 import BottomNav from '@/components/layout/BottomNav'
 import NotificationModals from '@/components/ui/NotificationModals'
+import ForcePasswordSetup from '@/components/ui/ForcePasswordSetup'
+import UnpaidLoginNotice from '@/components/ui/UnpaidLoginNotice'
 import { setAppBadge, getLastSeen } from '@/lib/appBadge'
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -116,6 +118,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </main>
       {!isOnboarding && <BottomNav />}
       <NotificationModals />
+      {/* 첫 로그인 후 강제 비밀번호 설정 — users.password_set === false 일 때 화면 전체를 덮음 */}
+      <ForcePasswordSetup />
+      {/* 본인 회비/벌금 미납 알림 — 1세션 1회 노출 */}
+      <UnpaidLoginNotice />
     </div>
   )
 }

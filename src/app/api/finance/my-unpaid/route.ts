@@ -1,0 +1,116 @@
+// 로그인한 사용자의 회비/벌금 미납 내역 (본인 한정)
+// — 어느 클럽이든 미납 1건 이상이면 클라가 팝업으로 알림
+import { NextRequest, NextResponse } from 'next/server'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+
+async function makeSupabase() {
+  const cookieStore = await cookies()
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => cookieStore.getAll(),
+        setAll: (list) => list.forEach(({ name, value, options }) => cookieStore.set(name, value, options)),
+      },
+    }
+  )
+}
+
+interface UnpaidItem {
+  club_id: string
+  club_name: string
+  fee_type: 'annual' | 'monthly'
+  amount: number
+  currency: string
+  unpaid_months?: number[]   // monthly 일 때 미납 월 (1-12)
+}
+interface UnpaidFineItem {
+  club_id: string
+  club_name: string
+  count: number
+  total: number
+  currency: string
+}
+
+export async function GET(_req: NextRequest) {
+  const supabase = await makeSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const now = new Date()
+  const year = now.getUTCFullYear()
+  const currentMonth = now.getUTCMonth() + 1
+
+  // ── 1. 내 모든 클럽 + fee_type 조회 ─────────────────────────────────────
+  const { data: memberships } = await supabase
+    .from('club_memberships')
+    .select('club_id, fee_type, clubs(id, name, annual_fee, monthly_fee, currency)')
+    .eq('user_id', user.id)
+    .eq('status', 'approved')
+
+  const unpaidFees: UnpaidItem[] = []
+  const unpaidFines: UnpaidFineItem[] = []
+
+  for (const m of (memberships ?? [])) {
+    const club = Array.isArray(m.clubs) ? m.clubs[0] : m.clubs
+    if (!club) continue
+    const feeType: 'annual' | 'monthly' | null = (m as any).fee_type ?? null
+    const currency = club.currency ?? 'KRW'
+
+    // ── 2. 회비 미납 ─────────────────────────────────────────────────────
+    if (feeType) {
+      const feeAmount = feeType === 'monthly' ? (club.monthly_fee ?? 0) : (club.annual_fee ?? 0)
+      if (feeAmount > 0) {
+        const yearStart = `${year}-01-01`
+        const yearEnd = `${year + 1}-01-01`
+        const { data: payments } = await supabase
+          .from('finance_transactions')
+          .select('transaction_date')
+          .eq('club_id', m.club_id)
+          .eq('member_id', user.id)
+          .eq('type', 'fee')
+          .gte('transaction_date', yearStart).lt('transaction_date', yearEnd)
+
+        if (feeType === 'annual') {
+          if (!payments || payments.length === 0) {
+            unpaidFees.push({ club_id: m.club_id, club_name: club.name, fee_type: 'annual', amount: feeAmount, currency })
+          }
+        } else {
+          const paidMonths = new Set((payments ?? []).map((p: any) => Number(String(p.transaction_date).slice(5, 7))))
+          const unpaidMonths: number[] = []
+          for (let mm = 1; mm <= currentMonth; mm++) if (!paidMonths.has(mm)) unpaidMonths.push(mm)
+          if (unpaidMonths.length) {
+            unpaidFees.push({
+              club_id: m.club_id, club_name: club.name, fee_type: 'monthly',
+              amount: feeAmount * unpaidMonths.length, currency, unpaid_months: unpaidMonths,
+            })
+          }
+        }
+      }
+    }
+
+    // ── 3. 벌금 미납 (단순 집계: 본인에게 부과된 fine 트랜잭션 합계) ─────
+    // 정확한 "납부 여부" 추적이 없는 모델이라, 회장이 납부 후 별도 행으로 음수금액 처리하는 패턴 가정
+    const { data: fineRows } = await supabase
+      .from('finance_transactions')
+      .select('amount')
+      .eq('club_id', m.club_id)
+      .eq('member_id', user.id)
+      .eq('type', 'fine')
+    const fineSum = (fineRows ?? []).reduce((s: number, r: any) => s + Number(r.amount ?? 0), 0)
+    if (fineSum > 0) {
+      unpaidFines.push({
+        club_id: m.club_id, club_name: club.name,
+        count: fineRows?.length ?? 0, total: fineSum, currency,
+      })
+    }
+  }
+
+  return NextResponse.json({
+    unpaidFees,
+    unpaidFines,
+    has_any: unpaidFees.length > 0 || unpaidFines.length > 0,
+  })
+}
