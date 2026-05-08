@@ -375,26 +375,34 @@ export default function FinancePage() {
         </button>
         {showFeeStatus && (
           <div className="px-4 pb-4 space-y-3" style={{ borderTop: '1px solid rgba(34,197,94,0.1)' }}>
-            {/* 납부 완료 */}
+            {/* 납부 완료 — 임원만 명단 표시, 일반 회원은 명수만 (개인정보 보호) */}
             {paidMembers.length > 0 && (
               <div className="mt-3">
                 <p className="text-xs font-semibold mb-2" style={{ color: '#4ade80' }}>
                   ✅ {ko ? `납부 완료 (${paidMembers.length}명)` : `Paid (${paidMembers.length})`}
                 </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {paidMembers.map((m: any) => (
-                    <span key={m.user_id}
-                      className="inline-flex flex-col items-start px-2.5 py-1.5 rounded-xl text-xs font-medium"
-                      style={{ background: 'rgba(22,163,74,0.15)', border: '1px solid rgba(34,197,94,0.3)', color: '#4ade80' }}>
-                      <span>{lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}</span>
-                      {m.amount ? (
-                        <span className="text-[10px] mt-0.5" style={{ color: '#86efac' }}>
-                          {sym}{Number(m.amount).toLocaleString()}{m.date ? ` · ${m.date.slice(5)}` : ''}
-                        </span>
-                      ) : null}
-                    </span>
-                  ))}
-                </div>
+                {canViewFinance ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {paidMembers.map((m: any) => (
+                      <span key={m.user_id}
+                        className="inline-flex flex-col items-start px-2.5 py-1.5 rounded-xl text-xs font-medium"
+                        style={{ background: 'rgba(22,163,74,0.15)', border: '1px solid rgba(34,197,94,0.3)', color: '#4ade80' }}>
+                        <span>{lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}</span>
+                        {m.amount ? (
+                          <span className="text-[10px] mt-0.5" style={{ color: '#86efac' }}>
+                            {sym}{Number(m.amount).toLocaleString()}{m.date ? ` · ${m.date.slice(5)}` : ''}
+                          </span>
+                        ) : null}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs" style={{ color: '#86efac' }}>
+                    {ko
+                      ? `납부자 명단은 회장·총무·감사만 볼 수 있습니다.`
+                      : `Only president/secretary/auditor can see the paid list.`}
+                  </p>
+                )}
               </div>
             )}
             {/* 미납 —
