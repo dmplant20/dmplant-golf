@@ -23,11 +23,25 @@ const themeOf = (k?: string) => THEMES.find(t => t.key === k) ?? THEMES[5]
 interface Album {
   id: string; title: string; cover_url?: string; created_at: string
   theme?: ThemeKey; description?: string; created_by?: string
+  event_date?: string | null
   photo_count?: number; creator_name?: string
 }
 interface AlbumPhoto {
   id: string; url: string; caption?: string; created_at: string
+  taken_at?: string | null
   uploaded_by?: string; uploader?: { full_name?: string } | null
+}
+
+// 날짜·시간 포맷
+function fmtDate(d?: string | null) {
+  if (!d) return ''
+  const x = new Date(d)
+  return `${x.getFullYear()}.${String(x.getMonth() + 1).padStart(2,'0')}.${String(x.getDate()).padStart(2,'0')}`
+}
+function fmtDateTime(d?: string | null) {
+  if (!d) return ''
+  const x = new Date(d)
+  return `${x.getFullYear()}.${String(x.getMonth() + 1).padStart(2,'0')}.${String(x.getDate()).padStart(2,'0')} ${String(x.getHours()).padStart(2,'0')}:${String(x.getMinutes()).padStart(2,'0')}`
 }
 
 export default function AlbumPage() {
@@ -47,8 +61,8 @@ export default function AlbumPage() {
 
   // 모달
   const [showCreate, setShowCreate] = useState(false)
-  const [createForm, setCreateForm] = useState<{ title: string; theme: ThemeKey; description: string }>({
-    title: '', theme: 'casual', description: '',
+  const [createForm, setCreateForm] = useState<{ title: string; theme: ThemeKey; description: string; event_date: string }>({
+    title: '', theme: 'casual', description: '', event_date: '',
   })
   const [creating, setCreating] = useState(false)
   const [showEditAlbum, setShowEditAlbum] = useState(false)
@@ -70,8 +84,11 @@ export default function AlbumPage() {
     setLoading(true)
     const supabase = createClient()
     const { data } = await supabase.from('albums')
-      .select('id,title,cover_url,created_at,theme,description,created_by,users:users!created_by(full_name)')
-      .eq('club_id', currentClubId).order('created_at', { ascending: false })
+      .select('id,title,cover_url,created_at,theme,description,created_by,event_date,users:users!created_by(full_name)')
+      .eq('club_id', currentClubId)
+      // 행사일이 있으면 우선 정렬, 없으면 생성일
+      .order('event_date', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false })
     if (data) {
       const withCounts = await Promise.all(data.map(async (a: any) => {
         const { count } = await supabase.from('album_photos')
@@ -87,7 +104,7 @@ export default function AlbumPage() {
     setPhotosLoading(true)
     const supabase = createClient()
     const { data } = await supabase.from('album_photos')
-      .select('id,url,caption,created_at,uploaded_by,uploader:users!uploaded_by(full_name)')
+      .select('id,url,caption,created_at,taken_at,uploaded_by,uploader:users!uploaded_by(full_name)')
       .eq('album_id', albumId).order('created_at', { ascending: false })
     setPhotos((data ?? []) as AlbumPhoto[])
     setPhotosLoading(false)
@@ -116,12 +133,13 @@ export default function AlbumPage() {
       title: createForm.title.trim(),
       theme: createForm.theme,
       description: createForm.description.trim() || null,
+      event_date: createForm.event_date || null,
       created_by: user.id,
     }).select().single()
     setCreating(false)
     if (error) { alert(ko ? `생성 실패: ${error.message}` : `Failed: ${error.message}`); return }
     setShowCreate(false)
-    setCreateForm({ title: '', theme: 'casual', description: '' })
+    setCreateForm({ title: '', theme: 'casual', description: '', event_date: '' })
     await loadAlbums()
     if (data) openAlbum({ ...data, photo_count: 0 } as Album)
   }
@@ -135,11 +153,18 @@ export default function AlbumPage() {
       title: createForm.title.trim() || selectedAlbum.title,
       theme: createForm.theme,
       description: createForm.description.trim() || null,
+      event_date: createForm.event_date || null,
     }).eq('id', selectedAlbum.id)
     if (error) { alert(ko ? `저장 실패: ${error.message}` : `Failed: ${error.message}`); return }
     setShowEditAlbum(false)
     await loadAlbums()
-    setSelectedAlbum(prev => prev ? { ...prev, title: createForm.title.trim() || prev.title, theme: createForm.theme, description: createForm.description.trim() } : prev)
+    setSelectedAlbum(prev => prev ? {
+      ...prev,
+      title: createForm.title.trim() || prev.title,
+      theme: createForm.theme,
+      description: createForm.description.trim(),
+      event_date: createForm.event_date || null,
+    } : prev)
   }
   async function deleteAlbum() {
     if (!selectedAlbum) return
@@ -172,7 +197,14 @@ export default function AlbumPage() {
         if (upErr) { console.error('upload', upErr); continue }
         const { data: urlData } = supabase.storage.from('club-media').getPublicUrl(path)
         const url = urlData.publicUrl
-        await supabase.from('album_photos').insert({ album_id: selectedAlbum.id, url, uploaded_by: user.id })
+        // file.lastModified 가 0 이거나 너무 옛날이면 무시 (브라우저별 차이)
+        const lm = file.lastModified
+        const takenAt = (lm && lm > 0 && lm < Date.now() + 86400_000)
+          ? new Date(lm).toISOString() : null
+        await supabase.from('album_photos').insert({
+          album_id: selectedAlbum.id, url, uploaded_by: user.id,
+          taken_at: takenAt,
+        })
         if (!firstUrl) firstUrl = url
       } catch (err) { console.error('upload err', err) }
       setUploadProg({ done: i + 1, total: arr.length })
@@ -235,7 +267,7 @@ export default function AlbumPage() {
               {ko ? '회원 누구나 앨범 만들고 사진 올릴 수 있어요' : 'Any member can create albums and add photos'}
             </p>
           </div>
-          <button onClick={() => { setCreateForm({ title: '', theme: 'casual', description: '' }); setShowCreate(true) }}
+          <button onClick={() => { setCreateForm({ title: '', theme: 'casual', description: '', event_date: new Date().toISOString().slice(0,10) }); setShowCreate(true) }}
             className="flex items-center gap-1.5 text-white text-sm font-medium px-3 py-2 rounded-xl transition active:scale-95"
             style={{ background: 'linear-gradient(135deg,#16a34a,#15803d)', boxShadow: '0 4px 12px rgba(22,163,74,0.3)' }}>
             <Plus size={15} /> {ko ? '앨범 만들기' : 'New Album'}
@@ -273,7 +305,7 @@ export default function AlbumPage() {
           <div className="flex flex-col items-center justify-center py-16" style={{ color: '#3a5a3a' }}>
             <ImageIcon size={44} className="mb-3 opacity-30" />
             <p className="text-sm">{ko ? '아직 앨범이 없습니다' : 'No albums yet'}</p>
-            <button onClick={() => { setCreateForm({ title: '', theme: 'casual', description: '' }); setShowCreate(true) }}
+            <button onClick={() => { setCreateForm({ title: '', theme: 'casual', description: '', event_date: new Date().toISOString().slice(0,10) }); setShowCreate(true) }}
               className="mt-4 text-sm" style={{ color: '#22c55e' }}>
               {ko ? '+ 첫 앨범 만들기' : '+ Create first album'}
             </button>
@@ -303,12 +335,15 @@ export default function AlbumPage() {
                   </div>
                   <div className="px-3 py-2.5">
                     <p className="text-white text-sm font-semibold truncate">{album.title}</p>
-                    <div className="flex items-center justify-between mt-0.5">
-                      <p className="text-[11px]" style={{ color: '#5a7a5a' }}>
-                        {album.photo_count ?? 0}{ko ? '장' : ' photos'}
-                        {album.creator_name && <> · {album.creator_name}</>}
+                    {album.event_date && (
+                      <p className="text-[11px] mt-0.5 font-semibold" style={{ color: '#fbbf24' }}>
+                        📅 {fmtDate(album.event_date)}
                       </p>
-                    </div>
+                    )}
+                    <p className="text-[11px] mt-0.5" style={{ color: '#5a7a5a' }}>
+                      {album.photo_count ?? 0}{ko ? '장' : ' photos'}
+                      {album.creator_name && <> · {album.creator_name}</>}
+                    </p>
                   </div>
                 </button>
               )
@@ -352,6 +387,18 @@ export default function AlbumPage() {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#86efac' }}>
+                  📅 {ko ? '행사일 (선택)' : 'Event date (optional)'}
+                </label>
+                <input type="date" value={createForm.event_date}
+                  onChange={e => setCreateForm(f => ({ ...f, event_date: e.target.value }))}
+                  className="input-field" />
+                <p className="text-[10px] mt-1" style={{ color: '#5a7a5a' }}>
+                  {ko ? '시상식·라운드가 실제 있었던 날짜' : 'When the event actually happened'}
+                </p>
               </div>
 
               <div>
@@ -405,13 +452,25 @@ export default function AlbumPage() {
             </span>
             <h1 className="text-base font-bold text-white truncate">{selectedAlbum.title}</h1>
           </div>
-          {selectedAlbum.description && (
-            <p className="text-[11px] mt-0.5 truncate" style={{ color: '#86efac' }}>{selectedAlbum.description}</p>
-          )}
+          <div className="flex items-center gap-2 flex-wrap mt-0.5">
+            {selectedAlbum.event_date && (
+              <span className="text-[11px] font-semibold" style={{ color: '#fbbf24' }}>
+                📅 {fmtDate(selectedAlbum.event_date)}
+              </span>
+            )}
+            {selectedAlbum.description && (
+              <span className="text-[11px] truncate" style={{ color: '#86efac' }}>{selectedAlbum.description}</span>
+            )}
+          </div>
         </div>
         {isOwner && (
           <button onClick={() => {
-            setCreateForm({ title: selectedAlbum.title, theme: selectedAlbum.theme ?? 'casual', description: selectedAlbum.description ?? '' })
+            setCreateForm({
+              title: selectedAlbum.title,
+              theme: selectedAlbum.theme ?? 'casual',
+              description: selectedAlbum.description ?? '',
+              event_date: selectedAlbum.event_date ? String(selectedAlbum.event_date).slice(0,10) : '',
+            })
             setShowEditAlbum(true)
           }}
             className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
@@ -505,6 +564,12 @@ export default function AlbumPage() {
               </div>
             </div>
             <div>
+              <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#86efac' }}>📅 {ko ? '행사일' : 'Event date'}</label>
+              <input type="date" value={createForm.event_date}
+                onChange={e => setCreateForm(f => ({ ...f, event_date: e.target.value }))}
+                className="input-field" />
+            </div>
+            <div>
               <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#86efac' }}>{ko ? '설명' : 'Description'}</label>
               <textarea rows={2} value={createForm.description}
                 onChange={e => setCreateForm(f => ({ ...f, description: e.target.value }))}
@@ -542,13 +607,18 @@ export default function AlbumPage() {
               <X size={20} />
             </button>
             {/* 카운터 + 업로더 */}
-            <div className="absolute top-4 left-4 z-10 text-white text-xs">
+            <div className="absolute top-4 left-4 z-10 text-white text-xs flex flex-wrap gap-1.5 max-w-[calc(100%-72px)]">
               <span className="px-2 py-1 rounded-md" style={{ background: 'rgba(0,0,0,0.5)' }}>
                 {lightboxIdx + 1} / {photos.length}
               </span>
               {cur.uploader?.full_name && (
-                <span className="ml-2 px-2 py-1 rounded-md" style={{ background: 'rgba(0,0,0,0.5)' }}>
+                <span className="px-2 py-1 rounded-md" style={{ background: 'rgba(0,0,0,0.5)' }}>
                   📸 {cur.uploader.full_name}
+                </span>
+              )}
+              {(cur.taken_at || cur.created_at) && (
+                <span className="px-2 py-1 rounded-md" style={{ background: 'rgba(0,0,0,0.5)' }}>
+                  🕒 {fmtDateTime(cur.taken_at || cur.created_at)}
                 </span>
               )}
             </div>
