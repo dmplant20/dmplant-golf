@@ -351,75 +351,86 @@ export default function AlbumPage() {
           </div>
         )}
 
-        {/* 앨범 생성 모달 */}
+        {/* 앨범 생성 모달 — 헤더+본문(스크롤)+고정 하단 버튼 구조 */}
         {showCreate && (
-          <div className="fixed inset-0 flex items-end z-[200]" style={{ background: 'rgba(0,0,0,0.75)' }}
+          <div className="fixed inset-0 flex items-end z-[9999]" style={{ background: 'rgba(0,0,0,0.85)' }}
             onClick={() => setShowCreate(false)}>
-            <div className="w-full rounded-t-3xl p-6 space-y-4 animate-slide-up max-h-[90vh] overflow-y-auto"
-              style={{ background: '#0c160c', border: '1px solid rgba(34,197,94,0.2)', borderBottom: 'none' }}
+            <div className="w-full rounded-t-3xl flex flex-col animate-slide-up"
+              style={{ background: '#0c160c', border: '1px solid rgba(34,197,94,0.2)', borderBottom: 'none', maxHeight: '92dvh' }}
               onClick={e => e.stopPropagation()}>
-              <div className="flex justify-center mb-1"><div className="w-10 h-1 rounded-full" style={{ background: '#1a3a1a' }} /></div>
-              <h3 className="text-base font-bold text-white">{ko ? '새 앨범 만들기' : 'New Album'}</h3>
-
-              <div>
-                <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#86efac' }}>
-                  {ko ? '제목' : 'Title'} *
-                </label>
-                <input type="text" value={createForm.title}
-                  onChange={e => setCreateForm(f => ({ ...f, title: e.target.value }))}
-                  placeholder={ko ? '예: 2026년 5월 라운드' : 'e.g. May 2026 Round'}
-                  className="input-field" autoFocus />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#86efac' }}>
-                  {ko ? '테마' : 'Theme'}
-                </label>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {THEMES.map(t => (
-                    <button key={t.key} onClick={() => setCreateForm(f => ({ ...f, theme: t.key }))}
-                      className="flex flex-col items-center gap-1 py-2.5 rounded-xl transition active:scale-95"
-                      style={createForm.theme === t.key
-                        ? { background: t.bg, color: t.color, border: `1.5px solid ${t.color}` }
-                        : { background: 'rgba(255,255,255,0.03)', color: '#9ca3af', border: '1px solid rgba(255,255,255,0.06)' }}>
-                      <span className="text-xl">{t.emoji}</span>
-                      <span className="text-[11px] font-semibold">{ko ? t.ko : t.en}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#86efac' }}>
-                  📅 {ko ? '행사일 (선택)' : 'Event date (optional)'}
-                </label>
-                <input type="date" value={createForm.event_date}
-                  onChange={e => setCreateForm(f => ({ ...f, event_date: e.target.value }))}
-                  className="input-field" />
-                <p className="text-[10px] mt-1" style={{ color: '#5a7a5a' }}>
-                  {ko ? '시상식·라운드가 실제 있었던 날짜' : 'When the event actually happened'}
+              {/* 헤더 (고정) */}
+              <div className="flex-shrink-0 px-6 pt-4">
+                <div className="flex justify-center mb-2"><div className="w-10 h-1 rounded-full" style={{ background: '#1a3a1a' }} /></div>
+                <h3 className="text-base font-bold text-white">{ko ? '새 앨범 만들기' : 'New Album'}</h3>
+                <p className="text-[11px] mt-1" style={{ color: '#86efac' }}>
+                  💡 {ko ? '먼저 앨범을 만들고, 다음 화면에서 사진을 올립니다' : 'Create album first, then add photos'}
                 </p>
               </div>
 
-              <div>
-                <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#86efac' }}>
-                  {ko ? '설명 (선택)' : 'Description (optional)'}
-                </label>
-                <textarea rows={2} value={createForm.description}
-                  onChange={e => setCreateForm(f => ({ ...f, description: e.target.value }))}
-                  placeholder={ko ? '간단한 메모를 적어두세요' : 'Optional note'}
-                  className="input-field resize-none text-sm" />
+              {/* 본문 (스크롤 가능) */}
+              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+                <div>
+                  <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#86efac' }}>
+                    {ko ? '제목' : 'Title'} *
+                  </label>
+                  <input type="text" value={createForm.title}
+                    onChange={e => setCreateForm(f => ({ ...f, title: e.target.value }))}
+                    placeholder={ko ? '예: 2026년 5월 라운드' : 'e.g. May 2026 Round'}
+                    className="input-field" autoFocus />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#86efac' }}>
+                    {ko ? '테마' : 'Theme'}
+                  </label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {THEMES.map(t => (
+                      <button key={t.key} onClick={() => setCreateForm(f => ({ ...f, theme: t.key }))}
+                        className="flex flex-col items-center gap-1 py-2.5 rounded-xl transition active:scale-95"
+                        style={createForm.theme === t.key
+                          ? { background: t.bg, color: t.color, border: `1.5px solid ${t.color}` }
+                          : { background: 'rgba(255,255,255,0.03)', color: '#9ca3af', border: '1px solid rgba(255,255,255,0.06)' }}>
+                        <span className="text-xl">{t.emoji}</span>
+                        <span className="text-[11px] font-semibold">{ko ? t.ko : t.en}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#86efac' }}>
+                    📅 {ko ? '행사일 (선택)' : 'Event date (optional)'}
+                  </label>
+                  <input type="date" value={createForm.event_date}
+                    onChange={e => setCreateForm(f => ({ ...f, event_date: e.target.value }))}
+                    className="input-field" />
+                  <p className="text-[10px] mt-1" style={{ color: '#5a7a5a' }}>
+                    {ko ? '시상식·라운드가 실제 있었던 날짜' : 'When the event actually happened'}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#86efac' }}>
+                    {ko ? '설명 (선택)' : 'Description (optional)'}
+                  </label>
+                  <textarea rows={2} value={createForm.description}
+                    onChange={e => setCreateForm(f => ({ ...f, description: e.target.value }))}
+                    placeholder={ko ? '간단한 메모를 적어두세요' : 'Optional note'}
+                    className="input-field resize-none text-sm" />
+                </div>
               </div>
 
-              <div className="flex gap-3 pt-1">
+              {/* 하단 버튼 (고정) */}
+              <div className="flex-shrink-0 flex gap-3 px-6 py-4"
+                style={{ borderTop: '1px solid rgba(34,197,94,0.15)', paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
                 <button onClick={() => setShowCreate(false)} className="flex-1 py-3 rounded-xl text-sm font-medium"
                   style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.15)', color: '#86efac' }}>
                   {ko ? '취소' : 'Cancel'}
                 </button>
                 <button onClick={createAlbum} disabled={creating || !createForm.title.trim()}
-                  className="flex-1 py-3 rounded-xl text-white text-sm font-semibold disabled:opacity-50"
-                  style={{ background: 'linear-gradient(135deg,#16a34a,#15803d)' }}>
-                  {creating ? (ko ? '만드는 중...' : 'Creating...') : (ko ? '만들기' : 'Create')}
+                  className="flex-1 py-3 rounded-xl text-white text-sm font-bold disabled:opacity-50 active:scale-95"
+                  style={{ background: 'linear-gradient(135deg,#16a34a,#15803d)', boxShadow: '0 4px 16px rgba(22,163,74,0.4)' }}>
+                  {creating ? (ko ? '만드는 중...' : 'Creating...') : (ko ? '만들기 →' : 'Create →')}
                 </button>
               </div>
             </div>
@@ -535,56 +546,61 @@ export default function AlbumPage() {
         </p>
       )}
 
-      {/* 앨범 수정 모달 */}
+      {/* 앨범 수정 모달 — 고정 하단 버튼 */}
       {showEditAlbum && (
-        <div className="fixed inset-0 flex items-end z-[200]" style={{ background: 'rgba(0,0,0,0.75)' }}
+        <div className="fixed inset-0 flex items-end z-[9999]" style={{ background: 'rgba(0,0,0,0.85)' }}
           onClick={() => setShowEditAlbum(false)}>
-          <div className="w-full rounded-t-3xl p-6 space-y-4 max-h-[90vh] overflow-y-auto"
-            style={{ background: '#0c160c', border: '1px solid rgba(34,197,94,0.2)', borderBottom: 'none' }}
+          <div className="w-full rounded-t-3xl flex flex-col"
+            style={{ background: '#0c160c', border: '1px solid rgba(34,197,94,0.2)', borderBottom: 'none', maxHeight: '92dvh' }}
             onClick={e => e.stopPropagation()}>
-            <div className="flex justify-center mb-1"><div className="w-10 h-1 rounded-full" style={{ background: '#1a3a1a' }} /></div>
-            <h3 className="text-base font-bold text-white">{ko ? '앨범 편집' : 'Edit Album'}</h3>
-            <div>
-              <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#86efac' }}>{ko ? '제목' : 'Title'}</label>
-              <input value={createForm.title} onChange={e => setCreateForm(f => ({ ...f, title: e.target.value }))} className="input-field" />
+            <div className="flex-shrink-0 px-6 pt-4">
+              <div className="flex justify-center mb-2"><div className="w-10 h-1 rounded-full" style={{ background: '#1a3a1a' }} /></div>
+              <h3 className="text-base font-bold text-white">{ko ? '앨범 편집' : 'Edit Album'}</h3>
             </div>
-            <div>
-              <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#86efac' }}>{ko ? '테마' : 'Theme'}</label>
-              <div className="grid grid-cols-3 gap-1.5">
-                {THEMES.map(tt => (
-                  <button key={tt.key} onClick={() => setCreateForm(f => ({ ...f, theme: tt.key }))}
-                    className="flex flex-col items-center gap-1 py-2.5 rounded-xl transition active:scale-95"
-                    style={createForm.theme === tt.key
-                      ? { background: tt.bg, color: tt.color, border: `1.5px solid ${tt.color}` }
-                      : { background: 'rgba(255,255,255,0.03)', color: '#9ca3af', border: '1px solid rgba(255,255,255,0.06)' }}>
-                    <span className="text-xl">{tt.emoji}</span>
-                    <span className="text-[11px] font-semibold">{ko ? tt.ko : tt.en}</span>
-                  </button>
-                ))}
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+              <div>
+                <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#86efac' }}>{ko ? '제목' : 'Title'}</label>
+                <input value={createForm.title} onChange={e => setCreateForm(f => ({ ...f, title: e.target.value }))} className="input-field" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#86efac' }}>{ko ? '테마' : 'Theme'}</label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {THEMES.map(tt => (
+                    <button key={tt.key} onClick={() => setCreateForm(f => ({ ...f, theme: tt.key }))}
+                      className="flex flex-col items-center gap-1 py-2.5 rounded-xl transition active:scale-95"
+                      style={createForm.theme === tt.key
+                        ? { background: tt.bg, color: tt.color, border: `1.5px solid ${tt.color}` }
+                        : { background: 'rgba(255,255,255,0.03)', color: '#9ca3af', border: '1px solid rgba(255,255,255,0.06)' }}>
+                      <span className="text-xl">{tt.emoji}</span>
+                      <span className="text-[11px] font-semibold">{ko ? tt.ko : tt.en}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#86efac' }}>📅 {ko ? '행사일' : 'Event date'}</label>
+                <input type="date" value={createForm.event_date}
+                  onChange={e => setCreateForm(f => ({ ...f, event_date: e.target.value }))}
+                  className="input-field" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#86efac' }}>{ko ? '설명' : 'Description'}</label>
+                <textarea rows={2} value={createForm.description}
+                  onChange={e => setCreateForm(f => ({ ...f, description: e.target.value }))}
+                  className="input-field resize-none text-sm" />
               </div>
             </div>
-            <div>
-              <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#86efac' }}>📅 {ko ? '행사일' : 'Event date'}</label>
-              <input type="date" value={createForm.event_date}
-                onChange={e => setCreateForm(f => ({ ...f, event_date: e.target.value }))}
-                className="input-field" />
-            </div>
-            <div>
-              <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#86efac' }}>{ko ? '설명' : 'Description'}</label>
-              <textarea rows={2} value={createForm.description}
-                onChange={e => setCreateForm(f => ({ ...f, description: e.target.value }))}
-                className="input-field resize-none text-sm" />
-            </div>
-            <div className="flex gap-3 pt-1">
+            <div className="flex-shrink-0 flex gap-3 px-6 py-4"
+              style={{ borderTop: '1px solid rgba(34,197,94,0.15)', paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
               <button onClick={() => deleteAlbum()} className="px-3 py-3 rounded-xl text-sm font-semibold flex items-center gap-1.5"
                 style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}>
-                <Trash2 size={14} /> {ko ? '앨범 삭제' : 'Delete'}
+                <Trash2 size={14} /> {ko ? '삭제' : 'Delete'}
               </button>
               <button onClick={() => setShowEditAlbum(false)} className="flex-1 py-3 rounded-xl text-sm font-medium"
                 style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.15)', color: '#86efac' }}>
                 {ko ? '취소' : 'Cancel'}
               </button>
-              <button onClick={saveAlbumEdit} className="flex-1 py-3 rounded-xl text-white text-sm font-semibold"
+              <button onClick={saveAlbumEdit} className="flex-1 py-3 rounded-xl text-white text-sm font-bold active:scale-95"
                 style={{ background: 'linear-gradient(135deg,#16a34a,#15803d)' }}>
                 {ko ? '저장' : 'Save'}
               </button>
