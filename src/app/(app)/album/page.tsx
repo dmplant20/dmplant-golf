@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState, useRef, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores/authStore'
 import {
@@ -351,9 +352,9 @@ export default function AlbumPage() {
           </div>
         )}
 
-        {/* 앨범 생성 모달 — 헤더+본문(스크롤)+고정 하단 버튼 구조 */}
-        {showCreate && (
-          <div className="fixed inset-0 flex items-end z-[9999]" style={{ background: 'rgba(0,0,0,0.85)' }}
+        {/* 앨범 생성 모달 — Portal 로 document.body 에 직접 렌더 (stacking context 우회) */}
+        {showCreate && typeof document !== 'undefined' && createPortal(
+          <div className="fixed inset-0 flex items-end" style={{ zIndex: 99999, background: 'rgba(0,0,0,0.85)' }}
             onClick={() => setShowCreate(false)}>
             <div className="w-full rounded-t-3xl flex flex-col animate-slide-up"
               style={{ background: '#0c160c', border: '1px solid rgba(34,197,94,0.2)', borderBottom: 'none', maxHeight: '92dvh' }}
@@ -434,7 +435,8 @@ export default function AlbumPage() {
                 </button>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
       </div>
     )
@@ -546,9 +548,9 @@ export default function AlbumPage() {
         </p>
       )}
 
-      {/* 앨범 수정 모달 — 고정 하단 버튼 */}
-      {showEditAlbum && (
-        <div className="fixed inset-0 flex items-end z-[9999]" style={{ background: 'rgba(0,0,0,0.85)' }}
+      {/* 앨범 수정 모달 — Portal */}
+      {showEditAlbum && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 flex items-end" style={{ zIndex: 99999, background: 'rgba(0,0,0,0.85)' }}
           onClick={() => setShowEditAlbum(false)}>
           <div className="w-full rounded-t-3xl flex flex-col"
             style={{ background: '#0c160c', border: '1px solid rgba(34,197,94,0.2)', borderBottom: 'none', maxHeight: '92dvh' }}
@@ -606,7 +608,8 @@ export default function AlbumPage() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* 라이트박스 */}
