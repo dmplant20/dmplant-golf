@@ -187,6 +187,23 @@ export default function FinancePage() {
     setEditingSpId(null)
     setSpForm(emptySpForm)
     load()
+
+    // 푸시 — 새 찬조만 (수정은 제외)
+    if (!editingSpId && currentClubId) {
+      try {
+        const cSym = CURRENCY_SYMBOL[currency] ?? sym
+        const parts: string[] = []
+        if (hasCash) parts.push(`${cSym}${cashAmt.toLocaleString()}`)
+        if (hasItem) parts.push(`🎁 ${spForm.item_description.trim()}`)
+        const { sendClubPush } = await import('@/lib/push')
+        await sendClubPush({
+          club_id: currentClubId,
+          title: `💝 ${ko ? '새 찬조' : 'New Sponsorship'}`,
+          body: `${spForm.member_name.trim()} · ${parts.join(' + ')}`,
+          url: '/finance',
+        })
+      } catch (e) { console.warn('[sponsorship push]', e) }
+    }
   }
 
   function startEditSponsorship(s: any) {

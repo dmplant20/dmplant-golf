@@ -34,18 +34,22 @@ export default function AppHeader() {
       try {
         const supabase = createClient()
         const sinceDate = new Date(Date.now() - 14 * 86400_000).toISOString()
-        const [n, e, unpaid, pend] = await Promise.all([
+        const [n, e, al, sp, unpaid, pend] = await Promise.all([
           supabase.from('announcements').select('id', { head: true, count: 'exact' })
             .eq('club_id', currentClubId)
             .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
             .gt('created_at', sinceDate),
           supabase.from('events').select('id', { head: true, count: 'exact' })
             .eq('club_id', currentClubId).gt('created_at', sinceDate),
+          supabase.from('albums').select('id', { head: true, count: 'exact' })
+            .eq('club_id', currentClubId).gt('created_at', sinceDate),
+          supabase.from('sponsorships').select('id', { head: true, count: 'exact' })
+            .eq('club_id', currentClubId).gt('created_at', sinceDate),
           fetch('/api/finance/my-unpaid').then(r => r.ok ? r.json() : null).catch(() => null),
           fetch('/api/notifications/pending').then(r => r.ok ? r.json() : null).catch(() => null),
         ])
         if (cancelled) return
-        const total = (n.count ?? 0) + (e.count ?? 0)
+        const total = (n.count ?? 0) + (e.count ?? 0) + (al.count ?? 0) + (sp.count ?? 0)
           + (unpaid?.has_any ? 1 : 0)
           + (pend?.meeting ? 1 : 0)
         setHasUnread(total > 0)

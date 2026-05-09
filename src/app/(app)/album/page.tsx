@@ -8,6 +8,7 @@ import {
   Trash2, Edit2, ChevronLeft as PrevIcon, ChevronRight as NextIcon, Loader2,
 } from 'lucide-react'
 import { isSuperAdmin } from '@/lib/superAdmin'
+import { sendClubPush } from '@/lib/push'
 
 // ── 테마 정의 ──────────────────────────────────────────────────────────────
 type ThemeKey = 'awards' | 'tournament' | 'meeting' | 'event' | 'travel' | 'casual'
@@ -143,6 +144,17 @@ export default function AlbumPage() {
     setCreateForm({ title: '', theme: 'casual', description: '', event_date: '' })
     await loadAlbums()
     if (data) openAlbum({ ...data, photo_count: 0 } as Album)
+
+    // 푸시 — 새 앨범 알림 (작성자 자동 제외)
+    try {
+      const themeLabel = themeOf(data?.theme ?? createForm.theme)
+      await sendClubPush({
+        club_id: currentClubId,
+        title: `📷 ${ko ? '새 앨범' : 'New Album'}: ${createForm.title.trim()}`,
+        body: `${themeLabel.emoji} ${ko ? themeLabel.ko : themeLabel.en}${user.full_name ? ` · ${user.full_name}` : ''}${createForm.event_date ? ` · ${createForm.event_date}` : ''}`,
+        url: '/album',
+      })
+    } catch (e) { console.warn('[album push]', e) }
   }
   function openAlbum(album: Album) { setSelectedAlbum(album); loadPhotos(album.id) }
 
@@ -219,6 +231,18 @@ export default function AlbumPage() {
     setUploading(false)
     setUploadProg({ done: 0, total: 0 })
     e.target.value = ''
+
+    // 푸시 — 업로드 세션 종료 시 한 번만 (개별 사진마다 발송하면 스팸)
+    if (currentClubId && arr.length > 0) {
+      try {
+        await sendClubPush({
+          club_id: currentClubId,
+          title: `📸 ${selectedAlbum.title}`,
+          body: `${user.full_name ?? ''} ${ko ? `님이 사진 ${arr.length}장을 추가했습니다` : `added ${arr.length} photo(s)`}`,
+          url: '/album',
+        })
+      } catch (e) { console.warn('[photo push]', e) }
+    }
   }
 
   // ── 사진 삭제 / 캡션 ──────────────────────────────────────────────

@@ -13,12 +13,16 @@ interface EventItem  { id: string; title: string; type: string; event_date: stri
 interface UnpaidFee  { club_id: string; club_name: string; fee_type: 'annual' | 'monthly'; amount: number; currency: string; unpaid_months?: number[] }
 interface UnpaidFine { club_id: string; club_name: string; count: number; total: number; currency: string }
 interface PendingMeeting { clubId: string; clubName: string; year: number; month: number; meetingDate: string; daysUntil: number; venue: string | null; time: string | null }
+interface AlbumItem  { id: string; title: string; theme: string; created_at: string; cover_url?: string | null }
+interface SponsorItem { id: string; member_name: string; amount: number | null; item_description: string | null; sponsor_date: string; created_at: string; currency: string }
 
 export default function NotificationsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { currentClubId, lang, user } = useAuthStore()
   const ko = lang === 'ko'
   const [notices, setNotices] = useState<NoticeItem[]>([])
   const [events,  setEvents]  = useState<EventItem[]>([])
+  const [albums,  setAlbums]  = useState<AlbumItem[]>([])
+  const [sponsors,setSponsors]= useState<SponsorItem[]>([])
   const [unpaidFees,  setUnpaidFees]  = useState<UnpaidFee[]>([])
   const [unpaidFines, setUnpaidFines] = useState<UnpaidFine[]>([])
   const [pendingMeeting, setPendingMeeting] = useState<PendingMeeting | null>(null)
@@ -30,29 +34,34 @@ export default function NotificationsPanel({ open, onClose }: { open: boolean; o
     const supabase = createClient()
     const sinceDate = new Date(Date.now() - 14 * 86400_000).toISOString()
     Promise.all([
-      // 최근 14일 공지
       supabase.from('announcements')
         .select('id,title,created_at,is_meeting')
         .eq('club_id', currentClubId)
         .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
         .gt('created_at', sinceDate)
         .order('is_meeting', { ascending: false })
-        .order('created_at', { ascending: false })
-        .limit(5),
-      // 최근 14일 경조사
+        .order('created_at', { ascending: false }).limit(5),
       supabase.from('events')
         .select('id,title,type,event_date,created_at,person_name')
-        .eq('club_id', currentClubId)
-        .gt('created_at', sinceDate)
-        .order('created_at', { ascending: false })
-        .limit(5),
-      // 본인 미납
+        .eq('club_id', currentClubId).gt('created_at', sinceDate)
+        .order('created_at', { ascending: false }).limit(5),
+      // 최근 14일 새 앨범
+      supabase.from('albums')
+        .select('id,title,theme,created_at,cover_url')
+        .eq('club_id', currentClubId).gt('created_at', sinceDate)
+        .order('created_at', { ascending: false }).limit(5),
+      // 최근 14일 찬조
+      supabase.from('sponsorships')
+        .select('id,member_name,amount,item_description,sponsor_date,created_at,currency')
+        .eq('club_id', currentClubId).gt('created_at', sinceDate)
+        .order('created_at', { ascending: false }).limit(5),
       fetch('/api/finance/my-unpaid').then(r => r.ok ? r.json() : null).catch(() => null),
-      // 미응답 정기모임
       fetch('/api/notifications/pending').then(r => r.ok ? r.json() : null).catch(() => null),
-    ]).then(([n, e, unpaid, pend]: any[]) => {
+    ]).then(([n, e, al, sp, unpaid, pend]: any[]) => {
       setNotices(n.data ?? [])
       setEvents(e.data ?? [])
+      setAlbums(al.data ?? [])
+      setSponsors(sp.data ?? [])
       setUnpaidFees(unpaid?.unpaidFees ?? [])
       setUnpaidFines(unpaid?.unpaidFines ?? [])
       setPendingMeeting(pend?.meeting ?? null)
@@ -62,7 +71,7 @@ export default function NotificationsPanel({ open, onClose }: { open: boolean; o
 
   if (!open) return null
 
-  const hasAny = notices.length || events.length || unpaidFees.length || unpaidFines.length || pendingMeeting
+  const hasAny = notices.length || events.length || albums.length || sponsors.length || unpaidFees.length || unpaidFines.length || pendingMeeting
 
   return (
     <>
@@ -179,6 +188,49 @@ export default function NotificationsPanel({ open, onClose }: { open: boolean; o
                   </div>
                 </Link>
               ))}
+
+              {/* 새 앨범 */}
+              {albums.map(al => (
+                <Link key={al.id} href={`/album`} onClick={onClose}
+                  className="block rounded-xl p-3 transition active:scale-[0.98]"
+                  style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)' }}>
+                  <div className="flex items-start gap-2">
+                    {al.cover_url
+                      ? <img src={al.cover_url} alt="" className="w-9 h-9 rounded-lg object-cover flex-shrink-0" />
+                      : <div className="w-9 h-9 rounded-lg flex items-center justify-center text-base flex-shrink-0" style={{ background: 'rgba(34,197,94,0.15)' }}>📷</div>
+                    }
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-white truncate">📷 {ko ? '새 앨범' : 'New album'}: {al.title}</p>
+                      <p className="text-[11px] mt-0.5" style={{ color: '#86efac' }}>
+                        {ko ? '갤러리' : 'Gallery'} · {new Date(al.created_at).toLocaleDateString(ko ? 'ko-KR' : 'en-US', { month: 'short', day: 'numeric' })}
+                      </p>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+
+              {/* 찬조 */}
+              {sponsors.map(s => {
+                const cSym = SYM[s.currency] ?? ''
+                const parts: string[] = []
+                if (s.amount) parts.push(`${cSym}${Number(s.amount).toLocaleString()}`)
+                if (s.item_description) parts.push(`🎁 ${s.item_description}`)
+                return (
+                  <Link key={s.id} href="/finance" onClick={onClose}
+                    className="block rounded-xl p-3 transition active:scale-[0.98]"
+                    style={{ background: 'rgba(124,58,237,0.10)', border: '1px solid rgba(124,58,237,0.3)' }}>
+                    <div className="flex items-start gap-2">
+                      <span className="text-base flex-shrink-0">💝</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-white truncate">{s.member_name}{ko ? ' 찬조' : ' sponsorship'}</p>
+                        <p className="text-[11px] mt-0.5" style={{ color: '#c4b5fd' }}>
+                          {parts.join(' + ')} · {String(s.sponsor_date).slice(0, 10)}
+                        </p>
+                      </div>
+                    </div>
+                  </Link>
+                )
+              })}
 
               {/* 최근 경조사 */}
               {events.map(e => {
