@@ -44,8 +44,17 @@ export async function getPushStatus(): Promise<PushStatus> {
   if (Notification.permission === 'denied') return 'denied'
   const reg = await navigator.serviceWorker.ready
   const sub = await reg.pushManager.getSubscription()
-  if (sub) return 'subscribed'
-  return 'default'
+  if (!sub) return 'default'
+  // 옛 VAPID 키로 만든 구독이면 'default' 로 처리 → UI 가 활성화 배너 다시 노출
+  try {
+    const cur = urlBase64ToUint8Array(VAPID_PUBLIC)
+    const sk = sub.options?.applicationServerKey
+    if (!sk) return 'default'
+    const u = new Uint8Array(sk)
+    if (u.length !== cur.length) return 'default'
+    for (let i = 0; i < cur.length; i++) if (u[i] !== cur[i]) return 'default'
+  } catch { return 'default' }
+  return 'subscribed'
 }
 
 export async function subscribePush(): Promise<{ ok: boolean; reason?: string }> {
