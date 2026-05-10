@@ -68,6 +68,12 @@ export default function AlbumPage() {
   })
   const [creating, setCreating] = useState(false)
   const [showEditAlbum, setShowEditAlbum] = useState(false)
+  // 앨범 생성 시 함께 올릴 사진들 (선택)
+  const [createPhotos, setCreatePhotos] = useState<File[]>([])
+  const [createPhotoPreviews, setCreatePhotoPreviews] = useState<string[]>([])
+  const [createUploadProg, setCreateUploadProg] = useState({ done: 0, total: 0 })
+  const createFileRef = useRef<HTMLInputElement>(null)
+  const createCameraRef = useRef<HTMLInputElement>(null)
 
   // 업로드
   const [uploading, setUploading] = useState(false)
@@ -113,6 +119,31 @@ export default function AlbumPage() {
   }
   useEffect(() => { loadAlbums() }, [currentClubId])
 
+  // 사진 미리보기 URL 정리 (메모리 누수 방지)
+  function clearCreatePhotos() {
+    createPhotoPreviews.forEach(u => { try { URL.revokeObjectURL(u) } catch {} })
+    setCreatePhotos([])
+    setCreatePhotoPreviews([])
+  }
+  function addCreatePhotos(files: FileList | null) {
+    if (!files || !files.length) return
+    const arr = Array.from(files).filter(f => f.type.startsWith('image/'))
+    setCreatePhotos(prev => [...prev, ...arr])
+    setCreatePhotoPreviews(prev => [...prev, ...arr.map(f => URL.createObjectURL(f))])
+  }
+  function removeCreatePhoto(idx: number) {
+    setCreatePhotos(prev => prev.filter((_, i) => i !== idx))
+    setCreatePhotoPreviews(prev => {
+      try { URL.revokeObjectURL(prev[idx]) } catch {}
+      return prev.filter((_, i) => i !== idx)
+    })
+  }
+  function closeCreate() {
+    setShowCreate(false)
+    clearCreatePhotos()
+    setCreateUploadProg({ done: 0, total: 0 })
+  }
+
   // 테마 필터링
   const filteredAlbums = useMemo(
     () => filterTheme === 'all' ? albums : albums.filter(a => (a.theme ?? 'casual') === filterTheme),
@@ -126,11 +157,15 @@ export default function AlbumPage() {
   }, [albums])
 
   // ── 앨범 생성 ──────────────────────────────────────────────────────────
+  // 1) albums INSERT → 2) 선택한 사진들 Storage 업로드 + album_photos INSERT
+  // 3) 첫 사진을 cover 로 설정 → 4) 푸시 알림 (앨범 + 사진 수)
   async function createAlbum() {
     if (!createForm.title.trim() || !currentClubId || !user) return
     setCreating(true)
     const supabase = createClient()
-    const { data, error } = await supabase.from('albums').insert({
+
+    // 1) 앨범 row 생성
+    const { data: album, error: albumErr } = await supabase.from('albums').insert({
       club_id: currentClubId,
       title: createForm.title.trim(),
       theme: createForm.theme,
@@ -138,20 +173,70 @@ export default function AlbumPage() {
       event_date: createForm.event_date || null,
       created_by: user.id,
     }).select().single()
+
+    if (albumErr || !album) {
+      setCreating(false)
+      alert(ko ? `앨범 생성 실패: ${albumErr?.message ?? ''}` : `Failed: ${albumErr?.message ?? ''}`)
+      return
+    }
+
+    // 2) 사진 일괄 업로드 (있으면)
+    let firstUrl: string | null = null
+    let uploadedCount = 0
+    const failedFiles: string[] = []
+    if (createPhotos.length > 0) {
+      setCreateUploadProg({ done: 0, total: createPhotos.length })
+      for (let i = 0; i < createPhotos.length; i++) {
+        const file = createPhotos[i]
+        try {
+          if (file.size > 20 * 1024 * 1024) { failedFiles.push(file.name + ' (20MB+)'); continue }
+          const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+          const path = `albums/${album.id}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`
+          const { error: upErr } = await supabase.storage.from('club-media').upload(path, file, { contentType: file.type })
+          if (upErr) { failedFiles.push(file.name); console.error('upload', upErr); continue }
+          const { data: urlData } = supabase.storage.from('club-media').getPublicUrl(path)
+          const url = urlData.publicUrl
+          const lm = file.lastModified
+          const takenAt = (lm && lm > 0 && lm < Date.now() + 86400_000) ? new Date(lm).toISOString() : null
+          const { error: phErr } = await supabase.from('album_photos').insert({
+            album_id: album.id, url, uploaded_by: user.id, taken_at: takenAt,
+          })
+          if (phErr) { failedFiles.push(file.name); console.error('photo insert', phErr); continue }
+          if (!firstUrl) firstUrl = url
+          uploadedCount++
+        } catch (err) { failedFiles.push(file.name); console.error('upload err', err) }
+        setCreateUploadProg({ done: i + 1, total: createPhotos.length })
+      }
+      // 3) 첫 사진을 커버로 설정
+      if (firstUrl) {
+        await supabase.from('albums').update({ cover_url: firstUrl }).eq('id', album.id)
+      }
+    }
+
     setCreating(false)
-    if (error) { alert(ko ? `생성 실패: ${error.message}` : `Failed: ${error.message}`); return }
-    setShowCreate(false)
+    closeCreate()
     setCreateForm({ title: '', theme: 'casual', description: '', event_date: '' })
     await loadAlbums()
-    if (data) openAlbum({ ...data, photo_count: 0 } as Album)
 
-    // 푸시 — 새 앨범 알림 (작성자 자동 제외)
+    // 일부 실패 알림
+    if (failedFiles.length > 0) {
+      alert(ko
+        ? `앨범은 생성됐고 ${uploadedCount}장 업로드. ${failedFiles.length}장 실패:\n${failedFiles.slice(0,5).join(', ')}`
+        : `Album created, ${uploadedCount} uploaded, ${failedFiles.length} failed`)
+    }
+
+    openAlbum({ ...(album as any), photo_count: uploadedCount } as Album)
+
+    // 4) 푸시 알림 — 앨범 생성 (사진 수 포함)
     try {
-      const themeLabel = themeOf(data?.theme ?? createForm.theme)
+      const themeLabel = themeOf(album.theme ?? createForm.theme)
+      const photoSuffix = uploadedCount > 0
+        ? (ko ? ` · 사진 ${uploadedCount}장` : ` · ${uploadedCount} photos`)
+        : ''
       await sendClubPush({
         club_id: currentClubId,
-        title: `📷 ${ko ? '새 앨범' : 'New Album'}: ${createForm.title.trim()}`,
-        body: `${themeLabel.emoji} ${ko ? themeLabel.ko : themeLabel.en}${user.full_name ? ` · ${user.full_name}` : ''}${createForm.event_date ? ` · ${createForm.event_date}` : ''}`,
+        title: `📷 ${ko ? '새 앨범' : 'New Album'}: ${album.title}`,
+        body: `${themeLabel.emoji} ${ko ? themeLabel.ko : themeLabel.en}${user.full_name ? ` · ${user.full_name}` : ''}${album.event_date ? ` · ${album.event_date}` : ''}${photoSuffix}`,
         url: '/album',
       })
     } catch (e) { console.warn('[album push]', e) }
@@ -379,7 +464,7 @@ export default function AlbumPage() {
         {/* 앨범 생성 모달 — Portal 로 document.body 에 직접 렌더 (stacking context 우회) */}
         {showCreate && typeof document !== 'undefined' && createPortal(
           <div className="fixed inset-0 flex items-end" style={{ zIndex: 99999, background: 'rgba(0,0,0,0.85)' }}
-            onClick={() => setShowCreate(false)}>
+            onClick={() => closeCreate()}>
             <div className="w-full rounded-t-3xl flex flex-col animate-slide-up"
               style={{ background: '#0c160c', border: '1px solid rgba(34,197,94,0.2)', borderBottom: 'none', maxHeight: '92dvh' }}
               onClick={e => e.stopPropagation()}>
@@ -443,19 +528,80 @@ export default function AlbumPage() {
                     placeholder={ko ? '간단한 메모를 적어두세요' : 'Optional note'}
                     className="input-field resize-none text-sm" />
                 </div>
+
+                {/* ━━ 사진 동시 등록 (선택) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+                <div className="rounded-2xl p-3 space-y-2"
+                  style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.20)' }}>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold" style={{ color: '#86efac' }}>
+                      📸 {ko ? `사진 동시 등록 (${createPhotos.length}장)` : `Photos (${createPhotos.length})`}
+                    </p>
+                    {createPhotos.length > 0 && (
+                      <button onClick={clearCreatePhotos} className="text-[10px] underline" style={{ color: '#86efac' }}>
+                        {ko ? '전체 삭제' : 'Clear all'}
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input ref={createCameraRef} type="file" accept="image/*" capture="environment" multiple className="hidden"
+                      onChange={e => { addCreatePhotos(e.target.files); if (createCameraRef.current) createCameraRef.current.value = '' }} />
+                    <input ref={createFileRef} type="file" accept="image/*" multiple className="hidden"
+                      onChange={e => { addCreatePhotos(e.target.files); if (createFileRef.current) createFileRef.current.value = '' }} />
+                    <button type="button" onClick={() => createCameraRef.current?.click()}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-medium"
+                      style={{ background: 'rgba(34,197,94,0.1)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)' }}>
+                      <Camera size={13} />{ko ? '카메라' : 'Camera'}
+                    </button>
+                    <button type="button" onClick={() => createFileRef.current?.click()}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-medium"
+                      style={{ background: 'rgba(34,197,94,0.1)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)' }}>
+                      <ImageIcon size={13} />{ko ? '갤러리에서 선택' : 'Pick photos'}
+                    </button>
+                  </div>
+                  {createPhotoPreviews.length > 0 && (
+                    <div className="grid grid-cols-4 gap-1.5 mt-1">
+                      {createPhotoPreviews.map((url, i) => (
+                        <div key={i} className="relative aspect-square rounded-lg overflow-hidden"
+                          style={{ background: '#0c160c' }}>
+                          <img src={url} alt="" className="w-full h-full object-cover" />
+                          <button onClick={() => removeCreatePhoto(i)}
+                            className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full flex items-center justify-center"
+                            style={{ background: 'rgba(0,0,0,0.7)', color: '#fff' }}>
+                            <X size={11} />
+                          </button>
+                          {i === 0 && (
+                            <span className="absolute bottom-0.5 left-0.5 text-[8px] font-bold px-1 py-0.5 rounded"
+                              style={{ background: 'rgba(34,197,94,0.85)', color: '#fff' }}>
+                              {ko ? '커버' : 'Cover'}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-[10px]" style={{ color: '#5a7a5a' }}>
+                    💡 {ko ? '비워두면 빈 앨범 생성. 첫 번째 사진이 자동으로 커버가 됩니다.' : 'Skip to create empty album. First photo becomes cover.'}
+                  </p>
+                </div>
               </div>
 
               {/* 하단 버튼 (고정) */}
               <div className="flex-shrink-0 flex gap-3 px-6 py-4"
                 style={{ borderTop: '1px solid rgba(34,197,94,0.15)', paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
-                <button onClick={() => setShowCreate(false)} className="flex-1 py-3 rounded-xl text-sm font-medium"
+                <button onClick={closeCreate} disabled={creating} className="flex-1 py-3 rounded-xl text-sm font-medium disabled:opacity-50"
                   style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.15)', color: '#86efac' }}>
                   {ko ? '취소' : 'Cancel'}
                 </button>
                 <button onClick={createAlbum} disabled={creating || !createForm.title.trim()}
                   className="flex-1 py-3 rounded-xl text-white text-sm font-bold disabled:opacity-50 active:scale-95"
                   style={{ background: 'linear-gradient(135deg,#16a34a,#15803d)', boxShadow: '0 4px 16px rgba(22,163,74,0.4)' }}>
-                  {creating ? (ko ? '만드는 중...' : 'Creating...') : (ko ? '만들기 →' : 'Create →')}
+                  {creating
+                    ? (createUploadProg.total > 0
+                        ? `${ko ? '업로드' : 'Upload'} ${createUploadProg.done}/${createUploadProg.total}`
+                        : (ko ? '만드는 중...' : 'Creating...'))
+                    : (ko
+                        ? (createPhotos.length > 0 ? `만들기 + 사진 ${createPhotos.length}장 →` : '만들기 →')
+                        : (createPhotos.length > 0 ? `Create + ${createPhotos.length} photos →` : 'Create →'))}
                 </button>
               </div>
             </div>
