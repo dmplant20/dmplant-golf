@@ -74,10 +74,15 @@ self.addEventListener('push', (event) => {
       icon,
       badge,
       data:     { url },
-      vibrate:  [200, 100, 200],
-      tag:      'isgolf-notification',
+      // 강한 알림 — 소리·진동·잠금화면 노출 + 사용자 상호작용 전까지 유지
+      silent:             false,                  // OS 기본 알림 소리 강제
+      vibrate:            [400, 100, 400, 100, 400], // 강한 진동 패턴
+      requireInteraction: true,                   // 사용자가 닫을 때까지 유지
+      // tag 를 매 푸시마다 다르게 → 알림이 합쳐지지 않고 개별 표시
+      tag:      data.tag || `isgolf-${Date.now()}`,
       renotify: true,
-      actions:  [
+      timestamp: Date.now(),
+      actions: [
         { action: 'open',    title: '📋 확인하기' },
         { action: 'dismiss', title: '✕ 닫기'     },
       ],
