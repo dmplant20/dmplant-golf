@@ -64,14 +64,32 @@ export async function subscribePush(): Promise<{ ok: boolean; reason?: string }>
   // 2. SW 준비
   const reg = await navigator.serviceWorker.ready
 
-  // 3. 기존 구독 있으면 재사용
+  // 3. 기존 구독 있으면 검사 — 옛 VAPID 키로 만들어진 stale 구독이면 폐기
   let sub = await reg.pushManager.getSubscription()
+  const currentKey = urlBase64ToUint8Array(VAPID_PUBLIC)
+  if (sub) {
+    try {
+      const subKey = sub.options?.applicationServerKey
+      const matches = subKey && new Uint8Array(subKey).length === currentKey.length
+        && new Uint8Array(subKey).every((b, i) => b === currentKey[i])
+      if (!matches) {
+        // 옛 VAPID 키로 만든 구독 → 폐기 후 재생성 (FCM 403 방지)
+        await fetch('/api/push/subscribe', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: sub.endpoint }),
+        }).catch(() => {})
+        await sub.unsubscribe().catch(() => {})
+        sub = null
+      }
+    } catch { /* fallthrough — 비교 실패 시 그냥 새로 만듦 */ }
+  }
   if (!sub) {
     try {
       sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         // TS 5.7+ Uint8Array<ArrayBufferLike> vs BufferSource 타입 mismatch 회피
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC) as BufferSource,
+        applicationServerKey: currentKey as BufferSource,
       })
     } catch (e: any) {
       return { ok: false, reason: e?.message ?? '구독 실패' }
