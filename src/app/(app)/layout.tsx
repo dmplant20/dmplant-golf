@@ -73,6 +73,27 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     document.body.setAttribute('data-club-theme', String(theme))
   }, [currentClubId])
 
+  // 푸시 자동 복구 — 권한 이미 허용한 회원은 PWA 열기만 해도 옛 stale 구독 자동 폐기 + 새 VAPID 키로 재구독
+  // (사용자 액션 없이 백그라운드에서 silent 실행)
+  useEffect(() => {
+    if (!user?.id) return
+    ;(async () => {
+      try {
+        if (typeof window === 'undefined') return
+        if (!('Notification' in window)) return
+        if (Notification.permission !== 'granted') return  // 이전에 권한 허용한 적 있어야 자동 처리
+        const { getPushStatus, subscribePush } = await import('@/lib/push')
+        const status = await getPushStatus()
+        if (status === 'default') {
+          // 권한은 granted 인데 구독이 없거나 stale → 자동 재구독
+          const r = await subscribePush()
+          if (r.ok) console.log('[push] auto-resubscribed silently')
+          else console.warn('[push] auto-resubscribe failed:', r.reason)
+        }
+      } catch (e) { console.warn('[push auto]', e) }
+    })()
+  }, [user?.id])
+
   // 접속 표시 — 본인 last_seen_at 갱신 (30초마다 + 탭 visible 전환 / 페이지 변경 시 즉시)
   useEffect(() => {
     if (!user?.id) return
