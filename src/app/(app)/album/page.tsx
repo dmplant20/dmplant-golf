@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores/authStore'
 import {
   Plus, ChevronLeft, X, Upload, ImageIcon, Camera,
-  Trash2, Edit2, ChevronLeft as PrevIcon, ChevronRight as NextIcon, Loader2,
+  Trash2, Edit2, ChevronLeft as PrevIcon, ChevronRight as NextIcon, Loader2, Download,
 } from 'lucide-react'
 import { isSuperAdmin } from '@/lib/superAdmin'
 import { sendClubPush } from '@/lib/push'
@@ -349,6 +349,30 @@ export default function AlbumPage() {
     if (error) { alert(ko ? `저장 실패: ${error.message}` : `Failed: ${error.message}`); return }
     setEditingCaption(false)
     if (selectedAlbum) await loadPhotos(selectedAlbum.id)
+  }
+
+  // ── 사진 다운로드 — 모든 회원 가능 ────────────────────────────────
+  async function downloadPhoto(p: AlbumPhoto) {
+    try {
+      const res = await fetch(p.url, { mode: 'cors' })
+      if (!res.ok) throw new Error('fetch failed')
+      const blob = await res.blob()
+      const ext = (blob.type.split('/')[1] ?? 'jpg').replace('jpeg', 'jpg')
+      const safeTitle = (selectedAlbum?.title ?? 'photo').replace(/[^\wㄱ-힝-]+/g, '_')
+      const filename = `${safeTitle}_${new Date(p.taken_at ?? p.created_at).toISOString().slice(0,10)}_${p.id.slice(0,6)}.${ext}`
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      setTimeout(() => URL.revokeObjectURL(url), 1500)
+    } catch (e) {
+      console.error('[download]', e)
+      // CORS 실패 시 새 창으로 fallback (사용자가 길게 누르기로 저장 가능)
+      window.open(p.url, '_blank')
+    }
   }
 
   // ── 라이트박스 키보드 ─────────────────────────────────────────────
@@ -848,14 +872,24 @@ export default function AlbumPage() {
               ) : (
                 <div className="flex items-end gap-2">
                   <p className="flex-1 text-white text-sm">{cur.caption || (isMyPhoto ? (ko ? '캡션 추가하려면 ✏️ 클릭' : 'Tap ✏️ to add caption') : '')}</p>
+                  {/* 📥 다운로드 — 모든 회원 가능 */}
+                  <button onClick={() => downloadPhoto(cur)}
+                    title={ko ? '사진 저장' : 'Download'}
+                    className="w-9 h-9 rounded-lg flex items-center justify-center"
+                    style={{ background: 'rgba(96,165,250,0.2)', color: '#93c5fd' }}>
+                    <Download size={14} />
+                  </button>
+                  {/* ✏️ 캡션 + 🗑 삭제 — 본인 또는 회장/총무 */}
                   {isMyPhoto && (
                     <>
                       <button onClick={() => { setCaptionDraft(cur.caption ?? ''); setEditingCaption(true) }}
+                        title={ko ? '캡션 편집' : 'Edit caption'}
                         className="w-9 h-9 rounded-lg flex items-center justify-center"
                         style={{ background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.85)' }}>
                         <Edit2 size={14} />
                       </button>
                       <button onClick={() => deletePhoto(cur)}
+                        title={ko ? '사진 삭제' : 'Delete'}
                         className="w-9 h-9 rounded-lg flex items-center justify-center"
                         style={{ background: 'rgba(239,68,68,0.2)', color: '#fca5a5' }}>
                         <Trash2 size={14} />
