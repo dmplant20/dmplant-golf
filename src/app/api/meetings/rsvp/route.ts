@@ -26,22 +26,35 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: '로그인 필요' }, { status: 401 })
 
   const body = await req.json()
-  const { club_id, year, month, status } = body
+  const { club_id, year, month, status, target_user_id } = body
   if (!club_id || !year || !month || !status) return NextResponse.json({ error: '필수값 누락' }, { status: 400 })
   if (!['attending', 'absent'].includes(status)) return NextResponse.json({ error: '잘못된 status' }, { status: 400 })
 
   const db = getDb()
 
-  // Verify club membership
-  const { data: mem } = await db.from('club_memberships').select('id').eq('club_id', club_id).eq('user_id', user.id).eq('status', 'approved').single()
+  // Verify caller membership
+  const { data: mem } = await db.from('club_memberships').select('id, role').eq('club_id', club_id).eq('user_id', user.id).eq('status', 'approved').single()
   if (!mem) return NextResponse.json({ error: '클럽 멤버가 아닙니다' }, { status: 403 })
 
+  // Determine effective user_id — officers can RSVP on behalf of another member
+  let effectiveUserId = user.id
+  if (target_user_id && target_user_id !== user.id) {
+    if (!['president', 'secretary'].includes((mem as any).role)) {
+      return NextResponse.json({ error: '대리 응답은 회장·총무만 가능합니다' }, { status: 403 })
+    }
+    // Verify target is an approved member of the same club
+    const { data: tgt } = await db.from('club_memberships').select('id')
+      .eq('club_id', club_id).eq('user_id', target_user_id).eq('status', 'approved').single()
+    if (!tgt) return NextResponse.json({ error: '대상 회원이 클럽 멤버가 아닙니다' }, { status: 400 })
+    effectiveUserId = target_user_id
+  }
+
   const { error } = await db.from('meeting_attendances').upsert(
-    { club_id, year, month, user_id: user.id, status, responded_at: new Date().toISOString() },
+    { club_id, year, month, user_id: effectiveUserId, status, responded_at: new Date().toISOString() },
     { onConflict: 'club_id,year,month,user_id' }
   )
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, target_user_id: effectiveUserId })
 }
 
 export async function DELETE(req: NextRequest) {
@@ -49,14 +62,25 @@ export async function DELETE(req: NextRequest) {
   if (!user) return NextResponse.json({ error: '로그인 필요' }, { status: 401 })
 
   const body = await req.json()
-  const { club_id, year, month } = body
+  const { club_id, year, month, target_user_id } = body
   if (!club_id || !year || !month) return NextResponse.json({ error: '필수값 누락' }, { status: 400 })
 
   const db = getDb()
 
-  // Can only delete own RSVP (user_id = user.id enforced here)
+  // Verify caller membership
+  const { data: mem } = await db.from('club_memberships').select('id, role').eq('club_id', club_id).eq('user_id', user.id).eq('status', 'approved').single()
+  if (!mem) return NextResponse.json({ error: '클럽 멤버가 아닙니다' }, { status: 403 })
+
+  let effectiveUserId = user.id
+  if (target_user_id && target_user_id !== user.id) {
+    if (!['president', 'secretary'].includes((mem as any).role)) {
+      return NextResponse.json({ error: '대리 응답은 회장·총무만 가능합니다' }, { status: 403 })
+    }
+    effectiveUserId = target_user_id
+  }
+
   const { error } = await db.from('meeting_attendances').delete()
-    .eq('club_id', club_id).eq('year', year).eq('month', month).eq('user_id', user.id)
+    .eq('club_id', club_id).eq('year', year).eq('month', month).eq('user_id', effectiveUserId)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }
