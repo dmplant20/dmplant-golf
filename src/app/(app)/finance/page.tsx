@@ -273,7 +273,7 @@ export default function FinancePage() {
     const [{ data: transactions }, { data: club }, { data: mems }, { data: pi }, { data: sponsors }, { data: pat }, { data: ovs }] = await Promise.all([
       query.eq('club_id', currentClubId).order('transaction_date', { ascending: false }),
       supabase.from('clubs').select('currency,fine_handicap_per_stroke,fine_handicap_max,fine_notes,annual_fee,monthly_fee,carryover_amount,carryover_note').eq('id', currentClubId).single(),
-      supabase.from('club_memberships').select('user_id, fee_type, joined_at, users(full_name, full_name_en)').eq('club_id', currentClubId).eq('status', 'approved'),
+      supabase.from('club_memberships').select('user_id, fee_type, joined_at, role, users(full_name, full_name_en)').eq('club_id', currentClubId).eq('status', 'approved'),
       supabase.from('club_payment_info').select('*').eq('club_id', currentClubId).maybeSingle(),
       supabase.from('sponsorships').select('*').eq('club_id', currentClubId).order('sponsor_date', { ascending: false }),
       supabase.from('recurring_meetings').select('*').eq('club_id', currentClubId).maybeSingle(),
@@ -444,11 +444,23 @@ export default function FinancePage() {
     return { months: [], expected: clubFees.annual || 0 }
   }
 
-  const paidMembers = members.filter((m) => isMemberPaid(m)).map((m) => {
+  // 회비 의무 보유 여부 — 게스트·미설정·미래 가입자는 제외
+  function hasFeeObligation(m: any): boolean {
+    if (m.role === 'guest') return false                  // 게스트는 회비 면제
+    const ft = m.fee_type as 'annual'|'monthly'|null
+    if (!ft) return false                                 // fee_type 미설정 = 면제
+    if (ft === 'monthly') {
+      const startM = memberStartMonth(m)
+      if (startM > cutoffM || cutoffM < 1) return false   // 의무 시작 전
+    }
+    return true
+  }
+  const obligatedMembers = members.filter(hasFeeObligation)
+  const paidMembers = obligatedMembers.filter((m) => isMemberPaid(m)).map((m: any) => {
     const txn = feeTxnsThisYear.find((t) => t.member_id === m.user_id)
     return { ...m, amount: paidAmountByMember.get(m.user_id) ?? txn?.amount, date: txn?.transaction_date }
   })
-  const unpaidMembers = members.filter((m) => !isMemberPaid(m))
+  const unpaidMembers = obligatedMembers.filter((m) => !isMemberPaid(m))
   const paidCount   = paidMembers.length
   const unpaidCount = unpaidMembers.length
 
