@@ -1,8 +1,9 @@
 'use client'
-// 로그인 후 1회 노출 — 본인 회비/벌금 미납 내역 팝업
-// sessionStorage 로 1세션 1회만 노출 (탭 닫고 새 세션이면 다시 노출)
+// 본인 회비/벌금 미납 알림 팝업 — /dashboard 진입 시마다 노출
+// 사용자가 닫으면 그 페이지뷰 동안만 숨김, 다음 dashboard 방문 시 또 노출
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { usePathname } from 'next/navigation'
 import { AlertCircle, X, ArrowRight } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import Link from 'next/link'
@@ -27,29 +28,29 @@ const SYM: Record<string, string> = { KRW: '₩', VND: '₫', IDR: 'Rp ' }
 
 export default function UnpaidLoginNotice() {
   const { user, lang } = useAuthStore()
+  const pathname = usePathname()
   const ko = lang === 'ko'
   const [show, setShow] = useState(false)
   const [fees, setFees] = useState<UnpaidFee[]>([])
   const [fines, setFines] = useState<UnpaidFine[]>([])
 
   useEffect(() => {
+    // /dashboard 진입 시에만 노출. 다른 페이지에서는 닫힘
+    if (pathname !== '/dashboard') { setShow(false); return }
     if (!user?.id) return
-    // 1세션 1회 — 본인 비밀번호 미설정 상태(password_set=false)에서는 우선 비밀번호 팝업이 떠야 하므로 패스
+    // 비밀번호 미설정 상태(password_set=false)면 비밀번호 설정 팝업이 우선
     if (user.password_set === false) return
-    const key = `unpaid-notice-${user.id}`
-    if (sessionStorage.getItem(key) === '1') return
 
     fetch('/api/finance/my-unpaid')
       .then(r => r.ok ? r.json() : null)
       .then((data) => {
-        if (!data || !data.has_any) return
+        if (!data || !data.has_any) { setShow(false); return }
         setFees(data.unpaidFees ?? [])
         setFines(data.unpaidFines ?? [])
         setShow(true)
-        sessionStorage.setItem(key, '1')
       })
       .catch(() => {})
-  }, [user?.id, user?.password_set])
+  }, [user?.id, user?.password_set, pathname])
 
   if (typeof document === 'undefined') return null
   if (!show) return null
