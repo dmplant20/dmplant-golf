@@ -81,6 +81,8 @@ export default function FinancePage() {
   const [payingAmount,    setPayingAmount]     = useState('')
   const [payingDate,      setPayingDate]       = useState(new Date().toISOString().split('T')[0])
   const [payingSaving,    setPayingSaving]     = useState(false)
+  // 납부 방식 — annual(년납 1회) / monthly(월납 — 입금액에 따라 차감)
+  const [feeKind,         setFeeKind]          = useState<'annual'|'monthly'>('annual')
 
   // ── fine rules edit ───────────────────────────────────────────────────
   const [showFineEdit,    setShowFineEdit]     = useState(false)
@@ -265,7 +267,7 @@ export default function FinancePage() {
     const [{ data: transactions }, { data: club }, { data: mems }, { data: pi }, { data: sponsors }] = await Promise.all([
       query.eq('club_id', currentClubId).order('transaction_date', { ascending: false }),
       supabase.from('clubs').select('currency,fine_handicap_per_stroke,fine_handicap_max,fine_notes,annual_fee,monthly_fee,carryover_amount,carryover_note').eq('id', currentClubId).single(),
-      supabase.from('club_memberships').select('user_id, users(full_name, full_name_en)').eq('club_id', currentClubId).eq('status', 'approved'),
+      supabase.from('club_memberships').select('user_id, fee_type, users(full_name, full_name_en)').eq('club_id', currentClubId).eq('status', 'approved'),
       supabase.from('club_payment_info').select('*').eq('club_id', currentClubId).maybeSingle(),
       supabase.from('sponsorships').select('*').eq('club_id', currentClubId).order('sponsor_date', { ascending: false }),
     ])
@@ -339,16 +341,56 @@ export default function FinancePage() {
   const expenseUncategorized = expenseTxns.filter((t) => !t.expense_category).reduce((s, t) => s + t.amount, 0)
 
   // ── fee payment status (computed — visible to ALL members) ────────────
-  const currentYear = new Date().getFullYear()
+  const now = new Date()
+  const currentYear  = now.getFullYear()
+  const currentMonth = now.getMonth() + 1   // 1-12
   const feeTxnsThisYear = txns.filter(
     (t) => t.type === 'fee' && t.transaction_date?.startsWith(String(currentYear))
   )
-  const paidMemberIds = new Set(feeTxnsThisYear.filter((t) => t.member_id).map((t) => t.member_id))
-  const paidMembers = members.filter((m) => paidMemberIds.has(m.user_id)).map((m) => {
+
+  // 회원별 (year 기준) 납부 월 집합 — 월납 회원 차감 계산용
+  const paidMonthsByMember = new Map<string, Set<number>>()
+  // 회원별 (year 기준) 총 납부 금액 — 합산 표시용
+  const paidAmountByMember = new Map<string, number>()
+  for (const t of feeTxnsThisYear) {
+    if (!t.member_id) continue
+    const mm = Number(String(t.transaction_date).slice(5, 7))
+    if (!paidMonthsByMember.has(t.member_id)) paidMonthsByMember.set(t.member_id, new Set())
+    paidMonthsByMember.get(t.member_id)!.add(mm)
+    paidAmountByMember.set(t.member_id, (paidAmountByMember.get(t.member_id) ?? 0) + Number(t.amount ?? 0))
+  }
+
+  // 회원별 미납 판정 — fee_type 별 분기
+  function isMemberPaid(m: any): boolean {
+    const ft = m.fee_type as 'annual'|'monthly'|null
+    const paidMonths = paidMonthsByMember.get(m.user_id)
+    if (ft === 'monthly') {
+      // 1월 ~ 현재월 모두 납부되어 있어야 완납
+      if (!paidMonths) return false
+      for (let mm = 1; mm <= currentMonth; mm++) if (!paidMonths.has(mm)) return false
+      return true
+    }
+    // annual 또는 미지정 — 올해 회비 트랜잭션 1건 이상이면 납부
+    return !!paidMonths && paidMonths.size > 0
+  }
+
+  // 미납 회원별 추가 정보 (월납이면 미납 월 목록)
+  function memberUnpaidInfo(m: any): { months: number[]; expected: number } {
+    const ft = m.fee_type as 'annual'|'monthly'|null
+    if (ft === 'monthly') {
+      const paid = paidMonthsByMember.get(m.user_id) ?? new Set<number>()
+      const months: number[] = []
+      for (let mm = 1; mm <= currentMonth; mm++) if (!paid.has(mm)) months.push(mm)
+      return { months, expected: months.length * (clubFees.monthly || 0) }
+    }
+    return { months: [], expected: clubFees.annual || 0 }
+  }
+
+  const paidMembers = members.filter((m) => isMemberPaid(m)).map((m) => {
     const txn = feeTxnsThisYear.find((t) => t.member_id === m.user_id)
-    return { ...m, amount: txn?.amount, date: txn?.transaction_date }
+    return { ...m, amount: paidAmountByMember.get(m.user_id) ?? txn?.amount, date: txn?.transaction_date }
   })
-  const unpaidMembers = members.filter((m) => !paidMemberIds.has(m.user_id))
+  const unpaidMembers = members.filter((m) => !isMemberPaid(m))
   const paidCount   = paidMembers.length
   const unpaidCount = unpaidMembers.length
 
@@ -496,23 +538,98 @@ export default function FinancePage() {
   // ── 납부확인 저장 ──────────────────────────────────────────────────────
   async function confirmPayment() {
     if (!payingMember || !payingAmount) return
+    const amount = parseInt((payingAmount || '0').replace(/[^\d]/g, '')) || 0
+    if (amount <= 0) return
     setPayingSaving(true)
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     const memberName = lang === 'ko'
       ? payingMember.users?.full_name
       : (payingMember.users?.full_name_en || payingMember.users?.full_name)
-    await supabase.from('finance_transactions').insert({
-      club_id:          currentClubId,
-      type:             'fee',
-      amount:           parseInt(payingAmount),
-      currency,
-      description:      ko ? `${memberName} 회비 납부` : `${memberName} fee payment`,
-      transaction_date: payingDate,
-      recorded_by:      user!.id,
-      member_id:        payingMember.user_id,
-    })
-    setPayingSaving(false)
+
+    if (feeKind === 'monthly' && clubFees.monthly > 0) {
+      // ── 월납 — 입금액을 monthly_fee 로 차감하며 미납 월에 1행씩 분배 ───
+      const info = memberUnpaidInfo(payingMember)
+      const unpaidMonths = info.months  // [Jan..currentMonth] 중 미납인 월
+      const monthly = clubFees.monthly
+      let remaining = amount
+      const rows: any[] = []
+      const coveredMonths: number[] = []
+
+      for (const mm of unpaidMonths) {
+        if (remaining < monthly) break
+        coveredMonths.push(mm)
+        remaining -= monthly
+        rows.push({
+          club_id:          currentClubId,
+          type:             'fee',
+          amount:           monthly,
+          currency,
+          description:      ko ? `${memberName} ${mm}월 회비 납부` : `${memberName} ${mm} fee payment`,
+          transaction_date: `${currentYear}-${String(mm).padStart(2,'0')}-15`,
+          recorded_by:      user!.id,
+          member_id:        payingMember.user_id,
+        })
+      }
+
+      if (rows.length === 0) {
+        setPayingSaving(false)
+        alert(ko
+          ? `입금액(${sym}${amount.toLocaleString()})이 월회비(${sym}${monthly.toLocaleString()}) 미만입니다.`
+          : `Amount is less than monthly fee.`)
+        return
+      }
+
+      // 남는 금액(부분 납부) — 다음 미납 월에 부분 납부로 기록
+      if (remaining > 0) {
+        const nextMm = unpaidMonths[coveredMonths.length]
+        if (nextMm) {
+          rows.push({
+            club_id:          currentClubId,
+            type:             'fee',
+            amount:           remaining,
+            currency,
+            description:      ko
+              ? `${memberName} ${nextMm}월 회비 부분납부 (잔액 ${sym}${(monthly - remaining).toLocaleString()})`
+              : `${memberName} ${nextMm} partial fee (remaining ${sym}${(monthly - remaining).toLocaleString()})`,
+            transaction_date: `${currentYear}-${String(nextMm).padStart(2,'0')}-15`,
+            recorded_by:      user!.id,
+            member_id:        payingMember.user_id,
+          })
+        } else {
+          // 미납 월 다 채우고도 남은 금액 — 단순 회비 잔액으로 기록 (현재월 날짜)
+          rows.push({
+            club_id:          currentClubId,
+            type:             'fee',
+            amount:           remaining,
+            currency,
+            description:      ko ? `${memberName} 선납 잔액` : `${memberName} prepay balance`,
+            transaction_date: payingDate,
+            recorded_by:      user!.id,
+            member_id:        payingMember.user_id,
+          })
+        }
+      }
+
+      const { error } = await supabase.from('finance_transactions').insert(rows)
+      setPayingSaving(false)
+      if (error) { alert(ko ? `저장 실패: ${error.message}` : `Save failed: ${error.message}`); return }
+    } else {
+      // ── 년납 — 단일 트랜잭션 ───────────────────────────────────────────
+      const { error } = await supabase.from('finance_transactions').insert({
+        club_id:          currentClubId,
+        type:             'fee',
+        amount,
+        currency,
+        description:      ko ? `${memberName} 회비 납부 (년납)` : `${memberName} fee payment (annual)`,
+        transaction_date: payingDate,
+        recorded_by:      user!.id,
+        member_id:        payingMember.user_id,
+      })
+      setPayingSaving(false)
+      if (error) { alert(ko ? `저장 실패: ${error.message}` : `Save failed: ${error.message}`); return }
+    }
+
     setPayingMember(null)
     setPayingAmount('')
     setPayingDate(new Date().toISOString().split('T')[0])
@@ -710,7 +827,15 @@ export default function FinancePage() {
                         type="button"
                         onClick={() => {
                           setPayingMember(m)
-                          const defaultAmt = clubFees.annual || clubFees.monthly || 0
+                          // 회원의 fee_type 우선 — 없으면 클럽 설정에 있는 쪽으로 fallback
+                          const kind: 'annual'|'monthly' =
+                            (m.fee_type as 'annual'|'monthly'|null) ??
+                            (clubFees.monthly > 0 ? 'monthly' : 'annual')
+                          setFeeKind(kind)
+                          const info = memberUnpaidInfo(m)
+                          const defaultAmt = kind === 'monthly'
+                            ? info.expected || clubFees.monthly || 0
+                            : clubFees.annual || 0
                           setPayingAmount(defaultAmt ? String(defaultAmt) : '')
                           setPayingDate(new Date().toISOString().split('T')[0])
                         }}
@@ -718,9 +843,21 @@ export default function FinancePage() {
                         style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}
                       >
                         <span>{lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}</span>
-                        <span className="text-[10px] mt-0.5" style={{ color: '#fca5a5' }}>
-                          {ko ? '탭하여 납부확인' : 'Tap to confirm'}
-                        </span>
+                        {(() => {
+                          const info = memberUnpaidInfo(m)
+                          if (m.fee_type === 'monthly' && info.months.length > 0) {
+                            return (
+                              <span className="text-[10px] mt-0.5" style={{ color: '#fca5a5' }}>
+                                {info.months.length}{ko ? '개월 미납' : ' months unpaid'}
+                              </span>
+                            )
+                          }
+                          return (
+                            <span className="text-[10px] mt-0.5" style={{ color: '#fca5a5' }}>
+                              {ko ? '탭하여 납부확인' : 'Tap to confirm'}
+                            </span>
+                          )
+                        })()}
                       </button>
                     ) : (
                       <span
@@ -1688,9 +1825,31 @@ export default function FinancePage() {
       )}
 
       {/* ━━ 납부확인 모달 (canManage 전용) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-      {payingMember && (
+      {payingMember && (() => {
+        // 미납 정보 (월납 회원만 사용)
+        const info = memberUnpaidInfo(payingMember)
+        const enteredAmt = parseInt((payingAmount || '0').replace(/[^\d]/g, '')) || 0
+        // 차감 시뮬레이션 — 입금액으로 월회비를 차례로 덮을 때 어떤 달이 채워지는지
+        let coveredFull: number[] = []
+        let partialMonth: number | null = null
+        let partialAmount = 0
+        if (feeKind === 'monthly' && clubFees.monthly > 0) {
+          let remaining = enteredAmt
+          for (const mm of info.months) {
+            if (remaining >= clubFees.monthly) {
+              coveredFull.push(mm)
+              remaining -= clubFees.monthly
+            } else if (remaining > 0) {
+              partialMonth = mm
+              partialAmount = remaining
+              remaining = 0
+              break
+            } else break
+          }
+        }
+        return (
         <div className="fixed inset-0 bg-black/70 flex items-end z-[200]" onClick={() => setPayingMember(null)}>
-          <div className="bg-gray-900 rounded-t-3xl p-6 w-full space-y-4" onClick={e => e.stopPropagation()}>
+          <div className="bg-gray-900 rounded-t-3xl p-6 w-full space-y-4 max-h-[92dvh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex justify-center mb-1"><div className="w-10 h-1 bg-gray-700 rounded-full" /></div>
             <div className="flex items-center gap-2">
               <span className="text-lg">✅</span>
@@ -1701,35 +1860,130 @@ export default function FinancePage() {
               </h3>
               <button onClick={() => setPayingMember(null)} className="text-gray-500"><X size={18} /></button>
             </div>
+
+            {/* 납부 방식 토글 — 년납 / 월납 */}
+            <div>
+              <label className="text-xs text-gray-400 block mb-1.5">{ko ? '납부 방식' : 'Fee Kind'}</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button"
+                  onClick={() => {
+                    setFeeKind('annual')
+                    if (clubFees.annual > 0) setPayingAmount(String(clubFees.annual))
+                  }}
+                  className="py-3 rounded-xl text-sm font-bold transition"
+                  style={{
+                    background: feeKind === 'annual' ? 'rgba(34,197,94,0.18)' : 'rgba(255,255,255,0.04)',
+                    border: `1px solid ${feeKind === 'annual' ? 'rgba(34,197,94,0.5)' : 'rgba(255,255,255,0.08)'}`,
+                    color: feeKind === 'annual' ? '#86efac' : '#9ca3af',
+                  }}>
+                  {ko ? '년납' : 'Annual'}
+                  {clubFees.annual > 0 && (
+                    <div className="text-[10px] font-normal mt-0.5 opacity-80">{sym}{clubFees.annual.toLocaleString()}</div>
+                  )}
+                </button>
+                <button type="button"
+                  onClick={() => {
+                    setFeeKind('monthly')
+                    // 기본: 미납 월 × 월회비
+                    const defaultAmt = (memberUnpaidInfo(payingMember).expected) || clubFees.monthly || 0
+                    setPayingAmount(defaultAmt ? String(defaultAmt) : '')
+                  }}
+                  className="py-3 rounded-xl text-sm font-bold transition"
+                  style={{
+                    background: feeKind === 'monthly' ? 'rgba(96,165,250,0.18)' : 'rgba(255,255,255,0.04)',
+                    border: `1px solid ${feeKind === 'monthly' ? 'rgba(96,165,250,0.5)' : 'rgba(255,255,255,0.08)'}`,
+                    color: feeKind === 'monthly' ? '#93c5fd' : '#9ca3af',
+                  }}>
+                  {ko ? '월납' : 'Monthly'}
+                  {clubFees.monthly > 0 && (
+                    <div className="text-[10px] font-normal mt-0.5 opacity-80">{sym}{clubFees.monthly.toLocaleString()} / {ko ? '월' : 'mo'}</div>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* 월납 — 미납 월 안내 */}
+            {feeKind === 'monthly' && (
+              <div className="rounded-xl p-3"
+                style={{ background: 'rgba(96,165,250,0.06)', border: '1px solid rgba(96,165,250,0.2)' }}>
+                <p className="text-[11px]" style={{ color: '#93c5fd' }}>
+                  {ko ? '미납 월' : 'Unpaid months'} ({info.months.length}{ko ? '개월' : ' months'})
+                </p>
+                {info.months.length > 0 ? (
+                  <p className="text-sm font-semibold mt-1 text-white">
+                    {info.months.map(mm => `${mm}${ko ? '월' : ''}`).join(', ')}
+                  </p>
+                ) : (
+                  <p className="text-sm font-semibold mt-1 text-green-400">
+                    {ko ? '미납 월 없음 — 완납' : 'All caught up'}
+                  </p>
+                )}
+                <p className="text-[10px] mt-1.5" style={{ color: '#9ca3af' }}>
+                  {ko ? '예상 미납 금액' : 'Expected'} : {sym}{info.expected.toLocaleString()}
+                </p>
+              </div>
+            )}
+
+            {/* 금액 입력 */}
             <div>
               <label className="text-xs text-gray-400 block mb-1.5">{ko ? `납부 금액 (${sym})` : `Amount (${sym})`}</label>
               <input
-                type="number"
-                value={payingAmount}
-                onChange={e => setPayingAmount(e.target.value)}
+                type="text"
+                inputMode="numeric"
+                value={payingAmount ? Number((payingAmount || '').replace(/[^\d]/g, '') || '0').toLocaleString() : ''}
+                onChange={e => setPayingAmount(e.target.value.replace(/[^\d]/g, ''))}
                 placeholder="0"
                 autoFocus
                 className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-lg font-bold focus:outline-none focus:border-green-500"
               />
-              {(clubFees.annual > 0 || clubFees.monthly > 0) && (
-                <div className="flex gap-2 mt-2">
-                  {clubFees.annual > 0 && (
-                    <button type="button" onClick={() => setPayingAmount(String(clubFees.annual))}
-                      className="text-xs px-3 py-1.5 rounded-lg bg-green-900/40 text-green-400 border border-green-800/50 hover:bg-green-900/60 transition">
-                      {ko ? '년회비' : 'Annual'} {sym}{clubFees.annual.toLocaleString()}
-                    </button>
+
+              {/* 월납 — 차감 미리보기 */}
+              {feeKind === 'monthly' && clubFees.monthly > 0 && enteredAmt > 0 && (
+                <div className="mt-2.5 rounded-xl p-3 space-y-1.5"
+                  style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)' }}>
+                  {coveredFull.length > 0 && (
+                    <p className="text-xs" style={{ color: '#86efac' }}>
+                      ✅ {ko ? '완납 처리' : 'Fully paid'} :{' '}
+                      <span className="font-bold">
+                        {coveredFull.map(mm => `${mm}${ko ? '월' : ''}`).join(', ')}
+                      </span>
+                      {' '}({sym}{(coveredFull.length * clubFees.monthly).toLocaleString()})
+                    </p>
                   )}
-                  {clubFees.monthly > 0 && (
-                    <button type="button" onClick={() => setPayingAmount(String(clubFees.monthly))}
-                      className="text-xs px-3 py-1.5 rounded-lg bg-blue-900/40 text-blue-400 border border-blue-800/50 hover:bg-blue-900/60 transition">
-                      {ko ? '월회비' : 'Monthly'} {sym}{clubFees.monthly.toLocaleString()}
-                    </button>
+                  {partialMonth && (
+                    <p className="text-xs" style={{ color: '#fbbf24' }}>
+                      ⚠️ {partialMonth}{ko ? '월 부분납부' : ' partial'} : {sym}{partialAmount.toLocaleString()} /
+                      {' '}{ko ? '잔액' : 'remaining'} {sym}{(clubFees.monthly - partialAmount).toLocaleString()}
+                    </p>
+                  )}
+                  {coveredFull.length === 0 && !partialMonth && (
+                    <p className="text-xs" style={{ color: '#fca5a5' }}>
+                      ❌ {ko ? '월회비 미만 — 저장 불가' : 'Less than monthly fee'}
+                    </p>
+                  )}
+                  {coveredFull.length === info.months.length && coveredFull.length > 0 && !partialMonth && enteredAmt === info.expected && (
+                    <p className="text-xs font-bold" style={{ color: '#4ade80' }}>
+                      🎉 {ko ? '전체 미납 정리 완료' : 'All unpaid months cleared'}
+                    </p>
                   )}
                 </div>
               )}
+
+              {/* 년납 — 클럽 회비 안내 */}
+              {feeKind === 'annual' && clubFees.annual > 0 && (
+                <p className="text-[11px] mt-2" style={{ color: '#9ca3af' }}>
+                  {ko ? '클럽 년회비' : 'Club annual fee'} : {sym}{clubFees.annual.toLocaleString()}
+                </p>
+              )}
             </div>
+
+            {/* 납부 날짜 (년납 또는 잔액 처리용) */}
             <div>
-              <label className="text-xs text-gray-400 block mb-1.5">{ko ? '납부 날짜' : 'Payment Date'}</label>
+              <label className="text-xs text-gray-400 block mb-1.5">
+                {feeKind === 'monthly'
+                  ? (ko ? '날짜 (참고용 — 월별 자동 분배됨)' : 'Date (auto-distributed)')
+                  : (ko ? '납부 날짜' : 'Payment Date')}
+              </label>
               <input
                 type="date"
                 value={payingDate}
@@ -1737,13 +1991,18 @@ export default function FinancePage() {
                 className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-green-500"
               />
             </div>
+
             <div className="flex gap-3 pt-1">
               <button onClick={() => setPayingMember(null)} className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 text-sm">
                 {ko ? '취소' : 'Cancel'}
               </button>
               <button
                 onClick={confirmPayment}
-                disabled={payingSaving || !payingAmount}
+                disabled={
+                  payingSaving ||
+                  !payingAmount ||
+                  (feeKind === 'monthly' && clubFees.monthly > 0 && enteredAmt < clubFees.monthly)
+                }
                 className="flex-1 py-3 rounded-xl bg-green-700 hover:bg-green-600 disabled:opacity-50 text-white font-semibold text-sm transition"
               >
                 {payingSaving ? '...' : (ko ? '납부 확인' : 'Confirm Payment')}
@@ -1751,7 +2010,8 @@ export default function FinancePage() {
             </div>
           </div>
         </div>
-      )}
+        )
+      })()}
 
       {/* ━━ 벌금 규정 편집 모달 (canManage 전용) ━━━━━━━━━━━━━━━━━━━━━━━━━ */}
       {showFineEdit && (
