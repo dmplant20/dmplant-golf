@@ -214,8 +214,21 @@ export default function DashboardPage() {
         // 가입월부터 미납 카운트 — joined_at 이 올해면 그 달부터, 아니면 1월
         const ja = (myMembership as any).joined_at as string | null
         const startM = (ja && ja.startsWith(yrPrefix)) ? Number(ja.slice(5, 7)) : 1
+        // 월례회 통과 기준 — 이번 달 월례회 전이면 이번 달은 미납 카운트에서 제외
+        let cutoffM = curMonth
+        if (pattern) {
+          const ov  = (overrides ?? []).find((o: any) => o.year === yr && o.month === curMonth)
+          let mtgD: Date | null = null
+          if (ov?.status === 'cancelled') mtgD = null
+          else if (ov?.status === 'rescheduled' && ov.override_date) mtgD = new Date(ov.override_date + 'T00:00:00')
+          else mtgD = getNthWeekday(yr, curMonth, pattern.week_of_month, pattern.day_of_week)
+          const today = new Date(); today.setHours(0,0,0,0)
+          cutoffM = (mtgD && today > mtgD) ? curMonth : (curMonth - 1)
+        }
         const unpaidMonths: number[] = []
-        for (let m = startM; m <= curMonth; m++) if (!paidMonths.has(m)) unpaidMonths.push(m)
+        if (cutoffM >= startM) {
+          for (let m = startM; m <= cutoffM; m++) if (!paidMonths.has(m)) unpaidMonths.push(m)
+        }
         setMyFeeStatus({
           feeType: 'monthly', annual: club?.annual_fee ?? 0, monthly: club?.monthly_fee ?? 0,
           paid: unpaidMonths.length === 0, unpaidMonths, paidAmount,

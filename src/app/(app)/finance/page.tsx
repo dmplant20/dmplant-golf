@@ -51,6 +51,9 @@ export default function FinancePage() {
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null)
   // 거래 상세 팝업 — 클릭한 거래 객체
   const [detailTxn, setDetailTxn] = useState<any | null>(null)
+  // 월례회 패턴/예외 — 회비 미납 계산의 "월례회 통과" 기준에 사용
+  const [meetingPattern,  setMeetingPattern]  = useState<any | null>(null)
+  const [meetingOverrides, setMeetingOverrides] = useState<any[]>([])
   // 이전 이월금 카드 접기/펼치기 — 기본 접힘
   const [showCarryover, setShowCarryover] = useState(false)
   // 이중확인 삭제 모달 — { title, body, onConfirm } 가 set 되면 모달 노출
@@ -264,12 +267,14 @@ export default function FinancePage() {
     const query = isOfficer
       ? supabase.from('finance_transactions').select('*, users!member_id(full_name, full_name_en), recorder:users!recorded_by(full_name, full_name_en)')
       : supabase.from('finance_transactions').select('*, users!member_id(full_name, full_name_en)')
-    const [{ data: transactions }, { data: club }, { data: mems }, { data: pi }, { data: sponsors }] = await Promise.all([
+    const [{ data: transactions }, { data: club }, { data: mems }, { data: pi }, { data: sponsors }, { data: pat }, { data: ovs }] = await Promise.all([
       query.eq('club_id', currentClubId).order('transaction_date', { ascending: false }),
       supabase.from('clubs').select('currency,fine_handicap_per_stroke,fine_handicap_max,fine_notes,annual_fee,monthly_fee,carryover_amount,carryover_note').eq('id', currentClubId).single(),
       supabase.from('club_memberships').select('user_id, fee_type, joined_at, users(full_name, full_name_en)').eq('club_id', currentClubId).eq('status', 'approved'),
       supabase.from('club_payment_info').select('*').eq('club_id', currentClubId).maybeSingle(),
       supabase.from('sponsorships').select('*').eq('club_id', currentClubId).order('sponsor_date', { ascending: false }),
+      supabase.from('recurring_meetings').select('*').eq('club_id', currentClubId).maybeSingle(),
+      supabase.from('meeting_overrides').select('*').eq('club_id', currentClubId),
     ])
     setTxns(transactions ?? [])
     setSponsorships(sponsors ?? [])
@@ -281,6 +286,8 @@ export default function FinancePage() {
     setCarryoverNote(club?.carryover_note ?? '')
     setMembers(mems ?? [])
     setPayInfo(pi ?? null)
+    setMeetingPattern(pat ?? null)
+    setMeetingOverrides(ovs ?? [])
     if (pi) setPayForm({ bankName: pi.bank_name ?? '', bankAccount: pi.bank_account ?? '', bankHolder: pi.bank_holder ?? '', memo: pi.memo ?? '' })
     setLoading(false)
   }
@@ -348,6 +355,39 @@ export default function FinancePage() {
     (t) => t.type === 'fee' && t.transaction_date?.startsWith(String(currentYear))
   )
 
+  // n번째 요일 — getNthWeekday (week_of_month 1~5, day_of_week 0=일)
+  function getNthWeekday(y: number, m: number, week: number, dow: number): Date | null {
+    const first = new Date(y, m - 1, 1)
+    let diff = dow - first.getDay()
+    if (diff < 0) diff += 7
+    const day = 1 + diff + (week - 1) * 7
+    if (day > new Date(y, m, 0).getDate()) return null
+    return new Date(y, m - 1, day)
+  }
+  // 특정 월의 실제 월례회 날짜 (override 우선) — 취소/없으면 null
+  function meetingDateOf(year: number, month: number): Date | null {
+    const ov = meetingOverrides.find((o: any) => o.year === year && o.month === month)
+    if (ov?.status === 'cancelled') return null
+    if (ov?.status === 'rescheduled' && ov.override_date) {
+      return new Date(ov.override_date + 'T00:00:00')
+    }
+    if (!meetingPattern) return null
+    return getNthWeekday(year, month, meetingPattern.week_of_month, meetingPattern.day_of_week)
+  }
+  // 회비 미납 카운트의 마지막 월 — "이번 달 월례회가 이미 지났는가?" 기준
+  //   · 월례회 패턴 없음    → 보수적으로 currentMonth (기존 동작)
+  //   · 이번 달 취소        → currentMonth - 1
+  //   · 이번 달 일자 < 오늘 → currentMonth   (월례회 통과)
+  //   · 일자 >= 오늘        → currentMonth - 1 (아직 월례회 전)
+  function cutoffMonth(): number {
+    if (!meetingPattern) return currentMonth
+    const today = new Date(); today.setHours(0,0,0,0)
+    const d = meetingDateOf(currentYear, currentMonth)
+    if (!d) return currentMonth - 1   // 이번 달 월례회 취소 → 카운트 안 함
+    return today > d ? currentMonth : currentMonth - 1
+  }
+  const cutoffM = cutoffMonth()
+
   // 회원별 (year 기준) 납부 월 집합 — 월납 회원 차감 계산용
   const paidMonthsByMember = new Map<string, Set<number>>()
   // 회원별 (year 기준) 총 납부 금액 — 합산 표시용
@@ -369,30 +409,33 @@ export default function FinancePage() {
     return mm >= 1 && mm <= 12 ? mm : 1
   }
 
-  // 회원별 미납 판정 — fee_type 별 분기 + joined_at 반영
+  // 회원별 미납 판정 — fee_type 별 분기 + joined_at + 월례회 통과 기준 반영
+  // 핵심 규칙: 이번 달 월례회가 아직 안 끝났으면 이번 달은 미납 카운트에서 제외
   function isMemberPaid(m: any): boolean {
     const ft = m.fee_type as 'annual'|'monthly'|null
     const paidMonths = paidMonthsByMember.get(m.user_id)
     if (ft === 'monthly') {
-      // 가입월 ~ 현재월 모두 납부되어 있어야 완납
       const startM = memberStartMonth(m)
-      if (startM > currentMonth) return true   // 미래 가입자 — 아직 회비 의무 없음
+      // 가입월이 카운트 한계보다 뒤거나, 카운트 한계가 0 이하면 아직 회비 의무 없음
+      if (startM > cutoffM || cutoffM < 1) return true
       if (!paidMonths) return false
-      for (let mm = startM; mm <= currentMonth; mm++) if (!paidMonths.has(mm)) return false
+      for (let mm = startM; mm <= cutoffM; mm++) if (!paidMonths.has(mm)) return false
       return true
     }
     // annual 또는 미지정 — 올해 회비 트랜잭션 1건 이상이면 납부
     return !!paidMonths && paidMonths.size > 0
   }
 
-  // 미납 회원별 추가 정보 (월납이면 미납 월 목록)
+  // 미납 회원별 추가 정보 (월납이면 미납 월 목록 — 월례회 통과 기준 적용)
   function memberUnpaidInfo(m: any): { months: number[]; expected: number } {
     const ft = m.fee_type as 'annual'|'monthly'|null
     if (ft === 'monthly') {
       const paid = paidMonthsByMember.get(m.user_id) ?? new Set<number>()
       const startM = memberStartMonth(m)
       const months: number[] = []
-      for (let mm = startM; mm <= currentMonth; mm++) if (!paid.has(mm)) months.push(mm)
+      if (cutoffM >= startM) {
+        for (let mm = startM; mm <= cutoffM; mm++) if (!paid.has(mm)) months.push(mm)
+      }
       return { months, expected: months.length * (clubFees.monthly || 0) }
     }
     return { months: [], expected: clubFees.annual || 0 }
@@ -1970,6 +2013,13 @@ export default function FinancePage() {
                 <p className="text-[10px] mt-1.5" style={{ color: '#9ca3af' }}>
                   {ko ? '예상 미납 금액' : 'Expected'} : {sym}{info.expected.toLocaleString()}
                 </p>
+                {cutoffM < currentMonth && (
+                  <p className="text-[10px] mt-1" style={{ color: '#fbbf24' }}>
+                    {ko
+                      ? `※ ${currentMonth}월 월례회 전이므로 ${currentMonth}월 회비는 아직 미납으로 카운트되지 않습니다.`
+                      : `※ ${currentMonth} fee not counted yet — monthly meeting hasn't happened.`}
+                  </p>
+                )}
               </div>
             )}
 

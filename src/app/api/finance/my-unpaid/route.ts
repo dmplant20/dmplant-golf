@@ -82,8 +82,39 @@ export async function GET(_req: NextRequest) {
           const ja = (m as any).joined_at ? String((m as any).joined_at) : null
           const startMonth = (ja && ja.startsWith(String(year))) ? Number(ja.slice(5, 7)) : 1
           const paidMonths = new Set((payments ?? []).map((p: any) => Number(String(p.transaction_date).slice(5, 7))))
+
+          // 월례회 통과 기준 — 이번 달 월례회 전이면 이번 달은 미납 카운트 제외
+          let cutoffM = currentMonth
+          const { data: pat } = await supabase
+            .from('recurring_meetings')
+            .select('week_of_month, day_of_week')
+            .eq('club_id', m.club_id).maybeSingle()
+          if (pat) {
+            const { data: ovs } = await supabase
+              .from('meeting_overrides')
+              .select('status, override_date')
+              .eq('club_id', m.club_id).eq('year', year).eq('month', currentMonth)
+              .maybeSingle()
+            const today = new Date(); today.setHours(0,0,0,0)
+            let mtgD: Date | null = null
+            if (ovs?.status === 'cancelled') mtgD = null
+            else if (ovs?.status === 'rescheduled' && ovs.override_date) {
+              mtgD = new Date(ovs.override_date + 'T00:00:00')
+            } else {
+              const first = new Date(year, currentMonth - 1, 1)
+              let diff = pat.day_of_week - first.getDay(); if (diff < 0) diff += 7
+              const day = 1 + diff + (pat.week_of_month - 1) * 7
+              if (day <= new Date(year, currentMonth, 0).getDate()) {
+                mtgD = new Date(year, currentMonth - 1, day)
+              }
+            }
+            cutoffM = (mtgD && today > mtgD) ? currentMonth : (currentMonth - 1)
+          }
+
           const unpaidMonths: number[] = []
-          for (let mm = startMonth; mm <= currentMonth; mm++) if (!paidMonths.has(mm)) unpaidMonths.push(mm)
+          if (cutoffM >= startMonth) {
+            for (let mm = startMonth; mm <= cutoffM; mm++) if (!paidMonths.has(mm)) unpaidMonths.push(mm)
+          }
           if (unpaidMonths.length) {
             unpaidFees.push({
               club_id: m.club_id, club_name: club.name, fee_type: 'monthly',

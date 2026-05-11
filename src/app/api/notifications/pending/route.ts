@@ -214,6 +214,31 @@ export async function GET(_req: NextRequest) {
           .limit(1)
 
         if (feeType === 'monthly') {
+          // 월례회 통과 전이면 이번 달은 미납 알림 보내지 않음
+          const { data: pat } = await supabase
+            .from('recurring_meetings')
+            .select('week_of_month, day_of_week')
+            .eq('club_id', m.club_id).maybeSingle()
+          if (pat) {
+            const { data: ov } = await supabase
+              .from('meeting_overrides')
+              .select('status, override_date')
+              .eq('club_id', m.club_id).eq('year', todayYear).eq('month', todayMonth).maybeSingle()
+            let mtgD: Date | null = null
+            if (ov?.status === 'cancelled') mtgD = null
+            else if (ov?.status === 'rescheduled' && ov.override_date) {
+              mtgD = new Date(ov.override_date + 'T00:00:00')
+            } else {
+              const first = new Date(todayYear, todayMonth - 1, 1)
+              let diff = pat.day_of_week - first.getDay(); if (diff < 0) diff += 7
+              const day = 1 + diff + (pat.week_of_month - 1) * 7
+              if (day <= new Date(todayYear, todayMonth, 0).getDate()) {
+                mtgD = new Date(todayYear, todayMonth - 1, day)
+              }
+            }
+            const today = new Date(); today.setHours(0,0,0,0)
+            if (!mtgD || today <= mtgD) continue   // 월례회 전 — 알림 보내지 않음
+          }
           const monthStart = `${todayYear}-${String(todayMonth).padStart(2, '0')}-01`
           const nextMonth = todayMonth === 12 ? 1 : todayMonth + 1
           const nextYear = todayMonth === 12 ? todayYear + 1 : todayYear
