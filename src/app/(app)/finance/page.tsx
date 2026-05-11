@@ -32,7 +32,9 @@ export default function FinancePage() {
   const ko = lang === 'ko'
   const myRole = myClubs.find((c) => c.id === currentClubId)?.role ?? 'member'
   const isAdmin = isSuperAdmin(user)
-  const canManage = ['president', 'secretary'].includes(myRole) || isAdmin
+  // 재무 수정·등록·삭제 권한 — 총무 전용 (회장도 불가) + DEV 슈퍼관리자 백업
+  const canManage = myRole === 'secretary' || isAdmin
+  const canEditFinance = canManage  // alias
   const isOfficer = OFFICER_ROLES.includes(myRole) || isAdmin
   // 회비/벌금 미납자 명단 열람 권한 — 회장·총무·감사만
   const canViewFinance = ['president', 'secretary', 'auditor'].includes(myRole) || isAdmin
@@ -47,6 +49,10 @@ export default function FinancePage() {
   const [expandedId,   setExpandedId]   = useState<string | null>(null)
   // 거래 내역 월별 아코디언 — 펼쳐진 'YYYY-MM' (가장 최근 월 기본 펼침)
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null)
+  // 이전 이월금 카드 접기/펼치기 — 기본 접힘
+  const [showCarryover, setShowCarryover] = useState(false)
+  // 이중확인 삭제 모달 — { title, body, onConfirm } 가 set 되면 모달 노출
+  const [confirmDelete, setConfirmDelete] = useState<{ title: string; body: string; onConfirm: () => void } | null>(null)
   const [receiptUrl,   setReceiptUrl]   = useState<string | null>(null)
   const [members,      setMembers]      = useState<any[]>([])
   const [showFineRules,setShowFineRules]= useState(false)
@@ -148,15 +154,24 @@ export default function FinancePage() {
     setShowAdd(true)
   }
 
-  async function deleteTransaction(id: string) {
-    if (!confirm(ko ? '이 거래 내역을 삭제하시겠습니까?' : 'Delete this transaction?')) return
-    setDeleting(id)
-    const supabase = createClient()
-    const { error } = await supabase.from('finance_transactions').delete().eq('id', id)
-    setDeleting(null)
-    if (error) { alert(ko ? `삭제 실패: ${error.message}` : `Delete failed: ${error.message}`); return }
-    setExpandedId(null)
-    load()
+  function deleteTransaction(id: string) {
+    const t = txns.find(x => x.id === id)
+    const desc = t?.description ?? '거래'
+    const amt  = t?.amount ? `${sym}${Number(t.amount).toLocaleString()}` : ''
+    setConfirmDelete({
+      title: ko ? '거래 내역 삭제' : 'Delete Transaction',
+      body:  ko ? `"${desc}" ${amt}\n이 거래 내역을 영구 삭제합니다.` : `"${desc}" ${amt} will be permanently deleted.`,
+      onConfirm: async () => {
+        setDeleting(id)
+        const supabase = createClient()
+        const { error } = await supabase.from('finance_transactions').delete().eq('id', id)
+        setDeleting(null)
+        setConfirmDelete(null)
+        if (error) { alert(ko ? `삭제 실패: ${error.message}` : `Delete failed: ${error.message}`); return }
+        setExpandedId(null)
+        load()
+      },
+    })
   }
 
   // ── 찬조 저장 (현금·상품 동시 가능) ─────────────────────────────────
@@ -222,12 +237,19 @@ export default function FinancePage() {
     setShowSpModal(true)
   }
 
-  async function deleteSponsorship(id: string) {
-    if (!confirm(ko ? '이 찬조 내역을 삭제하시겠습니까?' : 'Delete this sponsorship?')) return
-    const supabase = createClient()
-    const { error } = await supabase.from('sponsorships').delete().eq('id', id)
-    if (error) { alert(ko ? `삭제 실패: ${error.message}` : `Delete failed: ${error.message}`); return }
-    load()
+  function deleteSponsorship(id: string) {
+    const s = sponsorships.find(x => x.id === id)
+    setConfirmDelete({
+      title: ko ? '찬조 내역 삭제' : 'Delete Sponsorship',
+      body:  ko ? `"${s?.member_name ?? '찬조'}"\n이 찬조 내역을 영구 삭제합니다.` : `"${s?.member_name ?? 'Sponsorship'}" will be deleted.`,
+      onConfirm: async () => {
+        const supabase = createClient()
+        const { error } = await supabase.from('sponsorships').delete().eq('id', id)
+        setConfirmDelete(null)
+        if (error) { alert(ko ? `삭제 실패: ${error.message}` : `Delete failed: ${error.message}`); return }
+        load()
+      },
+    })
   }
 
   // ── load ──────────────────────────────────────────────────────────────
@@ -535,35 +557,40 @@ export default function FinancePage() {
       {(carryoverAmount > 0 || canManage) && (
         <div className="rounded-2xl overflow-hidden"
           style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.10), rgba(6,13,6,0.95))', border: '1px solid rgba(245,158,11,0.25)' }}>
-          <div className="px-4 py-3 flex items-start gap-3">
-            <span className="text-2xl flex-shrink-0 leading-none mt-0.5">📦</span>
+          {/* 헤더 — 클릭으로 펼치기/접기 */}
+          <button
+            onClick={() => setShowCarryover(v => !v)}
+            className="w-full px-4 py-3 flex items-center gap-3 text-left">
+            <span className="text-xl flex-shrink-0 leading-none">📦</span>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold" style={{ color: '#fbbf24' }}>
-                {ko ? '이전 이월금' : 'Carryover from previous period'}
+              <p className="text-sm font-semibold" style={{ color: '#fbbf24' }}>
+                {ko ? '이전 이월금' : 'Carryover'}
+                <span className="ml-2 text-xs font-bold text-white">{sym}{carryoverAmount.toLocaleString()}</span>
               </p>
-              <p className="text-base font-bold mt-0.5 text-white">
-                {sym}{carryoverAmount.toLocaleString()}
-              </p>
+            </div>
+            {showCarryover ? <ChevronUp size={16} className="text-gray-400 flex-shrink-0" /> : <ChevronDown size={16} className="text-gray-400 flex-shrink-0" />}
+          </button>
+          {showCarryover && (
+            <div className="px-4 pb-3 pt-1" style={{ borderTop: '1px solid rgba(245,158,11,0.15)' }}>
               {carryoverNote && (
-                <p className="text-[11px] mt-1 italic" style={{ color: '#fcd34d' }}>“{carryoverNote}”</p>
+                <p className="text-xs italic" style={{ color: '#fcd34d' }}>“{carryoverNote}”</p>
+              )}
+              {canManage && (
+                <button
+                  onClick={() => {
+                    setCarryoverForm({
+                      amount: carryoverAmount ? carryoverAmount.toLocaleString() : '',
+                      note: carryoverNote || '',
+                    })
+                    setShowCarryoverEdit(true)
+                  }}
+                  className="mt-2 flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg"
+                  style={{ background: 'rgba(245,158,11,0.15)', color: '#fcd34d', border: '1px solid rgba(245,158,11,0.35)' }}>
+                  <Edit2 size={11} />{ko ? '이월금 수정' : 'Edit'}
+                </button>
               )}
             </div>
-            {canManage && (
-              <button
-                onClick={() => {
-                  setCarryoverForm({
-                    amount: carryoverAmount ? carryoverAmount.toLocaleString() : '',
-                    note: carryoverNote || '',
-                  })
-                  setShowCarryoverEdit(true)
-                }}
-                className="w-8 h-8 rounded-lg flex items-center justify-center transition active:scale-95 flex-shrink-0"
-                style={{ background: 'rgba(245,158,11,0.15)', color: '#fcd34d' }}
-                title={ko ? '편집' : 'Edit'}>
-                <Edit2 size={13} />
-              </button>
-            )}
-          </div>
+          )}
         </div>
       )}
 
@@ -1506,6 +1533,51 @@ export default function FinancePage() {
       )}
 
       {/* QR 라이트박스 */}
+      {/* ━━ 이중 확인 삭제 모달 — 실수 방지 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(6px)' }}
+          onClick={() => setConfirmDelete(null)}>
+          <div className="w-full max-w-sm rounded-2xl overflow-hidden"
+            style={{ background: '#1a0f0f', border: '1px solid rgba(239,68,68,0.5)', boxShadow: '0 20px 60px rgba(0,0,0,0.6)' }}
+            onClick={e => e.stopPropagation()}>
+            <div className="px-5 pt-5 pb-3 flex items-start gap-3">
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.45)' }}>
+                <AlertTriangle size={20} className="text-red-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base font-bold text-white">{confirmDelete.title}</h3>
+                <p className="text-xs mt-0.5" style={{ color: '#fca5a5' }}>
+                  {ko ? '정말 삭제하시겠습니까?' : 'Are you sure?'}
+                </p>
+              </div>
+            </div>
+            <div className="px-5 pb-3">
+              <div className="rounded-lg px-3 py-2.5 text-xs whitespace-pre-wrap"
+                style={{ background: 'rgba(0,0,0,0.35)', color: '#fcd34d', border: '1px solid rgba(251,191,36,0.25)' }}>
+                {confirmDelete.body}
+              </div>
+              <p className="text-[10px] mt-2" style={{ color: '#9ca3af' }}>
+                ⚠️ {ko ? '이 작업은 되돌릴 수 없습니다.' : 'This cannot be undone.'}
+              </p>
+            </div>
+            <div className="px-5 pb-5 pt-2 flex gap-2">
+              <button onClick={() => setConfirmDelete(null)}
+                className="flex-1 py-3 rounded-xl text-sm font-bold"
+                style={{ background: 'rgba(255,255,255,0.06)', color: '#e5e7eb', border: '1px solid rgba(255,255,255,0.1)' }}>
+                {ko ? '취소' : 'Cancel'}
+              </button>
+              <button onClick={confirmDelete.onConfirm}
+                className="flex-1 py-3 rounded-xl text-sm font-bold text-white active:scale-95"
+                style={{ background: 'linear-gradient(135deg,#dc2626,#991b1b)', boxShadow: '0 4px 16px rgba(220,38,38,0.4)' }}>
+                🗑 {ko ? '영구 삭제' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {viewQr && payInfo?.qr_image_url && (
         <div className="fixed inset-0 bg-black/95 flex flex-col items-center justify-center z-[200] p-6 gap-4" onClick={() => setViewQr(false)}>
           <p className="text-white font-semibold text-sm">{payInfo.bank_name ?? ''}</p>
