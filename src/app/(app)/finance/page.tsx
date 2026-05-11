@@ -36,8 +36,8 @@ export default function FinancePage() {
   const canManage = myRole === 'secretary' || isAdmin
   const canEditFinance = canManage  // alias
   const isOfficer = OFFICER_ROLES.includes(myRole) || isAdmin
-  // 회비/벌금 미납자 명단 열람 권한 — 회장·총무·감사만
-  const canViewFinance = ['president', 'secretary', 'auditor'].includes(myRole) || isAdmin
+  // 회비/벌금 미납자 명단 열람 권한 — 회장·총무·감사·고문만
+  const canViewFinance = ['president', 'secretary', 'auditor', 'advisor'].includes(myRole) || isAdmin
 
   const [txns,         setTxns]         = useState<any[]>([])
   const [sponsorships, setSponsorships] = useState<any[]>([])
@@ -884,8 +884,8 @@ export default function FinancePage() {
                 ) : (
                   <p className="text-xs" style={{ color: '#fca5a5' }}>
                     {ko
-                      ? `미납자 명단은 회장·총무·감사만 볼 수 있습니다.`
-                      : `Only president/secretary/auditor can see the unpaid list.`}
+                      ? `미납자 명단은 회장·총무·감사·고문만 볼 수 있습니다.`
+                      : `Only president/secretary/auditor/advisor can see the unpaid list.`}
                   </p>
                 )}
               </div>

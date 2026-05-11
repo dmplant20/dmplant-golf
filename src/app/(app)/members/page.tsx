@@ -88,8 +88,8 @@ export default function MembersPage() {
   const myMembership = myClubs.find(c => c.id === currentClubId)
   const myRole       = myMembership?.role ?? 'member'
   const isAdmin      = isSuperAdmin(user)
-  // 회비/벌금 미납 정보 열람 권한 — 회장, 총무, 감사만 (본인 자신은 항상 볼 수 있음)
-  const canViewFinance = ['president', 'secretary', 'auditor'].includes(myRole) || isAdmin
+  // 회비/벌금 미납 정보 열람 권한 — 회장·총무·감사·고문 (본인 자신은 항상 볼 수 있음)
+  const canViewFinance = ['president', 'secretary', 'auditor', 'advisor'].includes(myRole) || isAdmin
   const canManage    = ['president', 'secretary'].includes(myRole) || isAdmin
 
   const [tab,           setTab]           = useState<'approved' | 'pending' | 'withdrawn' | 'log'>('approved')
