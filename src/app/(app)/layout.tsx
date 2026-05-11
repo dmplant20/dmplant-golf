@@ -19,7 +19,23 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     const supabase = createClient()
 
     async function init() {
-      const { data: { user } } = await supabase.auth.getUser()
+      let { data: { user } } = await supabase.auth.getUser()
+      // 세션 만료/유실 → localStorage 저장 자격증명으로 silent 재로그인 시도
+      // (사용자가 명시적 로그아웃을 했다면 자격증명이 지워져 있으므로 자동 로그인 안 됨)
+      if (!user) {
+        try {
+          const email = typeof window !== 'undefined' ? localStorage.getItem('isgolf-saved-email') : null
+          const pwEnc = typeof window !== 'undefined' ? localStorage.getItem('isgolf-saved-pw') : null
+          if (email && pwEnc) {
+            const password = atob(pwEnc)
+            const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+            if (!error && data.user) {
+              user = data.user
+              console.log('[auth] auto re-logged in silently')
+            }
+          }
+        } catch { /* silent */ }
+      }
       if (!user) { router.replace('/login'); return }
 
       const { data: profile } = await supabase.from('users').select('*').eq('id', user.id).single()

@@ -34,6 +34,11 @@ export default function MorePage() {
     const supabase = createClient()
     await supabase.auth.signOut()
     clear()
+    // 명시적 로그아웃 → 저장된 자격증명 폐기 (자동 재로그인 방지)
+    try {
+      localStorage.removeItem('isgolf-saved-email')
+      localStorage.removeItem('isgolf-saved-pw')
+    } catch { /* ignore */ }
     router.replace('/login')
   }
 
