@@ -12,8 +12,8 @@ const NAV = [
   { href: '/more',      icon: MoreHorizontal, ko: '더보기', en: 'More' },
 ]
 
-// 게스트가 접근 가능한 경로 — 홈 / 모임 / 채팅 / 더보기 만
-const GUEST_NAV_HREFS = new Set(['/dashboard', '/meetings', '/chat', '/more'])
+// 게스트가 접근 가능한 경로 — 홈 / 회원 / 모임 / 채팅 / 더보기 (재무만 제외)
+const GUEST_NAV_HREFS = new Set(['/dashboard', '/members', '/meetings', '/chat', '/more'])
 
 export default function BottomNav() {
   const pathname = usePathname()

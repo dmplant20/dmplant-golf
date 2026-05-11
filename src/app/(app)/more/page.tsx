@@ -55,7 +55,8 @@ export default function MorePage() {
         {
           title: ko ? '커뮤니티' : 'Community',
           items: [
-            { href: '/album',        icon: Image,       label: ko ? '사진 앨범'   : 'Photo Album',    color: '#f472b6', bg: 'rgba(244,114,182,0.12)' },
+            { href: '/album',        icon: Image,       label: ko ? '사진 앨범'  : 'Photo Album',    color: '#f472b6', bg: 'rgba(244,114,182,0.12)' },
+            { href: '/events',       icon: AlertCircle, label: ko ? '경조사'      : 'Life Events',    color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
             { href: '/announcement', icon: AlertCircle, label: ko ? '공지사항'    : 'Announcements',  color: '#86efac', bg: 'rgba(134,239,172,0.12)' },
           ],
         },
