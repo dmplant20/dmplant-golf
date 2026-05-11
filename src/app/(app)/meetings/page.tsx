@@ -174,6 +174,10 @@ export default function MeetingsPage() {
 
   // 조별 티오프 시간 — { 1: '06:49', 2: '07:03', ... }
   const [teeTimes, setTeeTimes] = useState<Record<number, string>>({})
+  // 조별 코스 이름 — { 1: 'Stella-Sole', 2: 'Luna-Stella', ... }
+  const [courseNames, setCourseNames] = useState<Record<number, string>>({})
+  // 골프장 응답 원본 (참고용 — 파싱하지 않고 화면에만 보존)
+  const [courseReplyMemo, setCourseReplyMemo] = useState('')
   const [rosterCopied, setRosterCopied] = useState(false)
   // 영문 명단 미리보기 모달
   const [showRosterModal, setShowRosterModal] = useState(false)
@@ -254,7 +258,7 @@ export default function MeetingsPage() {
         .select('user_id, status, users(full_name, full_name_en, name_abbr)')
         .eq('club_id', currentClubId).eq('year', year).eq('month', month),
       supabase.from('meeting_groups')
-        .select('group_number, tee_time, meeting_group_members(user_id, guest_id, users(full_name, full_name_en, name_abbr), meeting_guests(full_name, full_name_en, handicap))')
+        .select('group_number, tee_time, course_name, meeting_group_members(user_id, guest_id, users(full_name, full_name_en, name_abbr), meeting_guests(full_name, full_name_en, handicap))')
         .eq('club_id', currentClubId).eq('year', year).eq('month', month).order('group_number'),
       supabase.from('round_scores')
         .select('user_id, gross_score, handicap_used, net_score, course_name, users(full_name, full_name_en, name_abbr)')
@@ -276,8 +280,10 @@ export default function MeetingsPage() {
     if (sm) setSForm({ name: sm.restaurant_name, address: sm.restaurant_address ?? '', placeId: sm.google_place_id ?? '', lat: sm.lat ? String(sm.lat) : '', lng: sm.lng ? String(sm.lng) : '', time: sm.time ?? '19:00', notes: sm.notes ?? '' })
     const a: Record<string, number> = {}
     const tt: Record<number, string> = {}
+    const cn: Record<number, string> = {}
     ;(grps ?? []).forEach((g: any) => {
       if (g.tee_time) tt[g.group_number] = String(g.tee_time).slice(0, 5)  // HH:MM
+      if (g.course_name) cn[g.group_number] = g.course_name
       g.meeting_group_members?.forEach((m: any) => {
         const key = m.guest_id ? `g:${m.guest_id}` : m.user_id
         if (key) a[key] = g.group_number
@@ -285,6 +291,7 @@ export default function MeetingsPage() {
     })
     setAssign(a)
     setTeeTimes(tt)
+    setCourseNames(cn)
     // initialize score input from saved scores
     const si: Record<string, string> = {}
     sc?.forEach(s => { si[s.user_id] = String(s.gross_score) })
@@ -578,6 +585,7 @@ export default function MeetingsPage() {
         club_id: currentClubId, year: meeting.year, month: meeting.month,
         group_number: gNum,
         tee_time: teeTimes[gNum] || null,
+        course_name: courseNames[gNum]?.trim() || null,
       }).select().single()
       if (g) {
         const keys = Object.entries(assign).filter(([, n]) => n === gNum).map(([k]) => k)
@@ -593,27 +601,60 @@ export default function MeetingsPage() {
     await loadRsvp(meeting.year, meeting.month)
   }
 
-  // ── 영문 명단 — 미리보기 모달로 노출, 사용자가 편집 후 복사 ─────────
+  // ── 영문 명단 — 시간/코스 포함하여 미리보기 모달 ──────────────────
+  // 조 편성이 있으면 조별로 그룹화, 없으면 전체 명단 단순 번호 매김
   function openRosterPreview() {
     const missing: string[] = []
-    const lines: string[] = []
-    attending.forEach((a: any) => {
-      const ko = a.users?.full_name?.trim() ?? ''
-      const en = a.users?.full_name_en?.trim() ?? ''
-      if (!en) {
-        missing.push(ko || '?')
-        lines.push(ko)  // fallback — 한글 그대로 (편집 가능)
-      } else lines.push(en)
-    })
-    guests.filter(g => g.approved).forEach(g => {
-      const ko = g.full_name?.trim() ?? ''
-      const en = g.full_name_en?.trim() ?? ''
-      if (!en) {
-        missing.push(`${ko || '?'} (게스트)`)
-        lines.push(`${ko} (G)`)
-      } else lines.push(`${en} (G)`)
-    })
-    setRosterText(lines.map((n, i) => `${i + 1}. ${n}`).join('\n'))
+    const enOf = (ko: string, en: string | null | undefined) => {
+      const e = (en ?? '').trim()
+      if (!e) { missing.push(ko || '?'); return ko }
+      return e
+    }
+    // 조 편성이 있으면 (assign 에 값이 있고 그룹별 분리 가능)
+    const numsInAssign = [...new Set(Object.values(assign) as number[])].sort()
+    let text = ''
+    if (pattern?.venue) text += `📍 ${pattern.venue}\n`
+    if (meeting) text += `🗓️ ${meeting.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}\n\n`
+
+    if (numsInAssign.length > 0) {
+      // 그룹별 출력
+      for (const gn of numsInAssign) {
+        const tee = teeTimes[gn] ? teeTimes[gn] : ''
+        const course = courseNames[gn]?.trim() ?? ''
+        const header = [`Group ${gn}`, tee, course].filter(Boolean).join(' · ')
+        text += `▶ ${header}\n`
+        const items = Object.entries(assign).filter(([, n]) => n === gn).map(([k]) => k)
+        items.forEach((k, i) => {
+          if (k.startsWith('g:')) {
+            const gId = k.slice(2)
+            const g = guests.find(x => x.id === gId)
+            if (g) {
+              const en = enOf(g.full_name ?? '', g.full_name_en)
+              text += `  ${i + 1}. ${en} (G)\n`
+            }
+          } else {
+            const att = attending.find(a => a.user_id === k)
+            const u = att?.users
+            const en = enOf(u?.full_name ?? '', u?.full_name_en)
+            text += `  ${i + 1}. ${en}\n`
+          }
+        })
+        text += '\n'
+      }
+      text += `MGF Guest!\nThanks sir!`
+    } else {
+      // 조 편성 전 — 단순 명단
+      const lines: string[] = []
+      attending.forEach((a: any) => {
+        lines.push(enOf(a.users?.full_name ?? '', a.users?.full_name_en))
+      })
+      guests.filter(g => g.approved).forEach(g => {
+        lines.push(`${enOf(g.full_name ?? '', g.full_name_en)} (G)`)
+      })
+      text += lines.map((n, i) => `${i + 1}. ${n}`).join('\n')
+    }
+
+    setRosterText(text)
     setRosterMissing(missing)
     setShowRosterModal(true)
   }
@@ -633,7 +674,7 @@ export default function MeetingsPage() {
   function exportGroupsCSV() {
     if (!groups.length || !meeting) return
     const BOM = '\uFEFF'
-    const headers = ['티오프', '한글 이름', '영문 이름', '핸디', '결과', '비고']
+    const headers = ['티오프', '코스', '한글 이름', '영문 이름', '핸디', '결과', '비고']
     const rows: string[][] = []
     const sorted = [...groups].sort((a: any, b: any) => a.group_number - b.group_number)
     sorted.forEach((g: any) => {
@@ -642,6 +683,7 @@ export default function MeetingsPage() {
         const [hh, mm] = tee.split(':')
         return `${parseInt(hh,10)}시 ${mm}분`
       })() : `${g.group_number}조`
+      const course = g.course_name ?? ''
       const mems = (g.meeting_group_members ?? [])
       mems.forEach((m: any, idx: number) => {
         let nameKo = '', nameEn = '', hc: number | null = null, isGuest = false
@@ -658,6 +700,7 @@ export default function MeetingsPage() {
         }
         rows.push([
           idx === 0 ? tDisplay : '',
+          idx === 0 ? course : '',
           nameKo + (isGuest ? '(G)' : ''),
           nameEn + (isGuest ? '(G)' : ''),
           hc != null ? String(hc) : '',
@@ -665,7 +708,7 @@ export default function MeetingsPage() {
           '',
         ])
       })
-      rows.push(['', '', '', '', '', ''])  // 조 사이 빈 줄
+      rows.push(['', '', '', '', '', '', ''])  // 조 사이 빈 줄
     })
     const title = `${meeting.year}년 ${meeting.month}월 모임`
     const venue = pattern?.venue ? ` (${pattern.venue})` : ''
@@ -1733,8 +1776,25 @@ export default function MeetingsPage() {
           </div>
         }
       >
+        {/* 1단계: 골프장 응답 입력 (참고용) */}
+        <div className="rounded-xl p-3 mb-3" style={{ background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.25)' }}>
+          <p className="text-xs font-bold mb-1.5" style={{ color: '#93c5fd' }}>
+            1️⃣ {ko ? '골프장 응답 임시 메모' : 'Golf course reply memo'}
+          </p>
+          <p className="text-[10px] mb-2" style={{ color: '#94a3b8' }}>
+            💡 {ko ? '예: TWINDOVES | Apr 19th, 7:38 Stella-Sole — 시간/코스 참고용. 아래에서 조별로 직접 입력' : 'Paste raw text for reference'}
+          </p>
+          <textarea
+            value={courseReplyMemo}
+            onChange={e => setCourseReplyMemo(e.target.value)}
+            rows={3}
+            placeholder={ko ? '골프장에서 받은 메시지 붙여넣기 (선택)' : 'Paste reply from course (optional)'}
+            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-2 text-xs text-white focus:outline-none focus:border-blue-500 resize-none"
+          />
+        </div>
+
         <div>
-          <label className="text-xs text-gray-400 block mb-1">{ko ? '자동 조편성' : 'Auto grouping'}</label>
+          <label className="text-xs text-gray-400 block mb-1">2️⃣ {ko ? '자동 조편성' : 'Auto grouping'}</label>
           <p className="text-[10px] text-gray-500 mb-2">
             {ko ? '4명씩 같은 조로 순서대로 배정됩니다' : 'Players are cut into groups of 4 in order'}
           </p>
@@ -1824,24 +1884,32 @@ export default function MeetingsPage() {
             {assignedGroupNums.length > 0 && (
               <div className="space-y-2 mt-3">
                 <label className="text-xs text-gray-400 block">
-                  {ko ? '편성 미리보기 — 조별 티오프 시간 입력' : 'Preview — set tee time per group'}
+                  3️⃣ {ko ? '편성 미리보기 — 조별 시간/코스 입력' : 'Preview — set tee time + course'}
                 </label>
                 <p className="text-[10px]" style={{ color: '#fbbf24' }}>
-                  💡 {ko ? '골프장에서 받은 시간을 각 조에 입력하면 엑셀 출력 시 자동 반영' : 'Enter tee times to include in export'}
+                  💡 {ko ? '골프장 응답을 보고 시간(예: 07:03)과 코스명(예: Stella-Sole)을 입력 → 영문 명단·CSV에 자동 반영' : 'Enter time and course; reflects in roster and CSV'}
                 </p>
                 {assignedGroupNums.map(gn => {
                   const gMembers = participants.filter(p => assign[p.key] === gn)
                   return (
                     <div key={gn} className="rounded-xl px-3 py-2.5" style={{ background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.2)' }}>
-                      <div className="flex items-center justify-between gap-2 mb-1.5">
-                        <p className="text-xs font-bold" style={{ color: 'var(--gold-l)' }}>{gn}조 ({gMembers.length}{ko ? '명' : ''})</p>
+                      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                        <p className="text-xs font-bold flex-shrink-0" style={{ color: 'var(--gold-l)' }}>{gn}조 ({gMembers.length}{ko ? '명' : ''})</p>
                         <input
                           type="time"
                           value={teeTimes[gn] ?? ''}
                           onChange={e => setTeeTimes(prev => ({ ...prev, [gn]: e.target.value }))}
                           className="text-xs px-2 py-1 rounded bg-gray-900 border border-gray-700 text-white"
-                          style={{ width: 100 }}
+                          style={{ width: 90 }}
                           title={ko ? '티오프 시간' : 'Tee time'}
+                        />
+                        <input
+                          type="text"
+                          value={courseNames[gn] ?? ''}
+                          onChange={e => setCourseNames(prev => ({ ...prev, [gn]: e.target.value }))}
+                          placeholder={ko ? '코스명 (예: Stella-Sole)' : 'Course'}
+                          className="text-xs px-2 py-1 rounded bg-gray-900 border border-gray-700 text-white flex-1 min-w-0"
+                          title={ko ? '코스 이름' : 'Course name'}
                         />
                       </div>
                       <div className="flex flex-wrap gap-1.5">
