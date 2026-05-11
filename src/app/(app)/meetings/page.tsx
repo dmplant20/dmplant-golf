@@ -175,6 +175,10 @@ export default function MeetingsPage() {
   // 조별 티오프 시간 — { 1: '06:49', 2: '07:03', ... }
   const [teeTimes, setTeeTimes] = useState<Record<number, string>>({})
   const [rosterCopied, setRosterCopied] = useState(false)
+  // 영문 명단 미리보기 모달
+  const [showRosterModal, setShowRosterModal] = useState(false)
+  const [rosterText, setRosterText] = useState('')
+  const [rosterMissing, setRosterMissing] = useState<string[]>([])
 
   // ── 2차 모임 ──────────────────────────────────────────────────────────────
   const [secondMeeting,    setSecondMeeting]    = useState<any | null>(null)
@@ -589,27 +593,39 @@ export default function MeetingsPage() {
     await loadRsvp(meeting.year, meeting.month)
   }
 
-  // ── 영문 명단 복사 — 골프장 예약용 ───────────────────────────────────
-  // 참석 회원 + 승인 게스트의 영문 이름을 번호 매겨 클립보드에 복사
-  function copyEnglishRoster() {
-    const memberRoster = attending.map((a: any) => {
-      const en = a.users?.full_name_en?.trim() || a.users?.full_name?.trim() || ''
-      return en
-    }).filter(Boolean)
-    const guestRoster = guests.filter(g => g.approved).map(g =>
-      (g.full_name_en?.trim() || g.full_name?.trim() || '') + ' (G)'
-    ).filter(Boolean)
-    const all = [...memberRoster, ...guestRoster]
-    const text = all.map((n, i) => `${i + 1}. ${n}`).join('\n')
-    navigator.clipboard?.writeText(text).then(() => {
+  // ── 영문 명단 — 미리보기 모달로 노출, 사용자가 편집 후 복사 ─────────
+  function openRosterPreview() {
+    const missing: string[] = []
+    const lines: string[] = []
+    attending.forEach((a: any) => {
+      const ko = a.users?.full_name?.trim() ?? ''
+      const en = a.users?.full_name_en?.trim() ?? ''
+      if (!en) {
+        missing.push(ko || '?')
+        lines.push(ko)  // fallback — 한글 그대로 (편집 가능)
+      } else lines.push(en)
+    })
+    guests.filter(g => g.approved).forEach(g => {
+      const ko = g.full_name?.trim() ?? ''
+      const en = g.full_name_en?.trim() ?? ''
+      if (!en) {
+        missing.push(`${ko || '?'} (게스트)`)
+        lines.push(`${ko} (G)`)
+      } else lines.push(`${en} (G)`)
+    })
+    setRosterText(lines.map((n, i) => `${i + 1}. ${n}`).join('\n'))
+    setRosterMissing(missing)
+    setShowRosterModal(true)
+  }
+  function copyRosterFromModal() {
+    navigator.clipboard?.writeText(rosterText).then(() => {
       setRosterCopied(true)
-      setTimeout(() => setRosterCopied(false), 2500)
+      setTimeout(() => { setRosterCopied(false); setShowRosterModal(false) }, 1200)
     }).catch(() => {
-      // fallback for older browsers
-      const t = document.createElement('textarea'); t.value = text
+      const t = document.createElement('textarea'); t.value = rosterText
       document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t)
       setRosterCopied(true)
-      setTimeout(() => setRosterCopied(false), 2500)
+      setTimeout(() => { setRosterCopied(false); setShowRosterModal(false) }, 1200)
     })
   }
 
@@ -1156,12 +1172,11 @@ export default function MeetingsPage() {
                         <Check size={11} />{ko ? `참석 (${attending.length}명)` : `Attending (${attending.length})`}
                       </p>
                       {canManage && (attending.length + guests.filter(g=>g.approved).length) > 0 && (
-                        <button onClick={copyEnglishRoster}
+                        <button onClick={openRosterPreview}
                           className="text-[10px] font-bold px-2 py-1 rounded-md active:scale-95"
-                          style={{ background: rosterCopied ? 'rgba(34,197,94,0.25)' : 'rgba(96,165,250,0.18)',
-                                   color: rosterCopied ? '#86efac' : '#93c5fd',
-                                   border: `1px solid ${rosterCopied ? 'rgba(34,197,94,0.5)' : 'rgba(96,165,250,0.4)'}` }}>
-                          {rosterCopied ? '✓ 복사됨' : (ko ? '📋 영문명단 복사 (골프장용)' : '📋 Copy roster')}
+                          style={{ background: 'rgba(96,165,250,0.18)', color: '#93c5fd',
+                                   border: '1px solid rgba(96,165,250,0.4)' }}>
+                          {ko ? '📋 영문명단 미리보기' : '📋 Preview roster'}
                         </button>
                       )}
                     </div>
@@ -1846,6 +1861,51 @@ export default function MeetingsPage() {
             )}
           </>)
         })()}
+      </BottomSheet>
+
+      {/* ── 영문 명단 미리보기 모달 ── */}
+      <BottomSheet
+        open={showRosterModal}
+        onClose={() => setShowRosterModal(false)}
+        title={ko ? '📋 영문 명단 (골프장 예약용)' : 'Roster (for golf course)'}
+        footer={
+          <div className="flex gap-2">
+            <button onClick={() => setShowRosterModal(false)}
+              className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 text-sm font-medium">
+              {ko ? '닫기' : 'Close'}
+            </button>
+            <button onClick={copyRosterFromModal}
+              className="flex-1 py-3 rounded-xl text-white text-sm font-bold active:scale-95"
+              style={{ background: rosterCopied ? 'rgba(34,197,94,0.6)' : 'linear-gradient(135deg,#3b82f6,#1d4ed8)' }}>
+              {rosterCopied ? (ko ? '✓ 복사됨' : '✓ Copied') : (ko ? '📋 복사' : '📋 Copy')}
+            </button>
+          </div>
+        }
+      >
+        {rosterMissing.length > 0 && (
+          <div className="rounded-xl px-3 py-2.5 mb-3"
+            style={{ background: 'rgba(251,191,36,0.10)', border: '1px solid rgba(251,191,36,0.35)' }}>
+            <p className="text-xs font-bold mb-1" style={{ color: '#fbbf24' }}>
+              ⚠️ {ko ? `영문 이름 누락 ${rosterMissing.length}명` : `${rosterMissing.length} missing English name`}
+            </p>
+            <p className="text-[11px]" style={{ color: '#fcd34d' }}>
+              {rosterMissing.join(', ')}
+            </p>
+            <p className="text-[10px] mt-1" style={{ color: '#fcd34d' }}>
+              💡 {ko ? '아래 명단을 직접 수정하거나 회원관리에서 영문 이름을 추가하세요' : 'Edit below or add English names in Members'}
+            </p>
+          </div>
+        )}
+        <p className="text-[11px] mb-2" style={{ color: 'var(--text-3)' }}>
+          {ko ? '아래 내용을 확인/수정 후 복사 → 골프장에 전달' : 'Review and copy → send to course'}
+        </p>
+        <textarea
+          value={rosterText}
+          onChange={e => setRosterText(e.target.value)}
+          rows={Math.min(20, Math.max(6, rosterText.split('\n').length + 1))}
+          className="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
+          spellCheck={false}
+        />
       </BottomSheet>
 
       {/* ── Guest 추천 모달 ── */}
