@@ -793,101 +793,138 @@ export default function FinancePage() {
         </button>
         {showFeeStatus && (
           <div className="px-4 pb-4 space-y-3" style={{ borderTop: '1px solid rgba(34,197,94,0.1)' }}>
-            {/* 납부 완료 — 임원만 명단 표시, 일반 회원은 명수만 (개인정보 보호) */}
+            {/* 납부 완료 — 임원·고문: 전체 명단 / 일반 회원: 본인 카드만 + 명수 안내 */}
             {paidMembers.length > 0 && (
               <div className="mt-3">
                 <p className="text-xs font-semibold mb-2" style={{ color: '#4ade80' }}>
                   ✅ {ko ? `납부 완료 (${paidMembers.length}명)` : `Paid (${paidMembers.length})`}
                 </p>
-                {canViewFinance ? (
-                  <div className="flex flex-wrap gap-1.5">
-                    {paidMembers.map((m: any) => (
-                      <span key={m.user_id}
-                        className="inline-flex flex-col items-start px-2.5 py-1.5 rounded-xl text-xs font-medium"
-                        style={{ background: 'rgba(22,163,74,0.15)', border: '1px solid rgba(34,197,94,0.3)', color: '#4ade80' }}>
-                        <span>{lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}</span>
-                        {m.amount ? (
-                          <span className="text-[10px] mt-0.5" style={{ color: '#86efac' }}>
-                            {sym}{Number(m.amount).toLocaleString()}{m.date ? ` · ${m.date.slice(5)}` : ''}
+                {(() => {
+                  const visible = canViewFinance
+                    ? paidMembers
+                    : paidMembers.filter((m: any) => m.user_id === user?.id)
+                  return (
+                    <>
+                      <div className="flex flex-wrap gap-1.5">
+                        {visible.map((m: any) => (
+                          <span key={m.user_id}
+                            className="inline-flex flex-col items-start px-2.5 py-1.5 rounded-xl text-xs font-medium"
+                            style={{ background: 'rgba(22,163,74,0.15)', border: '1px solid rgba(34,197,94,0.3)', color: '#4ade80' }}>
+                            <span>
+                              {lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}
+                              {!canViewFinance && m.user_id === user?.id && (
+                                <span className="ml-1 text-[9px]" style={{ color: '#86efac' }}>({ko ? '본인' : 'You'})</span>
+                              )}
+                            </span>
+                            {m.amount ? (
+                              <span className="text-[10px] mt-0.5" style={{ color: '#86efac' }}>
+                                {sym}{Number(m.amount).toLocaleString()}{m.date ? ` · ${m.date.slice(5)}` : ''}
+                              </span>
+                            ) : null}
                           </span>
-                        ) : null}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs" style={{ color: '#86efac' }}>
-                    {ko
-                      ? `납부자 명단은 회장·총무·감사만 볼 수 있습니다.`
-                      : `Only president/secretary/auditor can see the paid list.`}
-                  </p>
-                )}
+                        ))}
+                      </div>
+                      {!canViewFinance && (
+                        <p className="text-[10px] mt-1.5" style={{ color: '#5a7a5a' }}>
+                          {ko
+                            ? `전체 납부자 명단은 회장·총무·감사·고문만 볼 수 있습니다.`
+                            : `Only president/secretary/auditor/advisor can see the full paid list.`}
+                        </p>
+                      )}
+                    </>
+                  )
+                })()}
               </div>
             )}
             {/* 미납 —
-                - 회장·총무·감사: 명단 표시 (canManage 는 탭으로 납부확인 모달)
-                - 일반 회원: 명수만 표시 (개인정보 보호) */}
+                - 회장·총무·감사·고문: 전체 명단 (canManage 는 탭으로 납부확인 모달)
+                - 일반 회원: 본인 카드만 표시 + 전체 미납 인원수 안내 */}
             {unpaidMembers.length > 0 && (
               <div className="mt-2">
                 <p className="text-xs font-semibold mb-2" style={{ color: '#f87171' }}>
                   ❌ {ko ? `미납 (${unpaidMembers.length}명)` : `Unpaid (${unpaidMembers.length})`}
                 </p>
-                {canViewFinance ? (
-                  <div className="flex flex-wrap gap-1.5">
-                    {unpaidMembers.map((m: any) => canManage ? (
-                      <button
-                        key={m.user_id}
-                        type="button"
-                        onClick={() => {
-                          setPayingMember(m)
-                          // 회원의 fee_type 우선 — 없으면 클럽 설정에 있는 쪽으로 fallback
-                          const kind: 'annual'|'monthly' =
-                            (m.fee_type as 'annual'|'monthly'|null) ??
-                            (clubFees.monthly > 0 ? 'monthly' : 'annual')
-                          setFeeKind(kind)
-                          const info = memberUnpaidInfo(m)
-                          const defaultAmt = kind === 'monthly'
-                            ? info.expected || clubFees.monthly || 0
-                            : clubFees.annual || 0
-                          setPayingAmount(defaultAmt ? String(defaultAmt) : '')
-                          setPayingDate(new Date().toISOString().split('T')[0])
-                        }}
-                        className="inline-flex flex-col items-start px-2.5 py-1.5 rounded-xl text-xs font-medium transition hover:opacity-80 active:scale-95"
-                        style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}
-                      >
-                        <span>{lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}</span>
-                        {(() => {
-                          const info = memberUnpaidInfo(m)
-                          if (m.fee_type === 'monthly' && info.months.length > 0) {
-                            return (
-                              <span className="text-[10px] mt-0.5" style={{ color: '#fca5a5' }}>
-                                {info.months.length}{ko ? '개월 미납' : ' months unpaid'}
-                              </span>
-                            )
-                          }
-                          return (
-                            <span className="text-[10px] mt-0.5" style={{ color: '#fca5a5' }}>
-                              {ko ? '탭하여 납부확인' : 'Tap to confirm'}
+                {(() => {
+                  const visible = canViewFinance
+                    ? unpaidMembers
+                    : unpaidMembers.filter((m: any) => m.user_id === user?.id)
+                  return (
+                    <>
+                      <div className="flex flex-wrap gap-1.5">
+                        {visible.map((m: any) => canManage ? (
+                          <button
+                            key={m.user_id}
+                            type="button"
+                            onClick={() => {
+                              setPayingMember(m)
+                              // 회원의 fee_type 우선 — 없으면 클럽 설정에 있는 쪽으로 fallback
+                              const kind: 'annual'|'monthly' =
+                                (m.fee_type as 'annual'|'monthly'|null) ??
+                                (clubFees.monthly > 0 ? 'monthly' : 'annual')
+                              setFeeKind(kind)
+                              const info = memberUnpaidInfo(m)
+                              const defaultAmt = kind === 'monthly'
+                                ? info.expected || clubFees.monthly || 0
+                                : clubFees.annual || 0
+                              setPayingAmount(defaultAmt ? String(defaultAmt) : '')
+                              setPayingDate(new Date().toISOString().split('T')[0])
+                            }}
+                            className="inline-flex flex-col items-start px-2.5 py-1.5 rounded-xl text-xs font-medium transition hover:opacity-80 active:scale-95"
+                            style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}
+                          >
+                            <span>{lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}</span>
+                            {(() => {
+                              const info = memberUnpaidInfo(m)
+                              if (m.fee_type === 'monthly' && info.months.length > 0) {
+                                return (
+                                  <span className="text-[10px] mt-0.5" style={{ color: '#fca5a5' }}>
+                                    {info.months.length}{ko ? '개월 미납' : ' months unpaid'}
+                                  </span>
+                                )
+                              }
+                              return (
+                                <span className="text-[10px] mt-0.5" style={{ color: '#fca5a5' }}>
+                                  {ko ? '탭하여 납부확인' : 'Tap to confirm'}
+                                </span>
+                              )
+                            })()}
+                          </button>
+                        ) : (
+                          <span
+                            key={m.user_id}
+                            className="inline-flex flex-col items-start px-2.5 py-1.5 rounded-xl text-xs font-medium"
+                            style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}
+                          >
+                            <span>
+                              {lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}
+                              {!canViewFinance && m.user_id === user?.id && (
+                                <span className="ml-1 text-[9px]" style={{ color: '#fca5a5' }}>({ko ? '본인' : 'You'})</span>
+                              )}
                             </span>
-                          )
-                        })()}
-                      </button>
-                    ) : (
-                      <span
-                        key={m.user_id}
-                        className="inline-flex items-center px-2.5 py-1.5 rounded-xl text-xs font-medium"
-                        style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}
-                      >
-                        {lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs" style={{ color: '#fca5a5' }}>
-                    {ko
-                      ? `미납자 명단은 회장·총무·감사·고문만 볼 수 있습니다.`
-                      : `Only president/secretary/auditor/advisor can see the unpaid list.`}
-                  </p>
-                )}
+                            {(() => {
+                              const info = memberUnpaidInfo(m)
+                              if (m.fee_type === 'monthly' && info.months.length > 0) {
+                                return (
+                                  <span className="text-[10px] mt-0.5" style={{ color: '#fca5a5' }}>
+                                    {info.months.length}{ko ? '개월 미납' : ' months unpaid'}
+                                  </span>
+                                )
+                              }
+                              return null
+                            })()}
+                          </span>
+                        ))}
+                      </div>
+                      {!canViewFinance && (
+                        <p className="text-[10px] mt-1.5" style={{ color: '#5a7a5a' }}>
+                          {ko
+                            ? `전체 미납자 명단은 회장·총무·감사·고문만 볼 수 있습니다.`
+                            : `Only president/secretary/auditor/advisor can see the full unpaid list.`}
+                        </p>
+                      )}
+                    </>
+                  )
+                })()}
               </div>
             )}
             {paidMembers.length === 0 && unpaidMembers.length === 0 && (
