@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores/authStore'
 import {
@@ -1931,50 +1932,86 @@ export default function MeetingsPage() {
         })()}
       </BottomSheet>
 
-      {/* ── 영문 명단 미리보기 모달 ── */}
-      <BottomSheet
-        open={showRosterModal}
-        onClose={() => setShowRosterModal(false)}
-        title={ko ? '📋 영문 명단 (골프장 예약용)' : 'Roster (for golf course)'}
-        footer={
-          <div className="flex gap-2">
-            <button onClick={() => setShowRosterModal(false)}
-              className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 text-sm font-medium">
-              {ko ? '닫기' : 'Close'}
-            </button>
-            <button onClick={copyRosterFromModal}
-              className="flex-1 py-3 rounded-xl text-white text-sm font-bold active:scale-95"
-              style={{ background: rosterCopied ? 'rgba(34,197,94,0.6)' : 'linear-gradient(135deg,#3b82f6,#1d4ed8)' }}>
-              {rosterCopied ? (ko ? '✓ 복사됨' : '✓ Copied') : (ko ? '📋 복사' : '📋 Copy')}
-            </button>
+      {/* ── 영문 명단 미리보기 모달 (Portal — stacking context 무시) ── */}
+      {showRosterModal && typeof document !== 'undefined' && createPortal(
+        <div
+          onClick={() => setShowRosterModal(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 99999,
+            background: 'rgba(0,0,0,0.85)',
+            display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            className="w-full rounded-t-2xl flex flex-col"
+            style={{
+              background: '#0f172a',
+              border: '1px solid rgba(59,130,246,0.3)',
+              borderBottom: 'none',
+              maxHeight: '92dvh',
+              maxWidth: 600,
+            }}
+          >
+            {/* 헤더 */}
+            <div className="flex items-center justify-between px-5 py-3 flex-shrink-0"
+              style={{ borderBottom: '1px solid rgba(59,130,246,0.2)' }}>
+              <h3 className="text-base font-bold text-white">
+                📋 {ko ? '영문 명단 (골프장 예약용)' : 'Roster (for golf course)'}
+              </h3>
+              <button onClick={() => setShowRosterModal(false)}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400"
+                style={{ background: 'rgba(255,255,255,0.05)' }}>
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* 본문 (스크롤) */}
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3 min-h-0">
+              {rosterMissing.length > 0 && (
+                <div className="rounded-xl px-3 py-2.5"
+                  style={{ background: 'rgba(251,191,36,0.10)', border: '1px solid rgba(251,191,36,0.35)' }}>
+                  <p className="text-xs font-bold mb-1" style={{ color: '#fbbf24' }}>
+                    ⚠️ {ko ? `영문 이름 누락 ${rosterMissing.length}명` : `${rosterMissing.length} missing English name`}
+                  </p>
+                  <p className="text-[11px]" style={{ color: '#fcd34d' }}>
+                    {rosterMissing.join(', ')}
+                  </p>
+                  <p className="text-[10px] mt-1" style={{ color: '#fcd34d' }}>
+                    💡 {ko ? '아래 명단을 직접 수정하거나 회원관리에서 영문 이름을 추가하세요' : 'Edit below or add English names in Members'}
+                  </p>
+                </div>
+              )}
+              <p className="text-[11px]" style={{ color: '#94a3b8' }}>
+                {ko ? '아래 내용을 확인·수정 후 복사 → 골프장에 전달' : 'Review and copy → send to course'}
+              </p>
+              <textarea
+                value={rosterText}
+                onChange={e => setRosterText(e.target.value)}
+                rows={Math.min(20, Math.max(8, rosterText.split('\n').length + 1))}
+                className="w-full bg-gray-950 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
+                style={{ minHeight: 200 }}
+                spellCheck={false}
+              />
+            </div>
+
+            {/* 푸터 */}
+            <div className="flex gap-2 px-5 py-3 flex-shrink-0"
+              style={{ borderTop: '1px solid rgba(59,130,246,0.2)', paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
+              <button onClick={() => setShowRosterModal(false)}
+                className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 text-sm font-medium">
+                {ko ? '닫기' : 'Close'}
+              </button>
+              <button onClick={copyRosterFromModal}
+                className="flex-1 py-3 rounded-xl text-white text-sm font-bold active:scale-95"
+                style={{ background: rosterCopied ? 'rgba(34,197,94,0.7)' : 'linear-gradient(135deg,#3b82f6,#1d4ed8)' }}>
+                {rosterCopied ? (ko ? '✓ 복사됨' : '✓ Copied') : (ko ? '📋 복사' : '📋 Copy')}
+              </button>
+            </div>
           </div>
-        }
-      >
-        {rosterMissing.length > 0 && (
-          <div className="rounded-xl px-3 py-2.5 mb-3"
-            style={{ background: 'rgba(251,191,36,0.10)', border: '1px solid rgba(251,191,36,0.35)' }}>
-            <p className="text-xs font-bold mb-1" style={{ color: '#fbbf24' }}>
-              ⚠️ {ko ? `영문 이름 누락 ${rosterMissing.length}명` : `${rosterMissing.length} missing English name`}
-            </p>
-            <p className="text-[11px]" style={{ color: '#fcd34d' }}>
-              {rosterMissing.join(', ')}
-            </p>
-            <p className="text-[10px] mt-1" style={{ color: '#fcd34d' }}>
-              💡 {ko ? '아래 명단을 직접 수정하거나 회원관리에서 영문 이름을 추가하세요' : 'Edit below or add English names in Members'}
-            </p>
-          </div>
-        )}
-        <p className="text-[11px] mb-2" style={{ color: 'var(--text-3)' }}>
-          {ko ? '아래 내용을 확인/수정 후 복사 → 골프장에 전달' : 'Review and copy → send to course'}
-        </p>
-        <textarea
-          value={rosterText}
-          onChange={e => setRosterText(e.target.value)}
-          rows={Math.min(20, Math.max(6, rosterText.split('\n').length + 1))}
-          className="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
-          spellCheck={false}
-        />
-      </BottomSheet>
+        </div>,
+        document.body
+      )}
 
       {/* ── Guest 추천 모달 ── */}
       <BottomSheet
