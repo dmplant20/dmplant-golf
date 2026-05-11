@@ -45,6 +45,8 @@ export default function FinancePage() {
   const [loading,      setLoading]      = useState(true)
   const [ocrLoading,   setOcrLoading]   = useState(false)
   const [expandedId,   setExpandedId]   = useState<string | null>(null)
+  // 거래 내역 월별 아코디언 — 펼쳐진 'YYYY-MM' (가장 최근 월 기본 펼침)
+  const [expandedMonth, setExpandedMonth] = useState<string | null>(null)
   const [receiptUrl,   setReceiptUrl]   = useState<string | null>(null)
   const [members,      setMembers]      = useState<any[]>([])
   const [showFineRules,setShowFineRules]= useState(false)
@@ -865,107 +867,163 @@ export default function FinancePage() {
         </div>
       )}
 
-      {/* 거래 내역 — 개인 회비 납부(member_id 있는 fee)는 회비 납부 현황에서 정리되므로 제외.
-          단, 클럽 전체 적립회비처럼 member_id 없는 fee 는 여기에 표시 */}
+      {/* 거래 내역 — 월별 아코디언 + 분류별 그룹화 */}
       <div className="space-y-2">
         <h3 className="text-sm font-semibold text-gray-400 flex items-center gap-2">
-          {ko ? '거래 내역' : 'Transactions'}
+          📁 {ko ? '월별 거래 내역' : 'Transactions by Month'}
           <span className="text-[10px] font-normal" style={{ color: '#5a7a5a' }}>
             {ko ? '(개인 회비 제외)' : '(excl. personal fees)'}
           </span>
         </h3>
         {(() => {
-          // 회원별 회비 납부 (type=fee + member_id) 만 거래 내역에서 숨김
+          // 회원별 회비 납부(type=fee + member_id) 만 숨김
           const visibleTxns = txns.filter(t => !(t.type === 'fee' && t.member_id))
           if (loading) return <p className="text-center text-gray-600 py-6">{ko ? '로딩 중...' : 'Loading...'}</p>
           if (visibleTxns.length === 0) return <p className="text-center text-gray-600 py-6">{ko ? '내역이 없습니다' : 'No transactions'}</p>
-          return visibleTxns.map((t) => {
-            const isIncome  = INCOME_TYPES.includes(t.type)
-            const isExpanded = expandedId === t.id
-            const freeTextName = extractMemberName(t)
-            const isGift = t.expense_category === 'gift' && t.item_name
-            return (
-              <div key={t.id}
-                className={isGift ? 'rounded-xl overflow-hidden' : 'glass-card rounded-xl overflow-hidden'}
-                style={isGift ? { background: 'linear-gradient(135deg, rgba(168,85,247,0.10), rgba(6,13,6,0.95))', border: '1px solid rgba(168,85,247,0.25)' } : undefined}
-              >
-                <div className="px-4 py-3 flex items-center gap-3">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0 ${isIncome ? 'bg-green-900/60' : 'bg-red-900/60'}`}>
-                    {isIncome ? '↑' : '↓'}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white text-sm truncate">
-                      {t.description}
-                      {t.item_name && (
-                        <span className="ml-1.5 text-[11px] px-1.5 py-0.5 rounded bg-purple-900/40 text-purple-300 border border-purple-800/50 font-medium">
-                          🎁 {t.item_name}
-                        </span>
-                      )}
-                    </p>
-                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                      <span className="text-xs text-gray-500">{TYPE_LABELS[t.type]?.[ko ? 0 : 1]}</span>
-                      {t.expense_category && EXPENSE_CATEGORY_LABELS[t.expense_category] && (
-                        <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-amber-900/30 text-amber-300 border border-amber-800/40">
-                          {EXPENSE_CATEGORY_LABELS[t.expense_category][ko ? 0 : 1]}
-                        </span>
-                      )}
-                      {t.users?.full_name && (
-                        <span className="text-xs text-gray-500">· {lang === 'ko' ? t.users.full_name : (t.users.full_name_en || t.users.full_name)}</span>
-                      )}
-                      {!t.users?.full_name && freeTextName && (
-                        <span className="text-xs text-gray-500">· {freeTextName}</span>
-                      )}
-                      <span className="text-xs text-gray-600">· {t.transaction_date}</span>
-                    </div>
-                  </div>
-                  <span className={`text-sm font-semibold flex-shrink-0 ${isIncome ? 'text-green-400' : 'text-red-400'}`}>
-                    {isIncome ? '+' : '-'}{sym}{t.amount.toLocaleString()}
-                  </span>
-                  {isOfficer && (
-                    <button onClick={() => setExpandedId(isExpanded ? null : t.id)} className="text-gray-600 hover:text-gray-400 flex-shrink-0 ml-1">
-                      {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                    </button>
-                  )}
-                </div>
 
-                {isOfficer && isExpanded && (
-                  <div className="px-4 pb-3 border-t border-gray-800/60 pt-2 space-y-1.5">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-gray-500">{ko ? '기록자' : 'Recorded by'}</span>
-                      <span className="text-gray-300">
-                        {t.recorder ? (lang === 'ko' ? t.recorder.full_name : (t.recorder.full_name_en || t.recorder.full_name)) : '-'}
-                      </span>
+          // 1) 월별 그룹화
+          const byMonth: Record<string, any[]> = {}
+          visibleTxns.forEach(t => {
+            const ym = (t.transaction_date ?? '').slice(0, 7) || 'unknown'
+            ;(byMonth[ym] = byMonth[ym] || []).push(t)
+          })
+          const months = Object.keys(byMonth).sort().reverse()
+
+          return months.map(ym => {
+            const items = byMonth[ym]
+            const isOpen = expandedMonth === ym || (expandedMonth === null && ym === months[0])
+            // 월 통계
+            const income  = items.filter(t => INCOME_TYPES.includes(t.type)).reduce((s, t) => s + Number(t.amount), 0)
+            const expense = items.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0)
+            const net = income - expense
+            const [y, m] = ym.split('-')
+            const monthLabel = ym === 'unknown' ? (ko ? '날짜 없음' : 'Undated') : (ko ? `${y}년 ${parseInt(m,10)}월` : `${y}.${m}`)
+
+            return (
+              <div key={ym} className="glass-card rounded-xl overflow-hidden">
+                {/* 월 헤더 — 클릭 토글 */}
+                <button onClick={() => setExpandedMonth(isOpen ? '' : ym)}
+                  className="w-full px-4 py-3 flex items-center gap-3 text-left transition"
+                  style={{ background: isOpen ? 'rgba(34,197,94,0.06)' : 'transparent' }}>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-white">{monthLabel}</p>
+                    <div className="flex items-center gap-2 mt-0.5 flex-wrap text-[11px]">
+                      {income > 0 && <span style={{ color: '#4ade80' }}>+{sym}{income.toLocaleString()}</span>}
+                      {expense > 0 && <span style={{ color: '#f87171' }}>-{sym}{expense.toLocaleString()}</span>}
+                      <span style={{ color: '#9ca3af' }}>· {items.length}건</span>
                     </div>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-gray-500">{ko ? '거래 ID' : 'Transaction ID'}</span>
-                      <span className="text-gray-600 font-mono">{t.id.slice(0, 8)}…</span>
-                    </div>
-                    {t.receipt_url && (
-                      <button onClick={() => setReceiptUrl(t.receipt_url)}
-                        className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 mt-1">
-                        <Receipt size={12} /> {ko ? '영수증 보기' : 'View Receipt'}
-                      </button>
-                    )}
-                    {/* 수정·삭제 — 회장·총무만 (canManage) */}
-                    {canManage && (
-                      <div className="flex gap-2 pt-2">
-                        <button
-                          onClick={() => startEdit(t)}
-                          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition active:scale-[0.97]"
-                          style={{ background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.3)', color: '#93c5fd' }}>
-                          <Edit2 size={12} />{ko ? '수정' : 'Edit'}
-                        </button>
-                        <button
-                          onClick={() => deleteTransaction(t.id)}
-                          disabled={deleting === t.id}
-                          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition active:scale-[0.97] disabled:opacity-50"
-                          style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}>
-                          <Trash2 size={12} />{ko ? '삭제' : 'Delete'}
-                        </button>
-                      </div>
-                    )}
                   </div>
-                )}
+                  <span className={`text-sm font-bold ${net >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {net >= 0 ? '+' : ''}{sym}{net.toLocaleString()}
+                  </span>
+                  {isOpen ? <ChevronUp size={16} className="text-gray-400 flex-shrink-0" /> : <ChevronDown size={16} className="text-gray-400 flex-shrink-0" />}
+                </button>
+
+                {/* 본문 — 펼쳐지면 분류별 그룹 */}
+                {isOpen && (() => {
+                  // 분류별 그룹화 (지출 분류 + 수입 type)
+                  const buckets: Record<string, { label: string; emoji: string; color: string; items: any[]; total: number }> = {}
+                  items.forEach(t => {
+                    let key: string, label: string, emoji: string, color: string
+                    if (t.type === 'expense') {
+                      const c = t.expense_category ?? 'other'
+                      key = `exp:${c}`
+                      const map: Record<string,[string,string]> = {
+                        condolence: ['🌸','경조사'], gift: ['🎁','상품·화환'],
+                        event: ['🎉','모임 운영'], admin: ['🏢','사무비'], other: ['📦','기타 지출'],
+                      }
+                      const [e, l] = map[c] ?? ['📦','기타 지출']
+                      emoji = e; label = l; color = '#fca5a5'
+                    } else if (t.type === 'fee') {
+                      key = 'fee'; emoji = '💰'; label = '회비 (클럽 적립)'; color = '#4ade80'
+                    } else if (t.type === 'donation') {
+                      key = 'donation'; emoji = '💝'; label = '찬조'; color = '#c4b5fd'
+                    } else if (t.type === 'fine') {
+                      key = 'fine'; emoji = '⚠️'; label = '벌금'; color = '#fbbf24'
+                    } else {
+                      key = 'other'; emoji = '📌'; label = '기타'; color = '#9ca3af'
+                    }
+                    if (!buckets[key]) buckets[key] = { label, emoji, color, items: [], total: 0 }
+                    buckets[key].items.push(t)
+                    buckets[key].total += Number(t.amount)
+                  })
+                  return (
+                    <div className="px-3 py-2 space-y-2" style={{ borderTop: '1px solid rgba(34,197,94,0.1)' }}>
+                      {Object.entries(buckets).map(([k, b]) => (
+                        <div key={k} className="rounded-lg overflow-hidden" style={{ background: 'rgba(0,0,0,0.25)' }}>
+                          <div className="px-3 py-2 flex items-center justify-between"
+                            style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                            <span className="text-xs font-bold flex items-center gap-1.5" style={{ color: b.color }}>
+                              <span>{b.emoji}</span> {b.label}
+                              <span className="text-[10px] font-normal" style={{ color: '#6b7280' }}>· {b.items.length}건</span>
+                            </span>
+                            <span className="text-xs font-bold" style={{ color: b.color }}>
+                              {sym}{b.total.toLocaleString()}
+                            </span>
+                          </div>
+                          <div>
+                            {b.items.map((t: any) => {
+                              const isExpanded = expandedId === t.id
+                              const isIncome = INCOME_TYPES.includes(t.type)
+                              return (
+                                <div key={t.id} className="px-3 py-1.5"
+                                  style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-xs text-white truncate">
+                                        {t.description}
+                                        {t.item_name && <span className="ml-1 text-[10px]" style={{ color: '#c4b5fd' }}>🎁 {t.item_name}</span>}
+                                      </p>
+                                      <p className="text-[10px]" style={{ color: '#6b7280' }}>
+                                        {t.transaction_date?.slice(5) ?? ''}
+                                        {(t.users?.full_name || extractMemberName(t)) && (
+                                          <> · {t.users?.full_name ?? extractMemberName(t)}</>
+                                        )}
+                                      </p>
+                                    </div>
+                                    <span className={`text-xs font-semibold flex-shrink-0 ${isIncome ? 'text-green-400' : 'text-red-400'}`}>
+                                      {isIncome ? '+' : '-'}{sym}{Number(t.amount).toLocaleString()}
+                                    </span>
+                                    {isOfficer && (
+                                      <button onClick={() => setExpandedId(isExpanded ? null : t.id)}
+                                        className="text-gray-600 flex-shrink-0">
+                                        {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                      </button>
+                                    )}
+                                  </div>
+                                  {isOfficer && isExpanded && (
+                                    <div className="mt-2 ml-2 space-y-1.5">
+                                      {t.receipt_url && (
+                                        <button onClick={() => setReceiptUrl(t.receipt_url)}
+                                          className="flex items-center gap-1 text-[10px] text-blue-400">
+                                          <Receipt size={10} /> {ko ? '영수증' : 'Receipt'}
+                                        </button>
+                                      )}
+                                      {canManage && (
+                                        <div className="flex gap-1.5">
+                                          <button onClick={() => startEdit(t)}
+                                            className="flex-1 flex items-center justify-center gap-1 py-1 rounded text-[10px] font-medium"
+                                            style={{ background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.3)', color: '#93c5fd' }}>
+                                            <Edit2 size={10} />{ko ? '수정' : 'Edit'}
+                                          </button>
+                                          <button onClick={() => deleteTransaction(t.id)} disabled={deleting === t.id}
+                                            className="flex-1 flex items-center justify-center gap-1 py-1 rounded text-[10px] font-medium disabled:opacity-50"
+                                            style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}>
+                                            <Trash2 size={10} />{ko ? '삭제' : 'Delete'}
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                })()}
               </div>
             )
           })
