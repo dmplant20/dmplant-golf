@@ -32,6 +32,7 @@ export default function FinancePage() {
   const ko = lang === 'ko'
   const myRole = myClubs.find((c) => c.id === currentClubId)?.role ?? 'member'
   const isAdmin = isSuperAdmin(user)
+  const isGuest = myRole === 'guest' && !isAdmin
   // 재무 수정·등록·삭제 권한 — 총무 전용 (회장도 불가) + DEV 슈퍼관리자 백업
   const canManage = myRole === 'secretary' || isAdmin
   const canEditFinance = canManage  // alias
@@ -699,6 +700,26 @@ export default function FinancePage() {
   }
 
   // ── render ─────────────────────────────────────────────────────────────
+  // 게스트는 재무 정보 열람 불가 — 친화적 안내 화면만 노출
+  if (isGuest) {
+    return (
+      <div className="px-4 py-8 flex flex-col items-center text-center gap-4">
+        <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
+          style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)' }}>
+          <Wallet size={28} className="text-green-400" />
+        </div>
+        <h2 className="text-lg font-bold text-white">
+          {ko ? '재무 정보 열람 권한 없음' : 'Finance access restricted'}
+        </h2>
+        <p className="text-sm leading-relaxed" style={{ color: '#9ca3af', maxWidth: 280 }}>
+          {ko
+            ? '회비·지출 등 재무 정보는 정회원 전용입니다. 게스트는 정기모임·조 편성 등 기본 기능만 이용 가능합니다.'
+            : 'Finance details are for full members only. Guests can access meetings and group assignments.'}
+        </p>
+      </div>
+    )
+  }
+
   return (
     <div className="px-4 py-5 space-y-4">
 

@@ -88,6 +88,7 @@ export default function MembersPage() {
   const myMembership = myClubs.find(c => c.id === currentClubId)
   const myRole       = myMembership?.role ?? 'member'
   const isAdmin      = isSuperAdmin(user)
+  const isGuest      = myRole === 'guest' && !isAdmin
   // 회비/벌금 미납 정보 열람 권한 — 회장·총무·감사·고문 (본인 자신은 항상 볼 수 있음)
   const canViewFinance = ['president', 'secretary', 'auditor', 'advisor'].includes(myRole) || isAdmin
   const canManage    = ['president', 'secretary'].includes(myRole) || isAdmin
@@ -290,6 +291,26 @@ export default function MembersPage() {
     { id: 'withdrawn', label: ko ? '탈퇴'   : 'Withdrawn', count: withdrawn.length },
     ...(canManage ? [{ id: 'log', label: ko ? '활동기록' : 'Activity' }] : []),
   ]
+
+  // 게스트 — 회원 명단 비공개, 안내 화면만 노출
+  if (isGuest) {
+    return (
+      <div className="px-4 py-8 flex flex-col items-center text-center gap-4">
+        <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
+          style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)' }}>
+          <span className="text-3xl">🔒</span>
+        </div>
+        <h2 className="text-lg font-bold text-white">
+          {ko ? '회원 명단 열람 권한 없음' : 'Member list restricted'}
+        </h2>
+        <p className="text-sm leading-relaxed" style={{ color: '#9ca3af', maxWidth: 280 }}>
+          {ko
+            ? '회원 명단은 정회원 전용입니다. 게스트는 정기모임·조 편성 등 기본 기능만 이용 가능합니다.'
+            : 'Member roster is for full members only.'}
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div className="px-4 py-5 pb-28">

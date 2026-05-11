@@ -12,10 +12,17 @@ const NAV = [
   { href: '/more',      icon: MoreHorizontal, ko: '더보기', en: 'More' },
 ]
 
+// 게스트가 접근 가능한 경로 — 홈 / 모임 / 채팅 / 더보기 만
+const GUEST_NAV_HREFS = new Set(['/dashboard', '/meetings', '/chat', '/more'])
+
 export default function BottomNav() {
   const pathname = usePathname()
   const router   = useRouter()
   const lang     = useAuthStore(s => s.lang)
+  const { myClubs, currentClubId } = useAuthStore()
+  const myRole   = myClubs.find(c => c.id === currentClubId)?.role ?? 'member'
+  const isGuest  = myRole === 'guest'
+  const items    = isGuest ? NAV.filter(n => GUEST_NAV_HREFS.has(n.href)) : NAV
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bottom-nav px-3 pb-2">
@@ -27,7 +34,7 @@ export default function BottomNav() {
           boxShadow: '0 -1px 0 rgba(201,168,76,0.08), 0 -8px 32px rgba(0,0,0,0.6)',
         }}
       >
-        {NAV.map(({ href, icon: Icon, ko, en }) => {
+        {items.map(({ href, icon: Icon, ko, en }) => {
           const active = pathname.startsWith(href)
           return (
             <button

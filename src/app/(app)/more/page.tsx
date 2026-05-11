@@ -10,7 +10,7 @@ import Link from 'next/link'
 
 const ROLE_KO: Record<string, string> = {
   president: '회장', vice_president: '부회장', secretary: '총무',
-  auditor: '감사', advisor: '고문', officer: '임원', member: '회원',
+  auditor: '감사', advisor: '고문', officer: '임원', member: '회원', guest: '게스트',
 }
 const ROLE_COLOR: Record<string, string> = {
   president: 'text-amber-300 bg-amber-900/40',
@@ -20,6 +20,7 @@ const ROLE_COLOR: Record<string, string> = {
   advisor: 'text-teal-300 bg-teal-900/40',
   officer: 'text-purple-300 bg-purple-900/40',
   member: 'text-gray-300 bg-gray-800/60',
+  guest: 'text-slate-300 bg-slate-800/60',
 }
 
 export default function MorePage() {
@@ -29,6 +30,7 @@ export default function MorePage() {
   const myRole = myClubs.find(c => c.id === currentClubId)?.role ?? 'member'
   const rc = ROLE_COLOR[myRole] ?? ROLE_COLOR.member
   const roleName = ko ? (ROLE_KO[myRole] ?? myRole) : myRole
+  const isGuest = myRole === 'guest'
 
   async function logout() {
     const supabase = createClient()
@@ -42,30 +44,46 @@ export default function MorePage() {
     router.replace('/login')
   }
 
-  const menuGroups = [
-    {
-      title: ko ? '골프' : 'Golf',
-      items: [
-        { href: '/meetings',  icon: CalendarDays,  label: ko ? '정기모임 일정'    : 'Regular Meetings',  color: '#22c55e', bg: 'rgba(34,197,94,0.12)' },
-        { href: '/scorecard', icon: ClipboardList, label: ko ? '개인 스코어카드'  : 'My Scorecard',      color: '#2dd4bf', bg: 'rgba(45,212,191,0.12)' },
-        { href: '/tournament', icon: Trophy,       label: ko ? '토너먼트'         : 'Tournament',        color: '#f97316', bg: 'rgba(249,115,22,0.12)' },
-      ],
-    },
-    {
-      title: ko ? '커뮤니티' : 'Community',
-      items: [
-        { href: '/album',        icon: Image,       label: ko ? '사진 앨범'    : 'Photo Album',    color: '#f472b6', bg: 'rgba(244,114,182,0.12)' },
-        { href: '/events',       icon: AlertCircle, label: ko ? '경조사'       : 'Life Events',     color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
-        { href: '/announcement', icon: AlertCircle, label: ko ? '공지사항'     : 'Announcements',   color: '#86efac', bg: 'rgba(134,239,172,0.12)' },
-      ],
-    },
-    {
-      title: ko ? '설정' : 'Settings',
-      items: [
-        { href: '/settings', icon: Settings, label: ko ? '클럽 설정' : 'Club Settings', color: '#94a3b8', bg: 'rgba(148,163,184,0.1)' },
-      ],
-    },
-  ]
+  const menuGroups = isGuest
+    ? [
+        {
+          title: ko ? '골프' : 'Golf',
+          items: [
+            { href: '/meetings', icon: CalendarDays, label: ko ? '정기모임 일정' : 'Regular Meetings', color: '#22c55e', bg: 'rgba(34,197,94,0.12)' },
+          ],
+        },
+        {
+          title: ko ? '커뮤니티' : 'Community',
+          items: [
+            { href: '/album',        icon: Image,       label: ko ? '사진 앨범'   : 'Photo Album',    color: '#f472b6', bg: 'rgba(244,114,182,0.12)' },
+            { href: '/announcement', icon: AlertCircle, label: ko ? '공지사항'    : 'Announcements',  color: '#86efac', bg: 'rgba(134,239,172,0.12)' },
+          ],
+        },
+      ]
+    : [
+        {
+          title: ko ? '골프' : 'Golf',
+          items: [
+            { href: '/meetings',  icon: CalendarDays,  label: ko ? '정기모임 일정'    : 'Regular Meetings',  color: '#22c55e', bg: 'rgba(34,197,94,0.12)' },
+            { href: '/scorecard', icon: ClipboardList, label: ko ? '개인 스코어카드'  : 'My Scorecard',      color: '#2dd4bf', bg: 'rgba(45,212,191,0.12)' },
+            { href: '/tournament', icon: Trophy,       label: ko ? '토너먼트'         : 'Tournament',        color: '#f97316', bg: 'rgba(249,115,22,0.12)' },
+          ],
+        },
+        {
+          title: ko ? '커뮤니티' : 'Community',
+          items: [
+            { href: '/album',        icon: Image,       label: ko ? '사진 앨범'    : 'Photo Album',    color: '#f472b6', bg: 'rgba(244,114,182,0.12)' },
+            { href: '/events',       icon: AlertCircle, label: ko ? '경조사'       : 'Life Events',     color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
+            { href: '/announcement', icon: AlertCircle, label: ko ? '공지사항'     : 'Announcements',   color: '#86efac', bg: 'rgba(134,239,172,0.12)' },
+          ],
+        },
+        {
+          title: ko ? '설정' : 'Settings',
+          items: [
+            { href: '/settings', icon: Settings, label: ko ? '클럽 설정' : 'Club Settings', color: '#94a3b8', bg: 'rgba(148,163,184,0.1)' },
+          ],
+        },
+      ]
 
   return (
     <div className="px-4 pt-5 pb-6 space-y-5 animate-fade-in">
