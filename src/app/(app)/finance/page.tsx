@@ -278,7 +278,9 @@ export default function FinancePage() {
 
   async function saveCarryover() {
     if (!currentClubId) return
-    const amt = parseInt(carryoverForm.amount || '0') || 0
+    // 쉼표·공백 제거 후 숫자 변환 → '20,000,000' 또는 '20 000 000' 모두 허용
+    const raw = (carryoverForm.amount ?? '').replace(/[^\d.-]/g, '')
+    const amt = parseInt(raw || '0') || 0
     setCarryoverSaving(true)
     const supabase = createClient()
     const { error } = await supabase.from('clubs')
@@ -547,7 +549,10 @@ export default function FinancePage() {
             {canManage && (
               <button
                 onClick={() => {
-                  setCarryoverForm({ amount: String(carryoverAmount || ''), note: carryoverNote || '' })
+                  setCarryoverForm({
+                    amount: carryoverAmount ? carryoverAmount.toLocaleString() : '',
+                    note: carryoverNote || '',
+                  })
                   setShowCarryoverEdit(true)
                 }}
                 className="w-8 h-8 rounded-lg flex items-center justify-center transition active:scale-95 flex-shrink-0"
@@ -571,11 +576,23 @@ export default function FinancePage() {
             <div>
               <label className="text-sm text-gray-400 block mb-1">{ko ? `금액 (${sym})` : `Amount (${sym})`}</label>
               <input
-                type="number" inputMode="numeric"
+                type="text"
+                inputMode="numeric"
                 value={carryoverForm.amount}
-                onChange={e => setCarryoverForm(f => ({ ...f, amount: e.target.value }))}
+                onChange={e => {
+                  // 숫자만 추출 → 자동 쉼표 포맷
+                  const raw = e.target.value.replace(/[^\d]/g, '')
+                  const formatted = raw ? Number(raw).toLocaleString() : ''
+                  setCarryoverForm(f => ({ ...f, amount: formatted }))
+                }}
+                onWheel={e => (e.target as HTMLInputElement).blur()}  // 스크롤 변경 차단
                 placeholder="0"
-                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white" />
+                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-lg" />
+              {carryoverForm.amount && (
+                <p className="text-[10px] mt-1" style={{ color: '#94a3b8' }}>
+                  💰 {sym}{carryoverForm.amount}
+                </p>
+              )}
             </div>
             <div>
               <label className="text-sm text-gray-400 block mb-1">{ko ? '메모 (선택)' : 'Note (optional)'}</label>
