@@ -162,7 +162,15 @@ export default function MeetingsPage() {
 
   const [pForm, setPForm] = useState({ week: 3, dow: 4, time: '07:00', venue: '', notes: '' })
   const [oForm, setOForm] = useState({ status: 'cancelled', date: '', time: '', reason: '' })
+  // assign: 회원은 user_id, 게스트는 'g:<guest_id>' prefix 키로 구분
   const [assign, setAssign] = useState<Record<string, number>>({})
+
+  // ── Guest 추천 ──────────────────────────────────────────────────────
+  const [guests,      setGuests]      = useState<any[]>([])
+  const [showGuestModal, setShowGuestModal] = useState(false)
+  const [guestForm, setGuestForm] = useState({ full_name: '', full_name_en: '', handicap: '', notes: '' })
+  const [guestSaving, setGuestSaving] = useState(false)
+  const [guestError,  setGuestError]  = useState<string | null>(null)
 
   // ── 2차 모임 ──────────────────────────────────────────────────────────────
   const [secondMeeting,    setSecondMeeting]    = useState<any | null>(null)
@@ -233,12 +241,12 @@ export default function MeetingsPage() {
   async function loadRsvp(year: number, month: number) {
     if (!currentClubId) return
     const supabase = createClient()
-    const [{ data: att }, { data: grps }, { data: sc }, { data: sm }] = await Promise.all([
+    const [{ data: att }, { data: grps }, { data: sc }, { data: sm }, { data: gst }] = await Promise.all([
       supabase.from('meeting_attendances')
         .select('user_id, status, users(full_name, full_name_en, name_abbr)')
         .eq('club_id', currentClubId).eq('year', year).eq('month', month),
       supabase.from('meeting_groups')
-        .select('group_number, tee_time, meeting_group_members(user_id, users(full_name, full_name_en, name_abbr))')
+        .select('group_number, tee_time, meeting_group_members(user_id, guest_id, users(full_name, full_name_en, name_abbr), meeting_guests(full_name, full_name_en, handicap))')
         .eq('club_id', currentClubId).eq('year', year).eq('month', month).order('group_number'),
       supabase.from('round_scores')
         .select('user_id, gross_score, handicap_used, net_score, course_name, users(full_name, full_name_en, name_abbr)')
@@ -246,8 +254,13 @@ export default function MeetingsPage() {
       supabase.from('second_meetings')
         .select('*, second_meeting_attendances(user_id, status, users(full_name, full_name_en, name_abbr))')
         .eq('club_id', currentClubId).eq('year', year).eq('month', month).maybeSingle(),
+      supabase.from('meeting_guests')
+        .select('id,full_name,full_name_en,handicap,notes,recommended_by,approved,approved_by,approved_at,created_at,recommender:users!recommended_by(full_name)')
+        .eq('club_id', currentClubId).eq('year', year).eq('month', month)
+        .order('created_at', { ascending: false }),
     ])
     setAttendances(att ?? [])
+    setGuests(gst ?? [])
     setGroups(grps ?? [])
     setScores(sc ?? [])
     setSecondMeeting(sm ?? null)
@@ -442,22 +455,67 @@ export default function MeetingsPage() {
     }
   }
 
+  // ── Guest 추천 ────────────────────────────────────────────────────────
+  async function recommendGuest() {
+    if (!guestForm.full_name.trim() || !meeting || !currentClubId || !user) return
+    setGuestSaving(true); setGuestError(null)
+    const supabase = createClient()
+    const hcNum = guestForm.handicap.trim() ? parseInt(guestForm.handicap, 10) : null
+    const { error } = await supabase.from('meeting_guests').insert({
+      club_id: currentClubId,
+      year: meeting.year,
+      month: meeting.month,
+      full_name: guestForm.full_name.trim(),
+      full_name_en: guestForm.full_name_en.trim() || null,
+      handicap: Number.isFinite(hcNum as number) ? hcNum : null,
+      notes: guestForm.notes.trim() || null,
+      recommended_by: user.id,
+    })
+    setGuestSaving(false)
+    if (error) { setGuestError(error.message); return }
+    setShowGuestModal(false)
+    setGuestForm({ full_name: '', full_name_en: '', handicap: '', notes: '' })
+    await loadRsvp(meeting.year, meeting.month)
+  }
+
+  async function approveGuest(g: any) {
+    if (!user) return
+    const supabase = createClient()
+    const { error } = await supabase.from('meeting_guests').update({
+      approved: true, approved_by: user.id, approved_at: new Date().toISOString(),
+    }).eq('id', g.id)
+    if (error) { alert(ko ? `승인 실패: ${error.message}` : `Failed: ${error.message}`); return }
+    if (meeting) await loadRsvp(meeting.year, meeting.month)
+  }
+  async function rejectGuest(g: any) {
+    if (!confirm(ko ? `'${g.full_name}' 추천을 거절(삭제) 하시겠습니까?` : `Reject guest '${g.full_name}'?`)) return
+    const supabase = createClient()
+    const { error } = await supabase.from('meeting_guests').delete().eq('id', g.id)
+    if (error) { alert(ko ? `거절 실패: ${error.message}` : `Failed: ${error.message}`); return }
+    if (meeting) await loadRsvp(meeting.year, meeting.month)
+  }
+
   // ── auto grouping ──────────────────────────────────────────────────────
   // method 'top4'  : 전달 핸디 상위순 → 상위 4명씩 순서대로 같은 조 배정
   // method 'random': 랜덤 셔플 후 4명씩 순서대로 배정
   async function buildAutoAssign(method: 'top4' | 'random') {
-    const pool = clubMembers.filter(m => attendances.find(a => a.user_id === m.user_id && a.status === 'attending'))
-    let ordered = [...pool]
+    // 회원 풀
+    const memberPool = clubMembers
+      .filter(m => attendances.find(a => a.user_id === m.user_id && a.status === 'attending'))
+      .map(m => ({ key: m.user_id as string, handicap: m.club_handicap as number | null, isGuest: false }))
+    // 승인된 게스트 풀 — 핸디 없으면 99
+    const guestPool = guests
+      .filter(g => g.approved)
+      .map(g => ({ key: `g:${g.id}`, handicap: g.handicap as number | null, isGuest: true }))
+    let ordered = [...memberPool, ...guestPool]
 
     if (method === 'random') {
-      // Fisher-Yates shuffle
       for (let i = ordered.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [ordered[i], ordered[j]] = [ordered[j], ordered[i]]
       }
     } else {
-      // top4: 전달(이전 달) round_scores.handicap_used 기준 오름차순 정렬
-      // 데이터 없는 회원은 club_handicap → 99 순으로 후순위
+      // top4: 전달 round_scores.handicap_used 기준 (게스트는 자체 handicap 사용)
       setAutoGroupLoading(true)
       try {
         if (meeting) {
@@ -475,9 +533,9 @@ export default function MeetingsPage() {
             if (s.handicap_used != null) scoreMap[s.user_id] = s.handicap_used
           })
           ordered.sort((a, b) => {
-            const ha = scoreMap[a.user_id] ?? (a.club_handicap ?? 99)
-            const hb = scoreMap[b.user_id] ?? (b.club_handicap ?? 99)
-            return ha - hb  // 낮을수록(핸디 낮을수록) 상위
+            const ha = a.isGuest ? (a.handicap ?? 99) : (scoreMap[a.key] ?? (a.handicap ?? 99))
+            const hb = b.isGuest ? (b.handicap ?? 99) : (scoreMap[b.key] ?? (b.handicap ?? 99))
+            return ha - hb
           })
         }
       } finally {
@@ -487,11 +545,12 @@ export default function MeetingsPage() {
 
     // 4명씩 끊어서 순서대로 조 배정 (1~4번 → 1조, 5~8번 → 2조, …)
     const a: Record<string, number> = {}
-    ordered.forEach((m, i) => { a[m.user_id] = Math.floor(i / 4) + 1 })
+    ordered.forEach((m, i) => { a[m.key] = Math.floor(i / 4) + 1 })
     setAssign(a)
   }
 
   // ── save groups ────────────────────────────────────────────────────────
+  // assign 키 형식: 일반 회원 = user_id (uuid) / 게스트 = 'g:<guest_id>' prefix
   async function saveGroups() {
     if (!meeting || !currentClubId) return
     setSaving(true)
@@ -501,8 +560,12 @@ export default function MeetingsPage() {
     for (const gNum of nums) {
       const { data: g } = await supabase.from('meeting_groups').insert({ club_id: currentClubId, year: meeting.year, month: meeting.month, group_number: gNum }).select().single()
       if (g) {
-        const uids = Object.entries(assign).filter(([, n]) => n === gNum).map(([uid]) => uid)
-        if (uids.length) await supabase.from('meeting_group_members').insert(uids.map(uid => ({ group_id: g.id, user_id: uid })))
+        const keys = Object.entries(assign).filter(([, n]) => n === gNum).map(([k]) => k)
+        const rows = keys.map(k => k.startsWith('g:')
+          ? { group_id: g.id, user_id: null, guest_id: k.slice(2) }
+          : { group_id: g.id, user_id: k, guest_id: null }
+        )
+        if (rows.length) await supabase.from('meeting_group_members').insert(rows)
       }
     }
     setSaving(false)
@@ -1074,6 +1137,74 @@ export default function MeetingsPage() {
                     </div>
                   </div>
                 )}
+
+                {/* ── Guest 추천 섹션 ───────────────────────────────────────── */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold flex items-center gap-1" style={{ color: '#a78bfa' }}>
+                      🎫 {ko ? `추천 게스트 (${guests.length}명)` : `Guests (${guests.length})`}
+                    </p>
+                    {!isPastView && isRsvpOpen && (
+                      <button onClick={() => { setGuestForm({ full_name:'', full_name_en:'', handicap:'', notes:'' }); setGuestError(null); setShowGuestModal(true) }}
+                        className="text-[10px] px-2 py-1 rounded-md font-bold active:scale-95"
+                        style={{ background: 'rgba(167,139,250,0.15)', color: '#c4b5fd', border: '1px solid rgba(167,139,250,0.35)' }}>
+                        + {ko ? '게스트 추천' : 'Recommend'}
+                      </button>
+                    )}
+                  </div>
+                  {guests.length === 0 ? (
+                    <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>
+                      {ko ? '추천된 게스트가 없습니다' : 'No guests recommended yet'}
+                    </p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {guests.map((g: any) => {
+                        const recName = Array.isArray(g.recommender) ? g.recommender[0]?.full_name : g.recommender?.full_name
+                        const isMine = g.recommended_by === user?.id
+                        return (
+                          <div key={g.id} className="rounded-xl p-2.5 flex items-center gap-2"
+                            style={{ background: g.approved ? 'rgba(34,197,94,0.10)' : 'rgba(167,139,250,0.08)', border: `1px solid ${g.approved ? 'rgba(34,197,94,0.3)' : 'rgba(167,139,250,0.25)'}` }}>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-bold text-white">
+                                {g.approved && '✓ '}
+                                {lang === 'ko' ? g.full_name : (g.full_name_en || g.full_name)}
+                                {g.handicap != null && (
+                                  <span className="text-[11px] font-normal ml-1.5" style={{ color: 'var(--gold-l)' }}>HC {g.handicap}</span>
+                                )}
+                              </p>
+                              <p className="text-[10px]" style={{ color: '#a78bfa' }}>
+                                {recName ? `${ko ? '추천' : 'By'}: ${recName}` : ''}
+                                {g.notes && <> · {g.notes}</>}
+                              </p>
+                            </div>
+                            {canManage && !g.approved && !isPastView && (
+                              <>
+                                <button onClick={() => approveGuest(g)}
+                                  className="text-[10px] px-2 py-1 rounded-md font-bold active:scale-95"
+                                  style={{ background: 'rgba(34,197,94,0.2)', color: '#86efac', border: '1px solid rgba(34,197,94,0.45)' }}>
+                                  {ko ? '승인' : 'Approve'}
+                                </button>
+                                <button onClick={() => rejectGuest(g)}
+                                  className="text-[10px] px-2 py-1 rounded-md font-bold active:scale-95"
+                                  style={{ background: 'rgba(239,68,68,0.15)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.35)' }}>
+                                  {ko ? '거절' : 'Reject'}
+                                </button>
+                              </>
+                            )}
+                            {(isMine || canManage) && g.approved && !isPastView && (
+                              <button onClick={() => rejectGuest(g)}
+                                className="w-6 h-6 rounded flex items-center justify-center"
+                                style={{ background: 'rgba(239,68,68,0.12)', color: '#fca5a5' }}
+                                title={ko ? '취소' : 'Remove'}>
+                                ×
+                              </button>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -1127,14 +1258,22 @@ export default function MeetingsPage() {
                         )}
                       </div>
                       <div className="flex flex-wrap gap-1.5">
-                        {(g.meeting_group_members ?? []).map((m: any) => {
-                          const nm = lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)
+                        {(g.meeting_group_members ?? []).map((m: any, idx: number) => {
+                          const isGuest = !!m.guest_id
+                          const gst = Array.isArray(m.meeting_guests) ? m.meeting_guests[0] : m.meeting_guests
+                          const nm = isGuest
+                            ? (lang === 'ko' ? gst?.full_name : (gst?.full_name_en || gst?.full_name))
+                            : (lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name))
                           const isMe = m.user_id === user?.id
                           return (
-                            <span key={m.user_id}
+                            <span key={m.user_id ?? m.guest_id ?? idx}
                               className="text-xs px-2.5 py-1 rounded-full font-medium"
-                              style={isMe ? { background: 'linear-gradient(135deg,#c9a84c,#a07830)', color: '#fff' } : { background: 'rgba(255,255,255,0.07)', color: 'var(--text-2)' }}>
-                              {nm}{isMe ? (ko ? ' (나)' : ' (me)') : ''}
+                              style={
+                                isGuest ? { background: 'rgba(167,139,250,0.15)', border: '1px solid rgba(167,139,250,0.4)', color: '#c4b5fd' }
+                                : isMe ? { background: 'linear-gradient(135deg,#c9a84c,#a07830)', color: '#fff' }
+                                : { background: 'rgba(255,255,255,0.07)', color: 'var(--text-2)' }
+                              }>
+                              {isGuest && '🎫 '}{nm}{isMe ? (ko ? ' (나)' : ' (me)') : ''}
                             </span>
                           )
                         })}
@@ -1536,75 +1675,148 @@ export default function MeetingsPage() {
             </button>
           </div>
         </div>
-        {attending.length > 0 ? (
-          <div>
-            <label className="text-xs text-gray-400 block mb-2">{ko ? '수동 조 지정' : 'Manual assignment'}</label>
-            <div className="space-y-2">
-              {attending.map((att: any) => {
-                const name = lang === 'ko' ? att.users?.full_name : (att.users?.full_name_en || att.users?.full_name)
-                const cur = assign[att.user_id]
-                const maxGroup = Math.max(0, ...(Object.values(assign) as number[]))
-                const numButtons = Math.min(6, Math.max(maxGroup + 1, (cur ?? 0) + 1, 4))
-                const hc = clubMembers.find(cm => cm.user_id === att.user_id)?.club_handicap
-                return (
-                  <div key={att.user_id} className="flex items-center justify-between gap-3 bg-gray-800 rounded-xl px-3 py-2.5">
-                    <div className="flex-1 min-w-0">
-                      <span className="text-sm text-white block truncate">{name}</span>
-                      {hc != null && (
-                        <span className="text-[10px] text-gray-500">HC {hc}</span>
-                      )}
-                    </div>
-                    <div className="flex gap-1 flex-shrink-0 items-center">
-                      {cur == null && (
-                        <span className="text-[10px] text-amber-500 mr-1">미배정</span>
-                      )}
-                      {Array.from({ length: numButtons }, (_, i) => i + 1).map(n => (
-                        <button key={n}
-                          onClick={() => setAssign(prev => ({ ...prev, [att.user_id]: n }))}
-                          style={cur === n ? { background: 'linear-gradient(135deg,#c9a84c,#a07830)', color: '#fff' } : undefined}
-                          className={`w-7 h-7 rounded-lg text-xs font-bold transition ${cur === n ? '' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}>
-                          {n}조
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        ) : (
-          <p className="text-xs text-gray-500 text-center py-4">{ko ? '참석자가 없습니다.' : 'No attendees yet.'}</p>
-        )}
-        {/* 미배정 경고 */}
-        {attending.length > 0 && attending.some((a: any) => assign[a.user_id] == null) && (
-          <p className="text-[11px] text-amber-400 bg-amber-900/20 border border-amber-700/30 rounded-lg px-3 py-2">
-            ⚠️ {ko ? `미배정 ${attending.filter((a: any) => assign[a.user_id] == null).length}명이 있습니다` : `${attending.filter((a: any) => assign[a.user_id] == null).length} members not yet assigned`}
-          </p>
-        )}
-        {assignedGroupNums.length > 0 && (
-          <div className="space-y-2">
-            <label className="text-xs text-gray-400 block">{ko ? '편성 미리보기' : 'Preview'}</label>
-            {assignedGroupNums.map(gn => {
-              const gMembers = attending.filter((a: any) => assign[a.user_id] === gn)
-              return (
-                <div key={gn} className="rounded-xl px-3 py-2.5" style={{ background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.2)' }}>
-                  <p className="text-xs font-bold mb-1.5" style={{ color: 'var(--gold-l)' }}>{gn}조 ({gMembers.length}{ko ? '명' : ''})</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {gMembers.map((a: any) => {
-                      const nm = lang === 'ko' ? a.users?.full_name : (a.users?.full_name_en || a.users?.full_name)
-                      const hc = clubMembers.find(cm => cm.user_id === a.user_id)?.club_handicap
-                      return (
-                        <span key={a.user_id} className="text-xs rounded-lg px-2 py-0.5" style={{ background: 'rgba(201,168,76,0.1)', border: '1px solid rgba(201,168,76,0.2)', color: 'var(--text-2)' }}>
-                          {nm}{hc != null ? <span className="ml-1 text-[10px]" style={{ color: 'var(--gold)' }}>HC{hc}</span> : ''}
-                        </span>
-                      )
-                    })}
-                  </div>
+        {(() => {
+          // 회원 + 승인된 게스트를 합친 풀
+          const memberParticipants = attending.map((a: any) => ({
+            key: a.user_id as string,
+            name: lang === 'ko' ? a.users?.full_name : (a.users?.full_name_en || a.users?.full_name),
+            handicap: clubMembers.find(cm => cm.user_id === a.user_id)?.club_handicap as number | null,
+            isGuest: false,
+          }))
+          const guestParticipants = guests.filter(g => g.approved).map((g: any) => ({
+            key: `g:${g.id}`,
+            name: lang === 'ko' ? g.full_name : (g.full_name_en || g.full_name),
+            handicap: g.handicap as number | null,
+            isGuest: true,
+          }))
+          const participants = [...memberParticipants, ...guestParticipants]
+          const unassignedCount = participants.filter(p => assign[p.key] == null).length
+
+          return (<>
+            {participants.length > 0 ? (
+              <div>
+                <label className="text-xs text-gray-400 block mb-2">{ko ? `수동 조 지정 (총 ${participants.length}명)` : `Manual assignment (${participants.length} total)`}</label>
+                <div className="space-y-2">
+                  {participants.map((p) => {
+                    const cur = assign[p.key]
+                    const maxGroup = Math.max(0, ...(Object.values(assign) as number[]))
+                    const numButtons = Math.min(6, Math.max(maxGroup + 1, (cur ?? 0) + 1, 4))
+                    return (
+                      <div key={p.key} className="flex items-center justify-between gap-3 rounded-xl px-3 py-2.5"
+                        style={p.isGuest
+                          ? { background: 'rgba(167,139,250,0.10)', border: '1px solid rgba(167,139,250,0.3)' }
+                          : { background: 'rgb(31,41,55)' }}>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm text-white block truncate">
+                            {p.isGuest && <span className="text-[10px] mr-1 px-1 py-0.5 rounded" style={{ background: 'rgba(167,139,250,0.3)', color: '#c4b5fd' }}>게스트</span>}
+                            {p.name}
+                          </span>
+                          {p.handicap != null && <span className="text-[10px] text-gray-500">HC {p.handicap}</span>}
+                        </div>
+                        <div className="flex gap-1 flex-shrink-0 items-center">
+                          {cur == null && <span className="text-[10px] text-amber-500 mr-1">미배정</span>}
+                          {Array.from({ length: numButtons }, (_, i) => i + 1).map(n => (
+                            <button key={n}
+                              onClick={() => setAssign(prev => ({ ...prev, [p.key]: n }))}
+                              style={cur === n ? { background: 'linear-gradient(135deg,#c9a84c,#a07830)', color: '#fff' } : undefined}
+                              className={`w-7 h-7 rounded-lg text-xs font-bold transition ${cur === n ? '' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}>
+                              {n}조
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
-              )
-            })}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-500 text-center py-4">{ko ? '참석자가 없습니다.' : 'No attendees yet.'}</p>
+            )}
+            {unassignedCount > 0 && (
+              <p className="text-[11px] text-amber-400 bg-amber-900/20 border border-amber-700/30 rounded-lg px-3 py-2 mt-2">
+                ⚠️ {ko ? `미배정 ${unassignedCount}명이 있습니다` : `${unassignedCount} not yet assigned`}
+              </p>
+            )}
+            {assignedGroupNums.length > 0 && (
+              <div className="space-y-2 mt-3">
+                <label className="text-xs text-gray-400 block">{ko ? '편성 미리보기' : 'Preview'}</label>
+                {assignedGroupNums.map(gn => {
+                  const gMembers = participants.filter(p => assign[p.key] === gn)
+                  return (
+                    <div key={gn} className="rounded-xl px-3 py-2.5" style={{ background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.2)' }}>
+                      <p className="text-xs font-bold mb-1.5" style={{ color: 'var(--gold-l)' }}>{gn}조 ({gMembers.length}{ko ? '명' : ''})</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {gMembers.map(p => (
+                          <span key={p.key} className="text-xs rounded-lg px-2 py-0.5"
+                            style={p.isGuest
+                              ? { background: 'rgba(167,139,250,0.15)', border: '1px solid rgba(167,139,250,0.35)', color: '#c4b5fd' }
+                              : { background: 'rgba(201,168,76,0.1)', border: '1px solid rgba(201,168,76,0.2)', color: 'var(--text-2)' }}>
+                            {p.isGuest && '🎫 '}{p.name}{p.handicap != null ? <span className="ml-1 text-[10px]" style={{ color: 'var(--gold)' }}>HC{p.handicap}</span> : ''}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </>)
+        })()}
+      </BottomSheet>
+
+      {/* ── Guest 추천 모달 ── */}
+      <BottomSheet
+        open={showGuestModal}
+        onClose={() => { setShowGuestModal(false); setGuestError(null) }}
+        title={ko ? '🎫 게스트 추천' : 'Recommend Guest'}
+        footer={
+          <div className="flex gap-2">
+            <button onClick={() => { setShowGuestModal(false); setGuestError(null) }}
+              className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 text-sm font-medium">
+              {ko ? '취소' : 'Cancel'}
+            </button>
+            <button onClick={recommendGuest} disabled={guestSaving || !guestForm.full_name.trim()}
+              className="flex-1 py-3 rounded-xl text-white text-sm font-bold disabled:opacity-50 active:scale-95"
+              style={{ background: 'linear-gradient(135deg,#a78bfa,#7c3aed)' }}>
+              {guestSaving ? (ko ? '저장 중...' : 'Saving...') : (ko ? '추천하기' : 'Recommend')}
+            </button>
           </div>
-        )}
+        }
+      >
+        <p className="text-[11px] mb-3" style={{ color: '#c4b5fd' }}>
+          💡 {ko ? '추천한 게스트는 회장·총무 승인 후 조 편성에 포함됩니다' : 'Guests are added to grouping after officer approval'}
+        </p>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-semibold mb-1 block" style={{ color: '#86efac' }}>{ko ? '한글 이름' : 'Korean Name'} *</label>
+            <input type="text" value={guestForm.full_name}
+              onChange={e => setGuestForm(f => ({ ...f, full_name: e.target.value }))}
+              placeholder={ko ? '예: 홍길동' : 'e.g. Hong Gildong'}
+              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500" autoFocus />
+          </div>
+          <div>
+            <label className="text-xs font-semibold mb-1 block" style={{ color: '#86efac' }}>{ko ? '영문 이름 (선택)' : 'English Name (optional)'}</label>
+            <input type="text" value={guestForm.full_name_en}
+              onChange={e => setGuestForm(f => ({ ...f, full_name_en: e.target.value }))}
+              placeholder="Hong Gildong"
+              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500" />
+          </div>
+          <div>
+            <label className="text-xs font-semibold mb-1 block" style={{ color: '#86efac' }}>{ko ? '핸디 (선택)' : 'Handicap (optional)'}</label>
+            <input type="number" inputMode="numeric" value={guestForm.handicap}
+              onChange={e => setGuestForm(f => ({ ...f, handicap: e.target.value }))}
+              placeholder={ko ? '모르면 비워두세요' : 'Leave blank if unknown'}
+              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500" />
+          </div>
+          <div>
+            <label className="text-xs font-semibold mb-1 block" style={{ color: '#86efac' }}>{ko ? '메모 (선택)' : 'Note (optional)'}</label>
+            <input type="text" value={guestForm.notes}
+              onChange={e => setGuestForm(f => ({ ...f, notes: e.target.value }))}
+              placeholder={ko ? '예: 친구, 동료, 가족' : 'e.g. Friend, colleague'}
+              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500" />
+          </div>
+          {guestError && <p className="text-xs text-red-400">⚠ {guestError}</p>}
+        </div>
       </BottomSheet>
 
       {/* ── Attending Members Modal ── */}
