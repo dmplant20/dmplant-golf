@@ -178,8 +178,8 @@ export default function DashboardPage() {
       supabase.from('finance_transactions').select('type,amount,member_id,transaction_date').eq('club_id', currentClubId),
       supabase.from('recurring_meetings').select('*').eq('club_id', currentClubId).maybeSingle(),
       supabase.from('meeting_overrides').select('*').eq('club_id', currentClubId),
-      supabase.from('club_memberships').select('user_id, fee_type').eq('club_id', currentClubId).eq('status', 'approved'),
-      supabase.from('club_memberships').select('fee_type')
+      supabase.from('club_memberships').select('user_id, fee_type, joined_at').eq('club_id', currentClubId).eq('status', 'approved'),
+      supabase.from('club_memberships').select('fee_type, joined_at')
         .eq('club_id', currentClubId).eq('user_id', user?.id ?? '').eq('status', 'approved').maybeSingle(),
       supabase.from('finance_transactions').select('amount,transaction_date')
         .eq('club_id', currentClubId).eq('type', 'fee').eq('member_id', user?.id ?? ''),
@@ -211,8 +211,11 @@ export default function DashboardPage() {
         })
       } else {
         const paidMonths   = new Set(myTxnsYr.map((t: any) => new Date(t.transaction_date).getMonth() + 1))
+        // 가입월부터 미납 카운트 — joined_at 이 올해면 그 달부터, 아니면 1월
+        const ja = (myMembership as any).joined_at as string | null
+        const startM = (ja && ja.startsWith(yrPrefix)) ? Number(ja.slice(5, 7)) : 1
         const unpaidMonths: number[] = []
-        for (let m = 1; m <= curMonth; m++) if (!paidMonths.has(m)) unpaidMonths.push(m)
+        for (let m = startM; m <= curMonth; m++) if (!paidMonths.has(m)) unpaidMonths.push(m)
         setMyFeeStatus({
           feeType: 'monthly', annual: club?.annual_fee ?? 0, monthly: club?.monthly_fee ?? 0,
           paid: unpaidMonths.length === 0, unpaidMonths, paidAmount,

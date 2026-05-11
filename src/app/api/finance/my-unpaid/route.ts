@@ -46,7 +46,7 @@ export async function GET(_req: NextRequest) {
   // ── 1. 내 모든 클럽 + fee_type 조회 ─────────────────────────────────────
   const { data: memberships } = await supabase
     .from('club_memberships')
-    .select('club_id, fee_type, clubs(id, name, annual_fee, monthly_fee, currency)')
+    .select('club_id, fee_type, joined_at, clubs(id, name, annual_fee, monthly_fee, currency)')
     .eq('user_id', user.id)
     .eq('status', 'approved')
 
@@ -78,9 +78,12 @@ export async function GET(_req: NextRequest) {
             unpaidFees.push({ club_id: m.club_id, club_name: club.name, fee_type: 'annual', amount: feeAmount, currency })
           }
         } else {
+          // 가입월부터 미납 카운트 — 이전 연도 가입자는 1월부터
+          const ja = (m as any).joined_at ? String((m as any).joined_at) : null
+          const startMonth = (ja && ja.startsWith(String(year))) ? Number(ja.slice(5, 7)) : 1
           const paidMonths = new Set((payments ?? []).map((p: any) => Number(String(p.transaction_date).slice(5, 7))))
           const unpaidMonths: number[] = []
-          for (let mm = 1; mm <= currentMonth; mm++) if (!paidMonths.has(mm)) unpaidMonths.push(mm)
+          for (let mm = startMonth; mm <= currentMonth; mm++) if (!paidMonths.has(mm)) unpaidMonths.push(mm)
           if (unpaidMonths.length) {
             unpaidFees.push({
               club_id: m.club_id, club_name: club.name, fee_type: 'monthly',

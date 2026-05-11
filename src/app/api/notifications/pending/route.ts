@@ -179,7 +179,7 @@ export async function GET(_req: NextRequest) {
     // 다른 페이지들과 일치시켜 데이터 출처 통일.
     const { data: memberships } = await supabase
       .from('club_memberships')
-      .select('club_id, fee_type, clubs(id, name, annual_fee, monthly_fee, currency)')
+      .select('club_id, fee_type, joined_at, clubs(id, name, annual_fee, monthly_fee, currency)')
       .eq('user_id', user.id)
       .eq('status', 'approved')
 
@@ -191,6 +191,14 @@ export async function GET(_req: NextRequest) {
         // fee_type 미지정 회원은 회비 검사에서 제외 (회비 면제 또는 미설정)
         const feeType: string | null = (m as any).fee_type ?? null
         if (!feeType) continue
+
+        // 가입일이 아직 미래라면 회비 의무 없음 (joined_at 가 이번 달보다 이후)
+        const ja: string | null = (m as any).joined_at ?? null
+        if (ja) {
+          const jaY = Number(ja.slice(0, 4))
+          const jaM = Number(ja.slice(5, 7))
+          if (jaY > todayYear || (jaY === todayYear && jaM > todayMonth)) continue
+        }
 
         const feeAmount: number =
           feeType === 'monthly' ? (club.monthly_fee ?? 0) : (club.annual_fee ?? 0)

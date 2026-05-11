@@ -267,7 +267,7 @@ export default function FinancePage() {
     const [{ data: transactions }, { data: club }, { data: mems }, { data: pi }, { data: sponsors }] = await Promise.all([
       query.eq('club_id', currentClubId).order('transaction_date', { ascending: false }),
       supabase.from('clubs').select('currency,fine_handicap_per_stroke,fine_handicap_max,fine_notes,annual_fee,monthly_fee,carryover_amount,carryover_note').eq('id', currentClubId).single(),
-      supabase.from('club_memberships').select('user_id, fee_type, users(full_name, full_name_en)').eq('club_id', currentClubId).eq('status', 'approved'),
+      supabase.from('club_memberships').select('user_id, fee_type, joined_at, users(full_name, full_name_en)').eq('club_id', currentClubId).eq('status', 'approved'),
       supabase.from('club_payment_info').select('*').eq('club_id', currentClubId).maybeSingle(),
       supabase.from('sponsorships').select('*').eq('club_id', currentClubId).order('sponsor_date', { ascending: false }),
     ])
@@ -360,14 +360,25 @@ export default function FinancePage() {
     paidAmountByMember.set(t.member_id, (paidAmountByMember.get(t.member_id) ?? 0) + Number(t.amount ?? 0))
   }
 
-  // 회원별 미납 판정 — fee_type 별 분기
+  // 회원별 회비 시작 월 — joined_at 이 올해면 그 달부터, 아니면 1월
+  function memberStartMonth(m: any): number {
+    const ja = m.joined_at ? String(m.joined_at) : null
+    if (!ja) return 1
+    if (!ja.startsWith(String(currentYear))) return 1   // 이전 연도 가입자는 1월부터
+    const mm = Number(ja.slice(5, 7))
+    return mm >= 1 && mm <= 12 ? mm : 1
+  }
+
+  // 회원별 미납 판정 — fee_type 별 분기 + joined_at 반영
   function isMemberPaid(m: any): boolean {
     const ft = m.fee_type as 'annual'|'monthly'|null
     const paidMonths = paidMonthsByMember.get(m.user_id)
     if (ft === 'monthly') {
-      // 1월 ~ 현재월 모두 납부되어 있어야 완납
+      // 가입월 ~ 현재월 모두 납부되어 있어야 완납
+      const startM = memberStartMonth(m)
+      if (startM > currentMonth) return true   // 미래 가입자 — 아직 회비 의무 없음
       if (!paidMonths) return false
-      for (let mm = 1; mm <= currentMonth; mm++) if (!paidMonths.has(mm)) return false
+      for (let mm = startM; mm <= currentMonth; mm++) if (!paidMonths.has(mm)) return false
       return true
     }
     // annual 또는 미지정 — 올해 회비 트랜잭션 1건 이상이면 납부
@@ -379,8 +390,9 @@ export default function FinancePage() {
     const ft = m.fee_type as 'annual'|'monthly'|null
     if (ft === 'monthly') {
       const paid = paidMonthsByMember.get(m.user_id) ?? new Set<number>()
+      const startM = memberStartMonth(m)
       const months: number[] = []
-      for (let mm = 1; mm <= currentMonth; mm++) if (!paid.has(mm)) months.push(mm)
+      for (let mm = startM; mm <= currentMonth; mm++) if (!paid.has(mm)) months.push(mm)
       return { months, expected: months.length * (clubFees.monthly || 0) }
     }
     return { months: [], expected: clubFees.annual || 0 }
