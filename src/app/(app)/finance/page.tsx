@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores/authStore'
 import {
   Plus, Camera, TrendingUp, TrendingDown, Wallet,
-  ChevronDown, ChevronUp, Receipt, Copy, Check,
+  ChevronDown, ChevronUp, ChevronRight, Receipt, Copy, Check,
   Edit2, Upload, Building2, X, QrCode, Gift, AlertTriangle, Trash2,
 } from 'lucide-react'
 import { OFFICER_ROLES } from '../members/page'
@@ -49,6 +49,8 @@ export default function FinancePage() {
   const [expandedId,   setExpandedId]   = useState<string | null>(null)
   // 거래 내역 월별 아코디언 — 펼쳐진 'YYYY-MM' (가장 최근 월 기본 펼침)
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null)
+  // 거래 상세 팝업 — 클릭한 거래 객체
+  const [detailTxn, setDetailTxn] = useState<any | null>(null)
   // 이전 이월금 카드 접기/펼치기 — 기본 접힘
   const [showCarryover, setShowCarryover] = useState(false)
   // 이중확인 삭제 모달 — { title, body, onConfirm } 가 set 되면 모달 노출
@@ -990,59 +992,29 @@ export default function FinancePage() {
                           </div>
                           <div>
                             {b.items.map((t: any) => {
-                              const isExpanded = expandedId === t.id
                               const isIncome = INCOME_TYPES.includes(t.type)
                               return (
-                                <div key={t.id} className="px-3 py-1.5"
+                                <button key={t.id}
+                                  onClick={() => setDetailTxn(t)}
+                                  className="w-full px-3 py-1.5 flex items-center gap-2 text-left transition active:bg-white/[0.03]"
                                   style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                                  <div className="flex items-center gap-2">
-                                    <div className="flex-1 min-w-0">
-                                      <p className="text-xs text-white truncate">
-                                        {t.description}
-                                        {t.item_name && <span className="ml-1 text-[10px]" style={{ color: '#c4b5fd' }}>🎁 {t.item_name}</span>}
-                                      </p>
-                                      <p className="text-[10px]" style={{ color: '#6b7280' }}>
-                                        {t.transaction_date?.slice(5) ?? ''}
-                                        {(t.users?.full_name || extractMemberName(t)) && (
-                                          <> · {t.users?.full_name ?? extractMemberName(t)}</>
-                                        )}
-                                      </p>
-                                    </div>
-                                    <span className={`text-xs font-semibold flex-shrink-0 ${isIncome ? 'text-green-400' : 'text-red-400'}`}>
-                                      {isIncome ? '+' : '-'}{sym}{Number(t.amount).toLocaleString()}
-                                    </span>
-                                    {isOfficer && (
-                                      <button onClick={() => setExpandedId(isExpanded ? null : t.id)}
-                                        className="text-gray-600 flex-shrink-0">
-                                        {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                                      </button>
-                                    )}
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs text-white truncate">
+                                      {t.description}
+                                      {t.item_name && <span className="ml-1 text-[10px]" style={{ color: '#c4b5fd' }}>🎁 {t.item_name}</span>}
+                                    </p>
+                                    <p className="text-[10px]" style={{ color: '#6b7280' }}>
+                                      {t.transaction_date?.slice(5) ?? ''}
+                                      {(t.users?.full_name || extractMemberName(t)) && (
+                                        <> · {t.users?.full_name ?? extractMemberName(t)}</>
+                                      )}
+                                    </p>
                                   </div>
-                                  {isOfficer && isExpanded && (
-                                    <div className="mt-2 ml-2 space-y-1.5">
-                                      {t.receipt_url && (
-                                        <button onClick={() => setReceiptUrl(t.receipt_url)}
-                                          className="flex items-center gap-1 text-[10px] text-blue-400">
-                                          <Receipt size={10} /> {ko ? '영수증' : 'Receipt'}
-                                        </button>
-                                      )}
-                                      {canManage && (
-                                        <div className="flex gap-1.5">
-                                          <button onClick={() => startEdit(t)}
-                                            className="flex-1 flex items-center justify-center gap-1 py-1 rounded text-[10px] font-medium"
-                                            style={{ background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.3)', color: '#93c5fd' }}>
-                                            <Edit2 size={10} />{ko ? '수정' : 'Edit'}
-                                          </button>
-                                          <button onClick={() => deleteTransaction(t.id)} disabled={deleting === t.id}
-                                            className="flex-1 flex items-center justify-center gap-1 py-1 rounded text-[10px] font-medium disabled:opacity-50"
-                                            style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}>
-                                            <Trash2 size={10} />{ko ? '삭제' : 'Delete'}
-                                          </button>
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
+                                  <span className={`text-xs font-semibold flex-shrink-0 ${isIncome ? 'text-green-400' : 'text-red-400'}`}>
+                                    {isIncome ? '+' : '-'}{sym}{Number(t.amount).toLocaleString()}
+                                  </span>
+                                  <ChevronRight size={12} className="text-gray-600 flex-shrink-0" />
+                                </button>
                               )
                             })}
                           </div>
@@ -1533,6 +1505,122 @@ export default function FinancePage() {
       )}
 
       {/* QR 라이트박스 */}
+      {/* ━━ 거래 상세 팝업 — 클릭한 거래의 전체 정보 ━━━━━━━━━━━━━━━━━━━━━ */}
+      {detailTxn && (
+        <div className="fixed inset-0 z-[9999] flex items-end justify-center"
+          style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(6px)' }}
+          onClick={() => setDetailTxn(null)}>
+          <div className="w-full max-w-md rounded-t-2xl overflow-hidden"
+            style={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderBottom: 'none', maxHeight: '92dvh', display: 'flex', flexDirection: 'column' }}
+            onClick={e => e.stopPropagation()}>
+            {/* 헤더 */}
+            <div className="flex items-center justify-between px-5 py-3 flex-shrink-0"
+              style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+              <h3 className="text-base font-bold text-white">
+                {ko ? '거래 상세' : 'Transaction Detail'}
+              </h3>
+              <button onClick={() => setDetailTxn(null)}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400"
+                style={{ background: 'rgba(255,255,255,0.05)' }}>
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* 본문 (스크롤) */}
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3 min-h-0">
+              {/* 금액 헤드라인 */}
+              <div className="rounded-xl p-4"
+                style={{
+                  background: INCOME_TYPES.includes(detailTxn.type)
+                    ? 'linear-gradient(135deg, rgba(34,197,94,0.15), rgba(6,13,6,0.95))'
+                    : 'linear-gradient(135deg, rgba(239,68,68,0.15), rgba(6,13,6,0.95))',
+                  border: `1px solid ${INCOME_TYPES.includes(detailTxn.type) ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
+                }}>
+                <p className="text-[11px]" style={{ color: INCOME_TYPES.includes(detailTxn.type) ? '#86efac' : '#fca5a5' }}>
+                  {TYPE_LABELS[detailTxn.type]?.[ko ? 0 : 1] ?? detailTxn.type}
+                  {detailTxn.expense_category && EXPENSE_CATEGORY_LABELS[detailTxn.expense_category] && (
+                    <> · {EXPENSE_CATEGORY_LABELS[detailTxn.expense_category][ko ? 0 : 1]}</>
+                  )}
+                </p>
+                <p className="text-2xl font-black mt-1"
+                  style={{ color: INCOME_TYPES.includes(detailTxn.type) ? '#4ade80' : '#f87171' }}>
+                  {INCOME_TYPES.includes(detailTxn.type) ? '+' : '-'}{sym}{Number(detailTxn.amount).toLocaleString()}
+                </p>
+              </div>
+
+              {/* 내용 (전체 — 안 잘림) */}
+              <div className="rounded-xl p-3"
+                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <p className="text-[11px] font-bold mb-1" style={{ color: '#9ca3af' }}>
+                  {ko ? '내용' : 'Description'}
+                </p>
+                <p className="text-sm text-white whitespace-pre-wrap break-words">
+                  {detailTxn.description}
+                </p>
+                {detailTxn.item_name && (
+                  <p className="text-sm mt-1.5 font-semibold" style={{ color: '#c4b5fd' }}>
+                    🎁 {detailTxn.item_name}
+                  </p>
+                )}
+              </div>
+
+              {/* 메타 정보 */}
+              <div className="rounded-xl divide-y divide-white/5"
+                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <div className="px-3 py-2 flex justify-between text-xs">
+                  <span className="text-gray-500">{ko ? '날짜' : 'Date'}</span>
+                  <span className="text-white">{detailTxn.transaction_date}</span>
+                </div>
+                {(detailTxn.users?.full_name || extractMemberName(detailTxn)) && (
+                  <div className="px-3 py-2 flex justify-between text-xs">
+                    <span className="text-gray-500">{ko ? '관련 회원' : 'Member'}</span>
+                    <span className="text-white">{detailTxn.users?.full_name ?? extractMemberName(detailTxn)}</span>
+                  </div>
+                )}
+                {detailTxn.recorder && (
+                  <div className="px-3 py-2 flex justify-between text-xs">
+                    <span className="text-gray-500">{ko ? '기록자' : 'Recorded by'}</span>
+                    <span className="text-white">
+                      {lang === 'ko' ? detailTxn.recorder.full_name : (detailTxn.recorder.full_name_en || detailTxn.recorder.full_name)}
+                    </span>
+                  </div>
+                )}
+                <div className="px-3 py-2 flex justify-between text-xs">
+                  <span className="text-gray-500">{ko ? '거래 ID' : 'Transaction ID'}</span>
+                  <span className="text-gray-600 font-mono text-[10px]">{detailTxn.id?.slice(0, 8)}…</span>
+                </div>
+              </div>
+
+              {/* 영수증 */}
+              {detailTxn.receipt_url && (
+                <button onClick={() => { setReceiptUrl(detailTxn.receipt_url); setDetailTxn(null) }}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium"
+                  style={{ background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.3)', color: '#93c5fd' }}>
+                  <Receipt size={14} />{ko ? '영수증 보기' : 'View Receipt'}
+                </button>
+              )}
+            </div>
+
+            {/* 푸터 — 임원만 수정/삭제 */}
+            {canManage && (
+              <div className="flex gap-2 px-5 py-3 flex-shrink-0"
+                style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
+                <button onClick={() => { startEdit(detailTxn); setDetailTxn(null) }}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold"
+                  style={{ background: 'rgba(96,165,250,0.15)', border: '1px solid rgba(96,165,250,0.4)', color: '#93c5fd' }}>
+                  <Edit2 size={14} />{ko ? '수정' : 'Edit'}
+                </button>
+                <button onClick={() => { deleteTransaction(detailTxn.id); setDetailTxn(null) }} disabled={deleting === detailTxn.id}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold disabled:opacity-50"
+                  style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', color: '#fca5a5' }}>
+                  <Trash2 size={14} />{ko ? '삭제' : 'Delete'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ━━ 이중 확인 삭제 모달 — 실수 방지 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
       {confirmDelete && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
