@@ -54,13 +54,31 @@ const ACTION_LABELS: Record<string, [string, string]> = {
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────
-function RoleBadge({ role, ko }: { role: string; ko: boolean }) {
+function RoleBadge({ role, ko, active }: { role: string; ko: boolean; active?: boolean }) {
   const entry = ROLE_MAP[role]
+  // active=true 면 굵은 채색 테두리 + 살짝 글로우, false 면 기본
   return (
-    <span className={`text-[11px] px-2 py-0.5 rounded-full border ${ROLE_COLORS[role] ?? ROLE_COLORS.member}`}>
+    <span
+      className={`text-[11px] px-2 py-0.5 rounded-full border ${ROLE_COLORS[role] ?? ROLE_COLORS.member}`}
+      style={active ? {
+        borderWidth: 1.5,
+        boxShadow: '0 0 0 1px currentColor, 0 0 8px rgba(34,197,94,0.35)',
+      } : undefined}
+    >
       {entry ? (ko ? entry[0] : entry[1]) : role}
     </span>
   )
+}
+
+// 다중 트리 확인 — 한 번이라도 접속했는지
+// Tree 1: users.last_seen_at IS NOT NULL (heartbeat 발사 = 실제 진입 증거)
+// Tree 2: users.password_set === true     (첫 로그인 후 비밀번호 설정 완료 증거)
+// 둘 중 하나라도 참이면 활성 (한번이라도 접속한 회원)
+function hasEverLoggedIn(u: any): boolean {
+  if (!u) return false
+  if (u.last_seen_at) return true
+  if (u.password_set === true) return true
+  return false
 }
 
 // ── component ──────────────────────────────────────────────────────────────
@@ -98,7 +116,7 @@ export default function MembersPage() {
     const supabase = createClient()
     const [{ data: approved }, { data: pend }, { data: withdr }, { data: log }] = await Promise.all([
       supabase.from('club_memberships')
-        .select('*, users(full_name, full_name_en, name_abbr, avatar_url, phone, last_seen_at)')
+        .select('*, users(full_name, full_name_en, name_abbr, avatar_url, phone, last_seen_at, password_set)')
         .eq('club_id', currentClubId).eq('status', 'approved'),
       supabase.from('club_memberships')
         .select('*, users(full_name, full_name_en, name_abbr, phone)')
@@ -330,6 +348,8 @@ export default function MembersPage() {
             // 접속 표시: 마지막 활동이 90초 이내면 온라인 (heartbeat 30s × 3 = 1회 누락 허용)
             const lastSeen = m.users?.last_seen_at
             const isOnline = lastSeen && (Date.now() - new Date(lastSeen).getTime()) < 90_000
+            // 한 번이라도 로그인 했는지 (다중 트리 확인)
+            const hasLoggedIn = hasEverLoggedIn(m.users)
             return (
             <div key={m.id} className="glass-card rounded-2xl px-4 py-3 flex items-center gap-3">
               <div className="relative w-10 h-10 flex-shrink-0">
@@ -352,13 +372,19 @@ export default function MembersPage() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-white font-semibold text-sm">
+                  <span className="font-semibold text-sm"
+                    style={hasLoggedIn ? { color: '#fff' } : { color: '#6b7280' }}
+                    title={hasLoggedIn ? undefined : (ko ? '아직 한 번도 접속하지 않은 회원' : 'Never logged in')}>
                     {lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}
                   </span>
-                  {m.users?.name_abbr && <span className="text-xs text-gray-500">({m.users.name_abbr})</span>}
+                  {m.users?.name_abbr && (
+                    <span className="text-xs" style={{ color: hasLoggedIn ? '#9ca3af' : '#4b5563' }}>
+                      ({m.users.name_abbr})
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                  <RoleBadge role={m.role} ko={ko} />
+                  <RoleBadge role={m.role} ko={ko} active={hasLoggedIn} />
                   {m.fee_type === 'annual'  && <span className="text-[11px] px-2 py-0.5 rounded-full bg-yellow-900/50 text-yellow-300">{ko ? '년회비' : 'Annual'}</span>}
                   {m.fee_type === 'monthly' && <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-900/50  text-blue-300">{ko ? '월회비' : 'Monthly'}</span>}
                   {m.club_handicap != null && <span className="text-[11px]" style={{ color: 'var(--gold-l)' }}>HC {m.club_handicap}</span>}
