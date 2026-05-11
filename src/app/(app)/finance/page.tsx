@@ -1417,6 +1417,15 @@ export default function FinancePage() {
             <p className="text-[11px] -mt-2" style={{ color: '#86efac' }}>
               💡 {ko ? '한 회원이 현금·상품을 같이 찬조한 경우 양쪽 모두 입력하세요' : 'Fill both if cash + item donated together'}
             </p>
+            <div className="rounded-lg px-3 py-2 -mt-1"
+              style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.3)' }}>
+              <p className="text-[11px] font-bold" style={{ color: '#fca5a5' }}>
+                ⚠️ {ko ? '회비 (월·연회비)는 찬조에 입력하지 마세요' : 'Do NOT enter membership fees here'}
+              </p>
+              <p className="text-[10px] mt-0.5" style={{ color: '#fcd34d' }}>
+                {ko ? '회비는 위 "회비 납부 현황" 섹션의 미납 회원 카드를 탭해 등록하세요' : 'Use "회비 납부 현황" section above'}
+              </p>
+            </div>
 
             <div>
               <label className="text-sm text-gray-400 block mb-1">{ko ? '찬조한 회원' : 'Sponsor'}</label>
