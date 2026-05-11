@@ -182,6 +182,9 @@ export default function MeetingsPage() {
   const [courseNames, setCourseNames] = useState<Record<number, string>>({})
   // 골프장 응답 원본 (참고용 — 파싱하지 않고 화면에만 보존)
   const [courseReplyMemo, setCourseReplyMemo] = useState('')
+  // 골프장 응답 붙여넣기 모달
+  const [showPasteModal, setShowPasteModal] = useState(false)
+  const [pasteText,      setPasteText]      = useState('')
   const [rosterCopied, setRosterCopied] = useState(false)
   // 영문 명단 미리보기 모달
   const [showRosterModal, setShowRosterModal] = useState(false)
@@ -653,6 +656,61 @@ export default function MeetingsPage() {
     setSaving(false)
     setShowGroupModal(false)
     await loadRsvp(meeting.year, meeting.month)
+  }
+
+  // ── 골프장 응답 파서 ────────────────────────────────────────────────
+  // 다양한 포맷 허용: "1조 06:30 Stella-Sole" / "1조: 06:30, Stella" /
+  // "Group 1 - 06:30 / Stella" / "06:30 Stella-Sole" 등.
+  // 조 번호가 없으면 줄 순서대로 1·2·3… 부여.
+  function parsePasteText(text: string): { group: number; time: string; course: string }[] {
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+    const out: { group: number; time: string; course: string }[] = []
+    lines.forEach((line, idx) => {
+      // 시간 추출 (HH:MM or H:MM)
+      const tMatch = line.match(/(\d{1,2}):(\d{2})/)
+      const time = tMatch ? `${tMatch[1].padStart(2,'0')}:${tMatch[2]}` : ''
+      // 조 번호 추출
+      const gMatch =
+        line.match(/(\d+)\s*조/) ||
+        line.match(/조\s*(\d+)/) ||
+        line.match(/(?:Group|G|#)\s*(\d+)/i)
+      const group = gMatch ? parseInt(gMatch[1]) : (idx + 1)
+      // 코스 = 원본에서 시간·조번호 표기 제거 후 남은 문자열
+      let course = line
+        .replace(/(\d{1,2}):(\d{2})/, '')
+        .replace(/(\d+)\s*조/, '')
+        .replace(/조\s*(\d+)/, '')
+        .replace(/(?:Group|G|#)\s*\d+/i, '')
+        .replace(/[:\-\|/,]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+      // 너무 짧거나 숫자만 남았으면 코스 없음
+      if (!course || /^\d+$/.test(course)) course = ''
+      out.push({ group, time, course })
+    })
+    // 같은 조 번호가 여러 줄이면 첫 줄 유지
+    const seen = new Set<number>()
+    return out.filter(p => {
+      if (seen.has(p.group)) return false
+      seen.add(p.group); return true
+    }).sort((a, b) => a.group - b.group)
+  }
+  const pasteParsed = parsePasteText(pasteText)
+
+  // 파싱 결과 적용 → state 세팅 후 조 편성 모달 열기
+  function applyPaste() {
+    const tt: Record<number, string> = {}
+    const cn: Record<number, string> = {}
+    pasteParsed.forEach(p => {
+      if (p.time)   tt[p.group] = p.time
+      if (p.course) cn[p.group] = p.course
+    })
+    setTeeTimes(prev => ({ ...prev, ...tt }))
+    setCourseNames(prev => ({ ...prev, ...cn }))
+    setCourseReplyMemo(pasteText.trim())
+    setShowPasteModal(false)
+    // 조 편성 모달 열어 회원 배정 단계로 이어짐
+    setShowGroupModal(true)
   }
 
   // ── 영문 명단 — 시간/코스 포함하여 미리보기 모달 ──────────────────
@@ -1264,18 +1322,28 @@ export default function MeetingsPage() {
               <div className="space-y-2.5">
                 {attending.length > 0 && (
                   <div>
-                    <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
                       <p className="text-xs font-semibold flex items-center gap-1" style={{ color: '#4ade80' }}>
                         <Check size={11} />{ko ? `참석 (${attending.length}명)` : `Attending (${attending.length})`}
                       </p>
-                      {canManage && (attending.length + guests.filter(g=>g.approved).length) > 0 && (
-                        <button onClick={openRosterPreview}
-                          className="text-[10px] font-bold px-2 py-1 rounded-md active:scale-95"
-                          style={{ background: 'rgba(96,165,250,0.18)', color: '#93c5fd',
-                                   border: '1px solid rgba(96,165,250,0.4)' }}>
-                          {ko ? '📋 영문명단 미리보기' : '📋 Preview roster'}
-                        </button>
-                      )}
+                      <div className="flex items-center gap-1.5">
+                        {canManage && (
+                          <button onClick={() => { setPasteText(courseReplyMemo); setShowPasteModal(true) }}
+                            className="text-[10px] font-bold px-2 py-1 rounded-md active:scale-95"
+                            style={{ background: 'rgba(34,197,94,0.18)', color: '#86efac',
+                                     border: '1px solid rgba(34,197,94,0.4)' }}>
+                            {ko ? '🏌️ 골프장 응답 입력' : '🏌️ Paste tee times'}
+                          </button>
+                        )}
+                        {canManage && (attending.length + guests.filter(g=>g.approved).length) > 0 && (
+                          <button onClick={openRosterPreview}
+                            className="text-[10px] font-bold px-2 py-1 rounded-md active:scale-95"
+                            style={{ background: 'rgba(96,165,250,0.18)', color: '#93c5fd',
+                                     border: '1px solid rgba(96,165,250,0.4)' }}>
+                            {ko ? '📋 영문명단 미리보기' : '📋 Preview roster'}
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {attending.map((a: any) => (
@@ -2237,6 +2305,107 @@ export default function MeetingsPage() {
           <p className="text-center text-gray-500 text-sm py-6">{ko ? '아직 응답이 없습니다.' : 'No responses yet.'}</p>
         )}
       </BottomSheet>
+
+      {/* ━━ 골프장 응답 붙여넣기 모달 (회장·총무) ━━━━━━━━━━━━━━━━━━━━━━ */}
+      {showPasteModal && canManage && (
+        <div className="fixed inset-0 z-[9999] flex items-end justify-center"
+          style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setShowPasteModal(false)}>
+          <div className="w-full max-w-md rounded-t-2xl overflow-hidden flex flex-col"
+            style={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderBottom: 'none', maxHeight: '92dvh' }}
+            onClick={e => e.stopPropagation()}>
+            {/* 헤더 */}
+            <div className="flex items-center justify-between px-5 py-3 flex-shrink-0"
+              style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+              <div>
+                <p className="text-base font-bold text-white">
+                  {ko ? '🏌️ 골프장 응답 붙여넣기' : 'Paste Golf Course Reply'}
+                </p>
+                <p className="text-[10px] mt-0.5" style={{ color: '#9ca3af' }}>
+                  {ko ? '시간·코스를 한 번에 입력 → 자동으로 분리됩니다' : 'Auto-parses times & courses'}
+                </p>
+              </div>
+              <button onClick={() => setShowPasteModal(false)}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400"
+                style={{ background: 'rgba(255,255,255,0.05)' }}>
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* 본문 (스크롤) */}
+            <div className="flex-1 overflow-y-auto px-5 py-3 space-y-3 min-h-0">
+              {/* 입력 */}
+              <div>
+                <label className="text-[11px] font-semibold block mb-1.5" style={{ color: '#9ca3af' }}>
+                  {ko ? '골프장 답변 텍스트 (한 줄에 한 조)' : 'Reply text (one group per line)'}
+                </label>
+                <textarea
+                  value={pasteText}
+                  onChange={e => setPasteText(e.target.value)}
+                  placeholder={ko
+                    ? `예시 (어떤 포맷이든 OK):\n1조 06:30 Stella-Sole\n2조 06:42 Luna-Stella\n3조 06:54 Stella-Luna`
+                    : `Example (any format):\n1조 06:30 Stella-Sole\nGroup 2 06:42 Luna-Stella\n#3 06:54 Stella-Luna`}
+                  rows={7}
+                  autoFocus
+                  className="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm font-mono focus:outline-none focus:border-green-500"
+                />
+                <p className="text-[10px] mt-1" style={{ color: '#6b7280' }}>
+                  {ko
+                    ? '※ 조 번호가 없으면 줄 순서대로 1·2·3… 자동 부여'
+                    : 'Tip: missing group numbers auto-fill as 1, 2, 3…'}
+                </p>
+              </div>
+
+              {/* 파싱 결과 미리보기 */}
+              {pasteParsed.length > 0 && (
+                <div>
+                  <p className="text-[11px] font-semibold mb-1.5" style={{ color: '#86efac' }}>
+                    ✓ {ko ? '파싱 결과' : 'Parsed'} ({pasteParsed.length}{ko ? '조' : ' groups'})
+                  </p>
+                  <div className="rounded-xl overflow-hidden"
+                    style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
+                    <div className="grid grid-cols-[40px_70px_1fr] text-[10px] font-bold px-2 py-1.5"
+                      style={{ background: 'rgba(255,255,255,0.04)', color: '#9ca3af' }}>
+                      <span>{ko ? '조' : 'Grp'}</span>
+                      <span>{ko ? '시간' : 'Time'}</span>
+                      <span>{ko ? '코스' : 'Course'}</span>
+                    </div>
+                    {pasteParsed.map(p => (
+                      <div key={p.group}
+                        className="grid grid-cols-[40px_70px_1fr] text-xs px-2 py-1.5"
+                        style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+                        <span className="font-bold text-white">{p.group}{ko ? '조' : ''}</span>
+                        <span style={{ color: p.time ? '#93c5fd' : '#6b7280' }}>
+                          {p.time || (ko ? '미인식' : '—')}
+                        </span>
+                        <span style={{ color: p.course ? '#c4b5fd' : '#6b7280' }}>
+                          {p.course || (ko ? '미인식' : '—')}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 푸터 */}
+            <div className="flex gap-2 px-5 py-3 flex-shrink-0"
+              style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
+              <button onClick={() => setShowPasteModal(false)}
+                className="flex-1 py-2.5 rounded-xl text-sm"
+                style={{ background: 'rgba(255,255,255,0.05)', color: '#9ca3af' }}>
+                {ko ? '취소' : 'Cancel'}
+              </button>
+              <button onClick={applyPaste}
+                disabled={pasteParsed.length === 0}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold disabled:opacity-50"
+                style={{ background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.5)', color: '#86efac' }}>
+                {ko ? '저장 → 조 편성' : 'Save → Assign'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ━━ 대리 응답 시트 (회장·총무 전용) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
       {proxyTarget && canManage && (() => {
