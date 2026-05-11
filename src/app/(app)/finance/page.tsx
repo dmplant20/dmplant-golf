@@ -78,6 +78,8 @@ export default function FinancePage() {
   // ── fee payment status ────────────────────────────────────────────────
   // 항상 기본 접힘 — 화면 정리 위해 사용자가 직접 펼쳐서 확인
   const [showFeeStatus,   setShowFeeStatus]    = useState(false)
+  // 회비 납부 계좌 카드 접기/펼치기 — 평상시 접힘
+  const [showPayInfo,     setShowPayInfo]      = useState(false)
   const [clubFees,        setClubFees]         = useState<{annual: number; monthly: number}>({ annual: 0, monthly: 0 })
 
   // ── 납부확인 모달 ──────────────────────────────────────────────────────
@@ -998,72 +1000,87 @@ export default function FinancePage() {
         )}
       </div>
 
-      {/* ── 송금 정보 카드 ── */}
+      {/* ── 송금 정보 카드 — 평상시 접힘, 헤더 탭하면 펼침 ── */}
       {(payInfo || canManage) && (
-        <div className="glass-card rounded-2xl p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Building2 size={16} className="text-blue-400" />
-              <p className="text-sm font-semibold text-white">{ko ? '회비 납부 계좌' : 'Payment Account'}</p>
-            </div>
-            {canManage && (
-              <button onClick={() => setShowPayEdit(true)}
-                className="flex items-center gap-1 text-xs text-gray-400 hover:text-green-400 transition border border-gray-700 hover:border-green-700 rounded-full px-2.5 py-1">
-                <Edit2 size={11} />{ko ? '편집' : 'Edit'}
-              </button>
+        <div className="glass-card rounded-2xl overflow-hidden">
+          <button
+            onClick={() => setShowPayInfo(v => !v)}
+            className="w-full px-4 py-3.5 flex items-center gap-3"
+          >
+            <Building2 size={16} className="text-blue-400" />
+            <p className="text-sm font-semibold text-white flex-1 text-left">{ko ? '회비 납부 계좌' : 'Payment Account'}</p>
+            {payInfo?.bank_name && (
+              <span className="text-xs mr-1 truncate max-w-[140px]" style={{ color: '#5a7a5a' }}>
+                {payInfo.bank_name}
+              </span>
             )}
-          </div>
-
-          {payInfo ? (
-            <div className="flex gap-3">
-              {/* 텍스트 정보 */}
-              <div className="flex-1 space-y-2">
-                {payInfo.bank_name && (
-                  <div>
-                    <p className="text-xs text-gray-500">{ko ? '은행/앱' : 'Bank'}</p>
-                    <p className="text-sm font-semibold text-white">{payInfo.bank_name}</p>
-                  </div>
-                )}
-                {payInfo.bank_account && (
-                  <div>
-                    <p className="text-xs text-gray-500">{ko ? '계좌번호' : 'Account No.'}</p>
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-mono text-white">{payInfo.bank_account}</p>
-                      <button onClick={copyAccount}
-                        className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg transition ${copied ? 'bg-green-800 text-green-300' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>
-                        {copied ? <Check size={11} /> : <Copy size={11} />}
-                        {copied ? (ko ? '복사됨' : 'Copied') : (ko ? '복사' : 'Copy')}
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {payInfo.bank_holder && (
-                  <div>
-                    <p className="text-xs text-gray-500">{ko ? '예금주' : 'Holder'}</p>
-                    <p className="text-sm text-white">{payInfo.bank_holder}</p>
-                  </div>
-                )}
-                {payInfo.memo && (
-                  <p className="text-xs text-yellow-400 bg-yellow-900/20 border border-yellow-800/40 rounded-lg px-2.5 py-1.5 mt-1">
-                    {payInfo.memo}
-                  </p>
-                )}
-              </div>
-
-              {/* QR / 통장 이미지 */}
-              {payInfo.qr_image_url && (
-                <button onClick={() => setViewQr(true)}
-                  className="flex-shrink-0 w-20 h-20 bg-white rounded-xl overflow-hidden flex items-center justify-center border border-gray-700 hover:border-green-500 transition">
-                  <img src={payInfo.qr_image_url} alt="QR" className="w-full h-full object-contain" />
-                </button>
+            {showPayInfo
+              ? <ChevronUp   size={14} style={{ color: '#5a7a5a' }} />
+              : <ChevronDown size={14} style={{ color: '#5a7a5a' }} />}
+          </button>
+          {showPayInfo && (
+            <div className="px-4 pb-4 space-y-3" style={{ borderTop: '1px solid rgba(34,197,94,0.1)' }}>
+              {canManage && (
+                <div className="flex justify-end pt-3">
+                  <button onClick={() => setShowPayEdit(true)}
+                    className="flex items-center gap-1 text-xs text-gray-400 hover:text-green-400 transition border border-gray-700 hover:border-green-700 rounded-full px-2.5 py-1">
+                    <Edit2 size={11} />{ko ? '편집' : 'Edit'}
+                  </button>
+                </div>
               )}
-            </div>
-          ) : (
-            <div className="flex flex-col items-center gap-2 py-3 text-center">
-              <QrCode size={28} className="text-gray-600" />
-              <p className="text-xs text-gray-500">
-                {ko ? '총무가 계좌 정보를 등록하면 여기에 표시됩니다.' : 'Secretary can register payment info here.'}
-              </p>
+
+              {payInfo ? (
+                <div className="flex gap-3">
+                  {/* 텍스트 정보 */}
+                  <div className="flex-1 space-y-2">
+                    {payInfo.bank_name && (
+                      <div>
+                        <p className="text-xs text-gray-500">{ko ? '은행/앱' : 'Bank'}</p>
+                        <p className="text-sm font-semibold text-white">{payInfo.bank_name}</p>
+                      </div>
+                    )}
+                    {payInfo.bank_account && (
+                      <div>
+                        <p className="text-xs text-gray-500">{ko ? '계좌번호' : 'Account No.'}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-mono text-white">{payInfo.bank_account}</p>
+                          <button onClick={copyAccount}
+                            className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg transition ${copied ? 'bg-green-800 text-green-300' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>
+                            {copied ? <Check size={11} /> : <Copy size={11} />}
+                            {copied ? (ko ? '복사됨' : 'Copied') : (ko ? '복사' : 'Copy')}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    {payInfo.bank_holder && (
+                      <div>
+                        <p className="text-xs text-gray-500">{ko ? '예금주' : 'Holder'}</p>
+                        <p className="text-sm text-white">{payInfo.bank_holder}</p>
+                      </div>
+                    )}
+                    {payInfo.memo && (
+                      <p className="text-xs text-yellow-400 bg-yellow-900/20 border border-yellow-800/40 rounded-lg px-2.5 py-1.5 mt-1">
+                        {payInfo.memo}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* QR / 통장 이미지 */}
+                  {payInfo.qr_image_url && (
+                    <button onClick={() => setViewQr(true)}
+                      className="flex-shrink-0 w-20 h-20 bg-white rounded-xl overflow-hidden flex items-center justify-center border border-gray-700 hover:border-green-500 transition">
+                      <img src={payInfo.qr_image_url} alt="QR" className="w-full h-full object-contain" />
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-2 py-3 text-center">
+                  <QrCode size={28} className="text-gray-600" />
+                  <p className="text-xs text-gray-500">
+                    {ko ? '총무가 계좌 정보를 등록하면 여기에 표시됩니다.' : 'Secretary can register payment info here.'}
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>
