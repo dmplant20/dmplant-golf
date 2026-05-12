@@ -498,21 +498,25 @@ export default function MembersPage() {
                     </div>
                     <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                       <RoleBadge role={m.role} ko={ko} active={hasLoggedIn} />
-                      {m.fee_type === 'annual'  && <span className="text-[11px] px-2 py-0.5 rounded-full bg-yellow-900/50 text-yellow-300">{ko ? '년회비' : 'Annual'}</span>}
-                      {m.fee_type === 'monthly' && <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-900/50  text-blue-300">{ko ? '월회비' : 'Monthly'}</span>}
+                      {/* 회비 정보 — 임원·고문 또는 본인 한정 (일반 회원에게는 다른 사람 회비 정보 노출 X) */}
+                      {(canViewFinance || m.user_id === user?.id) && (
+                        <>
+                          {m.fee_type === 'annual'  && <span className="text-[11px] px-2 py-0.5 rounded-full bg-yellow-900/50 text-yellow-300">{ko ? '년회비' : 'Annual'}</span>}
+                          {m.fee_type === 'monthly' && <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-900/50  text-blue-300">{ko ? '월회비' : 'Monthly'}</span>}
+                        </>
+                      )}
                       {m.club_handicap != null && <span className="text-[11px]" style={{ color: 'var(--gold-l)' }}>HC {m.club_handicap}</span>}
-                      {feeStatusByUser[m.user_id] && (
+                      {/* 납부완료·미납 뱃지 — 동일 권한 가드 (긍정/부정 정보 모두 본인·임원만) */}
+                      {(canViewFinance || m.user_id === user?.id) && feeStatusByUser[m.user_id] && (
                         feeStatusByUser[m.user_id].paid
                           ? <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-900/60 text-green-300">✓ {ko ? '납부완료' : 'Paid'}</span>
-                          : (canViewFinance || m.user_id === user?.id) && (
-                            feeStatusByUser[m.user_id].feeType === 'annual'
-                              ? <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-900/60 text-red-300">{ko ? '연회비 미납' : 'Annual unpaid'}</span>
-                              : <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-900/60 text-red-300">
-                                  {ko
-                                    ? `${feeStatusByUser[m.user_id].unpaidMonths.join(',')}월 미납`
-                                    : `Unpaid ${feeStatusByUser[m.user_id].unpaidMonths.join(',')}`}
-                                </span>
-                          )
+                          : feeStatusByUser[m.user_id].feeType === 'annual'
+                            ? <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-900/60 text-red-300">{ko ? '연회비 미납' : 'Annual unpaid'}</span>
+                            : <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-900/60 text-red-300">
+                                {ko
+                                  ? `${feeStatusByUser[m.user_id].unpaidMonths.join(',')}월 미납`
+                                  : `Unpaid ${feeStatusByUser[m.user_id].unpaidMonths.join(',')}`}
+                              </span>
                       )}
                     </div>
                   </div>
