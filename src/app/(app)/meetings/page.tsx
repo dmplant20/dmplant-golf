@@ -1283,7 +1283,22 @@ export default function MeetingsPage() {
                   className="text-xs flex items-center gap-1 px-2.5 py-1 rounded-lg transition active:scale-95"
                   style={{ background: 'rgba(201,168,76,0.08)', color: 'var(--gold-l)', border: '1px solid rgba(201,168,76,0.2)' }}>
                   <Users size={11} />
-                  {attending.length}{ko ? '명 참석' : ' attending'} · {absent.length}{ko ? '명 불참' : ' absent'}
+                  {(() => {
+                    const approvedGuestCount = guests.filter((g: any) => g.approved).length
+                    const totalAtt = attending.length + approvedGuestCount
+                    return (
+                      <>
+                        {ko ? `${totalAtt}명 참석` : `${totalAtt} attending`}
+                        {approvedGuestCount > 0 && (
+                          <span className="ml-0.5" style={{ color: '#c4b5fd' }}>
+                            {ko ? ` (회원 ${attending.length}·게스트 ${approvedGuestCount})` : ` (members ${attending.length} + guests ${approvedGuestCount})`}
+                          </span>
+                        )}
+                        {' · '}
+                        {ko ? `${absent.length}명 불참` : `${absent.length} absent`}
+                      </>
+                    )
+                  })()}
                 </button>
               </div>
 
@@ -1360,7 +1375,14 @@ export default function MeetingsPage() {
                   <div>
                     <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
                       <p className="text-xs font-semibold flex items-center gap-1" style={{ color: '#4ade80' }}>
-                        <Check size={11} />{ko ? `참석 (${attending.length}명)` : `Attending (${attending.length})`}
+                        <Check size={11} />
+                        {(() => {
+                          const gc = guests.filter((g: any) => g.approved).length
+                          const total = attending.length + gc
+                          return ko
+                            ? `참석 (${total}명${gc>0 ? ` = 회원 ${attending.length} + 게스트 ${gc}` : ''})`
+                            : `Attending (${total}${gc>0 ? ` = ${attending.length} + ${gc} G` : ''})`
+                        })()}
                       </p>
                       <div className="flex items-center gap-1.5">
                         {canManage && (
