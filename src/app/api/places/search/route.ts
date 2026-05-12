@@ -33,11 +33,9 @@ export async function GET(req: NextRequest) {
         `&access_token=${mapboxToken}`
       const res  = await fetch(url, { cache: 'no-store' })
       const data = await res.json()
-      mapboxDebug = {
-        tokenConfigured: true,
-        status: String(res.status),
-        results: data.features?.length ?? 0,
-      }
+      // 기존 tokenLength/tokenPrefix 유지하면서 응답 정보 추가
+      mapboxDebug.status = String(res.status)
+      mapboxDebug.results = data.features?.length ?? 0
       if (res.ok && data.features?.length) {
         const results = data.features.map((f: any) => ({
           place_id: f.id,
@@ -73,12 +71,10 @@ export async function GET(req: NextRequest) {
       const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${searchQuery}&language=ko&key=${googleKey}`
       const res  = await fetch(url, { cache: 'no-store' })
       const data = await res.json()
-      googleDebug = {
-        keyConfigured: true,
-        status: data.status,
-        error_message: data.error_message,
-        results: data.results?.length ?? 0,
-      }
+      // 기존 keyLength/keyPrefix 유지하면서 응답 정보만 추가
+      googleDebug.status = data.status
+      googleDebug.error_message = data.error_message
+      googleDebug.results = data.results?.length ?? 0
 
       if (data.status === 'OK') {
         const results = (data.results ?? []).slice(0, 8).map((p: any) => ({
@@ -94,7 +90,8 @@ export async function GET(req: NextRequest) {
       }
       console.warn('[places] Google fallback to Nominatim:', data.status, data.error_message)
     } catch (e: any) {
-      googleDebug = { keyConfigured: true, status: 'fetch_error', error_message: e?.message }
+      googleDebug.status = 'fetch_error'
+      googleDebug.error_message = e?.message
       console.warn('[places] Google fetch error, falling back to Nominatim:', e?.message)
     }
   }
