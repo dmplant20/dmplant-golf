@@ -61,8 +61,10 @@ const MEMBERS = [
   { name: '김경철',  en: 'Kim kyeong cheol',   email: null,                            phone: null,             role: 'member',   yellow: true  },
 ]
 
+// 모든 신규 회원에 동일한 임시 비밀번호 사용 — 첫 로그인 시 본인이 변경
+const DEFAULT_TEMP_PASSWORD = '12345678'
 function tempPassword() {
-  return 'Golf@' + Math.floor(1000 + Math.random() * 9000)
+  return DEFAULT_TEMP_PASSWORD
 }
 function placeholderEmail(en) {
   // 영문명에서 안전한 슬러그 생성
