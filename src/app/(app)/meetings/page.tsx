@@ -15,6 +15,7 @@ import CourseSearchInput from '@/components/ui/CourseSearchInput'
 import PlaceSearchInput  from '@/components/ui/PlaceSearchInput'
 import MapEmbed          from '@/components/ui/MapEmbed'
 import { isSuperAdmin } from '@/lib/superAdmin'
+import { romanizeKoreanName, hasHangul } from '@/lib/hangulRomanize'
 
 // ── push helpers ──────────────────────────────────────────────────────────
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
@@ -727,12 +728,16 @@ export default function MeetingsPage() {
 
   // ── 영문 명단 — 시간/코스 포함하여 미리보기 모달 ──────────────────
   // 조 편성이 있으면 조별로 그룹화, 없으면 전체 명단 단순 번호 매김
+  // ❗ 강제 영문: 영문 이름이 비어있으면 자동 로마자 변환 (한글로는 절대 안 나감)
   function openRosterPreview() {
     const missing: string[] = []
     const enOf = (ko: string, en: string | null | undefined) => {
       const e = (en ?? '').trim()
-      if (!e) { missing.push(ko || '?'); return ko }
-      return e
+      if (e && !hasHangul(e)) return e            // 영문 있음 → 그대로
+      // 영문 누락 (또는 영문 필드에 한글) → 한글 이름 로마자 변환
+      missing.push(ko || e || '?')
+      const auto = romanizeKoreanName(ko || e || '')
+      return auto || (ko || e || '')
     }
     // 조 편성이 있으면 (assign 에 값이 있고 그룹별 분리 가능)
     const numsInAssign = [...new Set(Object.values(assign) as number[])].sort()
@@ -2119,16 +2124,53 @@ export default function MeetingsPage() {
                 <div className="rounded-xl px-3 py-2.5"
                   style={{ background: 'rgba(251,191,36,0.10)', border: '1px solid rgba(251,191,36,0.35)' }}>
                   <p className="text-xs font-bold mb-1" style={{ color: '#fbbf24' }}>
-                    ⚠️ {ko ? `영문 이름 누락 ${rosterMissing.length}명` : `${rosterMissing.length} missing English name`}
+                    ⚠️ {ko ? `영문 이름 자동 변환 ${rosterMissing.length}명` : `${rosterMissing.length} auto-romanized`}
                   </p>
                   <p className="text-[11px]" style={{ color: '#fcd34d' }}>
                     {rosterMissing.join(', ')}
                   </p>
                   <p className="text-[10px] mt-1" style={{ color: '#fcd34d' }}>
-                    💡 {ko ? '아래 명단을 직접 수정하거나 회원관리에서 영문 이름을 추가하세요' : 'Edit below or add English names in Members'}
+                    💡 {ko ? '자동 변환된 표기가 어색하면 아래에서 직접 고치세요' : 'Tweak the auto-romanization below if needed'}
                   </p>
                 </div>
               )}
+
+              {/* 한글 잔여 — 자동 변환 후에도 한글이 남아있다면 강조 표시 */}
+              {(() => {
+                const linesWithHangul = rosterText.split('\n')
+                  .map((l, i) => ({ i, l }))
+                  .filter(x => hasHangul(x.l))
+                if (linesWithHangul.length === 0) return null
+                return (
+                  <div className="rounded-xl px-3 py-2.5"
+                    style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.5)' }}>
+                    <p className="text-xs font-bold mb-1" style={{ color: '#fca5a5' }}>
+                      🛑 {ko ? '아직 한글이 남아있습니다 — 골프장 전송 전 영문으로 고쳐주세요' : 'Korean still present — fix before sending'}
+                    </p>
+                    <div className="space-y-0.5">
+                      {linesWithHangul.map(x => (
+                        <p key={x.i} className="text-[10px] font-mono" style={{ color: '#fecaca' }}>
+                          L{x.i + 1}: {x.l}
+                        </p>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => {
+                        const fixed = rosterText.split('\n').map(l => {
+                          if (!hasHangul(l)) return l
+                          // 한글이 포함된 토큰만 변환 (번호·기호는 유지)
+                          return l.replace(/[가-힣]+/g, m => romanizeKoreanName(m))
+                        }).join('\n')
+                        setRosterText(fixed)
+                      }}
+                      className="mt-1.5 text-[11px] font-bold px-3 py-1 rounded-md active:scale-95"
+                      style={{ background: 'rgba(239,68,68,0.25)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.6)' }}>
+                      🔁 {ko ? '한글 자동 변환 다시 실행' : 'Re-romanize Korean'}
+                    </button>
+                  </div>
+                )
+              })()}
+
               <p className="text-[11px]" style={{ color: '#94a3b8' }}>
                 {ko ? '아래 내용을 확인·수정 후 복사 → 골프장에 전달' : 'Review and copy → send to course'}
               </p>
