@@ -47,22 +47,41 @@ export async function GET(req: NextRequest) {
   }
 
   // ── 2. OpenStreetMap Nominatim (무료, API 키 불필요) ──────────────────
-  // 1차: near 지역 우선 검색 → 0건이면 2차: 전 세계 검색 (한식 등 글로벌 매칭)
-  async function nominatim(query: string) {
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=8&addressdetails=1&accept-language=ko`
+  // 1차: 베트남 country 제한 + viewbox(호치민) 우선
+  // 2차: 0건이면 country 제한 풀어서 전 세계 검색
+  async function nominatim(query: string, opts: { vnOnly?: boolean } = {}) {
+    // 호치민시 중심 viewbox (lon1,lat1,lon2,lat2) — Bounded=1 로 강제
+    const params = new URLSearchParams({
+      q: query,
+      format: 'json',
+      limit: '8',
+      addressdetails: '1',
+      'accept-language': 'vi,ko,en',
+    })
+    if (opts.vnOnly) {
+      params.set('countrycodes', 'vn')
+      params.set('viewbox', '106.4,11.2,107.1,10.5')
+      params.set('bounded', '1')
+    }
+    const url = `https://nominatim.openstreetmap.org/search?${params.toString()}`
     const res = await fetch(url, {
       cache: 'no-store',
       headers: {
         'User-Agent': 'ISGolf/1.0 (golf club management; contact admin@isgolf.app)',
-        'Accept-Language': 'ko,en',
+        'Accept-Language': 'vi,ko,en',
       },
     })
     return (await res.json()) as any[]
   }
 
   try {
-    let data = await nominatim(`${q} ${near}`)
-    // near 지역에 없으면 전 세계 검색으로 fallback
+    // 1차: 베트남 + 호치민 우선
+    let data = await nominatim(q, { vnOnly: true })
+    // 2차: 베트남에 없으면 전체 검색 (한국 한식당 등도 매칭)
+    if (data.length === 0) {
+      data = await nominatim(`${q} ${near}`)
+    }
+    // 3차: 그래도 없으면 전 세계
     if (data.length === 0) {
       data = await nominatim(q)
     }
