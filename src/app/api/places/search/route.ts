@@ -11,9 +11,13 @@ export async function GET(req: NextRequest) {
   if (!q || q.length < 1) return NextResponse.json({ results: [] })
 
   // ── 1. Mapbox Geocoding API ───────────────────────────────────────────
-  const mapboxToken = process.env.MAPBOX_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_TOKEN
-  let mapboxDebug: { tokenConfigured: boolean; status?: string; error?: string; results?: number } = {
+  // 환경변수 값 정리: 줄바꿈·공백·따옴표 제거 (Vercel 붙여넣기 시 끼는 문자 방지)
+  const rawToken = process.env.MAPBOX_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ''
+  const mapboxToken = rawToken.trim().replace(/[\r\n\s]+/g, '').replace(/^["']|["']$/g, '')
+  let mapboxDebug: { tokenConfigured: boolean; tokenLength?: number; tokenPrefix?: string; status?: string; error?: string; results?: number } = {
     tokenConfigured: !!mapboxToken,
+    tokenLength: mapboxToken.length,
+    tokenPrefix: mapboxToken.slice(0, 8),
   }
   if (mapboxToken) {
     try {
