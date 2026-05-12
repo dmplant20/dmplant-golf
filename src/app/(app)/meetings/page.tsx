@@ -549,21 +549,38 @@ export default function MeetingsPage() {
   }
 
   // ── Guest 추천 ────────────────────────────────────────────────────────
+  // ❗ 여러 명을 동시에 입력해도 자동으로 분리해서 1인 1행으로 등록 (조 편성·영문 명단에서 개별 처리되도록)
   async function recommendGuest() {
     if (!guestForm.full_name.trim() || !meeting || !currentClubId || !user) return
     setGuestSaving(true); setGuestError(null)
     const supabase = createClient()
     const hcNum = guestForm.handicap.trim() ? parseInt(guestForm.handicap, 10) : null
-    const { error } = await supabase.from('meeting_guests').insert({
+
+    // 구분자: 쉼표 / 슬래시 / 앰퍼샌드 / 미들닷 / 한국 / 일본 구두점
+    const SEP = /\s*[,/&·、・]+\s*/
+    const koNames = guestForm.full_name.split(SEP).map(s => s.trim()).filter(Boolean)
+    const enNamesRaw = guestForm.full_name_en.split(SEP).map(s => s.trim()).filter(Boolean)
+    if (koNames.length === 0) { setGuestSaving(false); return }
+
+    // 영문이름 매칭 — 동수면 1:1, 아니면 그 외는 null (사용자 직접 입력 유도)
+    function enFor(i: number): string | null {
+      if (enNamesRaw.length === koNames.length) return enNamesRaw[i] || null
+      if (koNames.length === 1 && enNamesRaw.length > 0) return enNamesRaw.join(' ') || null
+      return null
+    }
+
+    const rows = koNames.map((name, i) => ({
       club_id: currentClubId,
       year: meeting.year,
       month: meeting.month,
-      full_name: guestForm.full_name.trim(),
-      full_name_en: guestForm.full_name_en.trim() || null,
+      full_name: name,
+      full_name_en: enFor(i),
       handicap: Number.isFinite(hcNum as number) ? hcNum : null,
       notes: guestForm.notes.trim() || null,
       recommended_by: user.id,
-    })
+    }))
+
+    const { error } = await supabase.from('meeting_guests').insert(rows)
     setGuestSaving(false)
     if (error) { setGuestError(error.message); return }
     setShowGuestModal(false)
