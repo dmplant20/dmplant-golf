@@ -465,7 +465,11 @@ export default function MeetingsPage() {
 
   // 회장·총무 대리 응답 — 타겟 회원의 RSVP 를 강제로 설정
   async function proxyRsvp(targetUserId: string, status: 'attending' | 'absent') {
-    if (!meeting || !user || !canManage) return
+    if (!meeting || !user || !canManage) {
+      console.warn('[proxy-rsvp] blocked', { hasMeeting: !!meeting, hasUser: !!user, canManage })
+      return
+    }
+    console.log('[proxy-rsvp] start', { targetUserId, status, year: meeting.year, month: meeting.month })
     setProxySaving(true)
     // Optimistic update
     setAttendances(prev => {
@@ -473,19 +477,27 @@ export default function MeetingsPage() {
       const tgt = clubMembers.find(m => m.user_id === targetUserId)
       return [...without, { user_id: targetUserId, status, users: tgt?.users }]
     })
-    const res = await fetch('/api/meetings/rsvp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        club_id: currentClubId, year: meeting.year, month: meeting.month,
-        status, target_user_id: targetUserId,
+    let resBody = ''
+    let ok = false
+    try {
+      const res = await fetch('/api/meetings/rsvp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          club_id: currentClubId, year: meeting.year, month: meeting.month,
+          status, target_user_id: targetUserId,
+        })
       })
-    })
+      ok = res.ok
+      resBody = await res.text()
+      console.log('[proxy-rsvp] response', { status: res.status, body: resBody })
+    } catch (e: any) {
+      console.error('[proxy-rsvp] network error', e)
+    }
     setProxySaving(false)
-    if (!res.ok) {
-      setRsvpError(ko ? '대리 응답 저장 실패' : 'Proxy RSVP failed')
-      setTimeout(() => setRsvpError(null), 4000)
-      await loadRsvp(meeting.year, meeting.month)
+    if (!ok) {
+      setRsvpError(ko ? `대리 응답 저장 실패: ${resBody}` : `Proxy RSVP failed: ${resBody}`)
+      setTimeout(() => setRsvpError(null), 6000)
     }
     await loadRsvp(meeting.year, meeting.month)
     setProxyTarget(null)
@@ -2306,8 +2318,8 @@ export default function MeetingsPage() {
         )}
       </BottomSheet>
 
-      {/* ━━ 골프장 응답 붙여넣기 모달 (회장·총무) ━━━━━━━━━━━━━━━━━━━━━━ */}
-      {showPasteModal && canManage && (
+      {/* ━━ 골프장 응답 붙여넣기 모달 (회장·총무) — createPortal ━━━━━━━━━━ */}
+      {showPasteModal && canManage && typeof window !== 'undefined' && createPortal(
         <div className="fixed inset-0 z-[9999] flex items-end justify-center"
           style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
           onClick={() => setShowPasteModal(false)}>
@@ -2404,11 +2416,12 @@ export default function MeetingsPage() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* ━━ 대리 응답 시트 (회장·총무 전용) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-      {proxyTarget && canManage && (() => {
+      {/* ━━ 대리 응답 시트 (회장·총무 전용) — createPortal 로 body 직속 렌더 ━ */}
+      {proxyTarget && canManage && typeof window !== 'undefined' && createPortal((() => {
         const tName = memberName(proxyTarget)
         const cur = attendances.find(a => a.user_id === proxyTarget.user_id)?.status
         return (
@@ -2467,7 +2480,7 @@ export default function MeetingsPage() {
             </div>
           </div>
         )
-      })()}
+      })(), document.body)}
 
       {/* ── Annual Handicap Analysis ── */}
       <BottomSheet
