@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores/authStore'
 import {
@@ -52,6 +53,13 @@ export default function FinancePage() {
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null)
   // 거래 상세 팝업 — 클릭한 거래 객체
   const [detailTxn, setDetailTxn] = useState<any | null>(null)
+  // 개인 회비 내역 모달 — 납부완료 칩 클릭 시
+  const [feeHistoryMember,  setFeeHistoryMember]  = useState<any | null>(null)
+  const [feeHistoryTxns,    setFeeHistoryTxns]    = useState<any[]>([])
+  const [feeHistoryLoading, setFeeHistoryLoading] = useState(false)
+  const [addPayForm,        setAddPayForm]        = useState({ amount:'', date: new Date().toISOString().split('T')[0], note:'' })
+  const [addPaySaving,      setAddPaySaving]      = useState(false)
+  const [addPayError,       setAddPayError]       = useState<string | null>(null)
   // 월례회 패턴/예외 — 회비 미납 계산의 "월례회 통과" 기준에 사용
   const [meetingPattern,  setMeetingPattern]  = useState<any | null>(null)
   const [meetingOverrides, setMeetingOverrides] = useState<any[]>([])
@@ -714,6 +722,79 @@ export default function FinancePage() {
     return match ? match[1] : null
   }
 
+  // ── 개인 회비 내역 로드 (강한 체인: 항상 DB 직접 조회) ───────────────
+  async function loadFeeHistory(memberRow: any) {
+    if (!currentClubId || !memberRow?.user_id) return
+    setFeeHistoryLoading(true)
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('finance_transactions')
+      .select('id, transaction_date, amount, description, type, recorded_by, recorder:users!recorded_by(full_name, full_name_en)')
+      .eq('club_id', currentClubId)
+      .eq('member_id', memberRow.user_id)
+      .eq('type', 'fee')
+      .order('transaction_date', { ascending: false })
+    if (error) console.warn('[fee history]', error)
+    setFeeHistoryTxns(data ?? [])
+    setFeeHistoryLoading(false)
+  }
+  function openFeeHistory(m: any) {
+    setFeeHistoryMember(m)
+    setAddPayForm({ amount: '', date: new Date().toISOString().split('T')[0], note: '' })
+    setAddPayError(null)
+    loadFeeHistory(m)
+  }
+
+  // ── 회비 추가 등록 — 다중 트리 검증 + 재조회 체인 ────────────────────
+  async function addFeePaymentForMember() {
+    if (!feeHistoryMember || !currentClubId) return
+    setAddPayError(null)
+    const amt = parseInt((addPayForm.amount || '0').replace(/[^\d]/g, '')) || 0
+    if (amt <= 0) { setAddPayError(ko ? '금액을 입력하세요' : 'Enter amount'); return }
+    if (!addPayForm.date) { setAddPayError(ko ? '날짜를 선택하세요' : 'Pick a date'); return }
+
+    const memberName = lang === 'ko'
+      ? feeHistoryMember.users?.full_name
+      : (feeHistoryMember.users?.full_name_en || feeHistoryMember.users?.full_name)
+    const month = Number(addPayForm.date.slice(5, 7))
+    const description = (addPayForm.note?.trim())
+      || (feeHistoryMember.fee_type === 'annual'
+            ? `${memberName} 회비 납부 (년납)`
+            : `${memberName} ${month}월 회비 납부`)
+
+    setAddPaySaving(true)
+    const supabase = createClient()
+    const { data: { user: authUser } } = await supabase.auth.getUser()
+    const { error } = await supabase.from('finance_transactions').insert({
+      club_id:          currentClubId,
+      type:             'fee',
+      amount:           amt,
+      currency,
+      description,
+      transaction_date: addPayForm.date,
+      recorded_by:      authUser?.id ?? null,
+      member_id:        feeHistoryMember.user_id,
+    })
+    setAddPaySaving(false)
+    if (error) { setAddPayError(ko ? `저장 실패: ${error.message}` : `Save failed: ${error.message}`); return }
+    // 강한 체인: 폼 리셋 → 개인 내역 재조회 → 전체 재무 재조회
+    setAddPayForm({ amount:'', date: new Date().toISOString().split('T')[0], note:'' })
+    await loadFeeHistory(feeHistoryMember)
+    await load()
+  }
+
+  // ── 회비 거래 삭제 (총무 전용) ────────────────────────────────────────
+  async function deleteFeeTxn(txnId: string) {
+    if (!currentClubId || !canManage) return
+    if (!confirm(ko ? '이 회비 거래를 삭제하시겠습니까?' : 'Delete this fee transaction?')) return
+    const supabase = createClient()
+    const { error } = await supabase.from('finance_transactions')
+      .delete().eq('id', txnId).eq('type', 'fee').eq('club_id', currentClubId)
+    if (error) { alert(error.message); return }
+    if (feeHistoryMember) await loadFeeHistory(feeHistoryMember)
+    await load()
+  }
+
   // ── render ─────────────────────────────────────────────────────────────
   // 게스트는 재무 정보 열람 불가 — 친화적 안내 화면만 노출
   if (isGuest) {
@@ -885,23 +966,38 @@ export default function FinancePage() {
                   return (
                     <>
                       <div className="flex flex-wrap gap-1.5">
-                        {visible.map((m: any) => (
-                          <span key={m.user_id}
-                            className="inline-flex flex-col items-start px-2.5 py-1.5 rounded-xl text-xs font-medium"
-                            style={{ background: 'rgba(22,163,74,0.15)', border: '1px solid rgba(34,197,94,0.3)', color: '#4ade80' }}>
-                            <span>
-                              {lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}
-                              {!canViewFinance && m.user_id === user?.id && (
-                                <span className="ml-1 text-[9px]" style={{ color: '#86efac' }}>({ko ? '본인' : 'You'})</span>
-                              )}
-                            </span>
-                            {m.amount ? (
-                              <span className="text-[10px] mt-0.5" style={{ color: '#86efac' }}>
-                                {sym}{Number(m.amount).toLocaleString()}{m.date ? ` · ${m.date.slice(5)}` : ''}
+                        {visible.map((m: any) => {
+                          const canOpen = canViewFinance || m.user_id === user?.id
+                          const ChipInner = (
+                            <>
+                              <span>
+                                {lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}
+                                {!canViewFinance && m.user_id === user?.id && (
+                                  <span className="ml-1 text-[9px]" style={{ color: '#86efac' }}>({ko ? '본인' : 'You'})</span>
+                                )}
                               </span>
-                            ) : null}
-                          </span>
-                        ))}
+                              {m.amount ? (
+                                <span className="text-[10px] mt-0.5" style={{ color: '#86efac' }}>
+                                  {sym}{Number(m.amount).toLocaleString()}{m.date ? ` · ${m.date.slice(5)}` : ''}
+                                </span>
+                              ) : null}
+                            </>
+                          )
+                          return canOpen ? (
+                            <button key={m.user_id} type="button"
+                              onClick={() => openFeeHistory(m)}
+                              className="inline-flex flex-col items-start px-2.5 py-1.5 rounded-xl text-xs font-medium transition active:scale-95 hover:opacity-80"
+                              style={{ background: 'rgba(22,163,74,0.15)', border: '1px solid rgba(34,197,94,0.3)', color: '#4ade80' }}>
+                              {ChipInner}
+                            </button>
+                          ) : (
+                            <span key={m.user_id}
+                              className="inline-flex flex-col items-start px-2.5 py-1.5 rounded-xl text-xs font-medium"
+                              style={{ background: 'rgba(22,163,74,0.15)', border: '1px solid rgba(34,197,94,0.3)', color: '#4ade80' }}>
+                              {ChipInner}
+                            </span>
+                          )
+                        })}
                       </div>
                       {!canViewFinance && (
                         <p className="text-[10px] mt-1.5" style={{ color: '#9aae9a' }}>
@@ -1900,6 +1996,192 @@ export default function FinancePage() {
           </div>
         </div>
       )}
+
+      {/* ━━ 개인 회비 내역 모달 (회장·총무·감사·고문 + 본인) ━━━━━━━━━━━━━ */}
+      {feeHistoryMember && typeof window !== 'undefined' && createPortal((() => {
+        const m = feeHistoryMember
+        const memberName = lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)
+        const totalPaid = feeHistoryTxns.reduce((s, t) => s + Number(t.amount ?? 0), 0)
+        const info = memberUnpaidInfo(m)
+        const enteredAmt = parseInt((addPayForm.amount || '0').replace(/[^\d]/g,'')) || 0
+        const fee = m.fee_type as 'annual'|'monthly'|null
+        return (
+          <div className="fixed inset-0 z-[9999] flex items-end justify-center"
+            style={{ background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(6px)' }}
+            onClick={() => setFeeHistoryMember(null)}>
+            <div className="w-full max-w-md rounded-t-2xl overflow-hidden flex flex-col"
+              style={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderBottom: 'none', maxHeight: '92dvh' }}
+              onClick={e => e.stopPropagation()}>
+
+              <div className="flex items-center justify-between px-5 py-3 flex-shrink-0"
+                style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <Wallet size={16} className="text-green-400 flex-shrink-0" />
+                  <h3 className="text-base font-bold text-white truncate">
+                    {memberName} {ko ? '회비 내역' : 'Fee History'}
+                  </h3>
+                </div>
+                <button onClick={() => setFeeHistoryMember(null)}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 flex-shrink-0"
+                  style={{ background: 'rgba(255,255,255,0.05)' }}>
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-5 py-3 space-y-3 min-h-0">
+                {/* 요약 카드 */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-xl p-3" style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)' }}>
+                    <p className="text-[10px]" style={{ color: '#86efac' }}>{ko ? '올해 총 납부' : 'Paid YTD'}</p>
+                    <p className="text-base font-bold text-green-400 mt-0.5">{sym}{totalPaid.toLocaleString()}</p>
+                  </div>
+                  <div className="rounded-xl p-3" style={{ background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.25)' }}>
+                    <p className="text-[10px]" style={{ color: '#93c5fd' }}>{ko ? '회비 종류' : 'Fee Type'}</p>
+                    <p className="text-sm font-bold text-blue-300 mt-0.5">
+                      {fee === 'annual' ? (ko ? '년회비' : 'Annual')
+                       : fee === 'monthly' ? (ko ? '월회비' : 'Monthly')
+                       : (ko ? '면제' : 'Exempt')}
+                      {fee === 'monthly' && clubFees.monthly > 0 && (
+                        <span className="text-[10px] font-normal ml-1" style={{ color: '#94a3b8' }}>
+                          {sym}{clubFees.monthly.toLocaleString()}/{ko ? '월' : 'mo'}
+                        </span>
+                      )}
+                      {fee === 'annual' && clubFees.annual > 0 && (
+                        <span className="text-[10px] font-normal ml-1" style={{ color: '#94a3b8' }}>
+                          {sym}{clubFees.annual.toLocaleString()}/{ko ? '년' : 'yr'}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                {fee === 'monthly' && info.months.length > 0 && (
+                  <div className="rounded-xl px-3 py-2" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)' }}>
+                    <p className="text-[11px] font-bold" style={{ color: '#fca5a5' }}>
+                      ❌ {ko ? '미납' : 'Unpaid'} :
+                      <span className="font-mono ml-1">{info.months.map(mm => `${mm}${ko ? '월' : ''}`).join(', ')}</span>
+                      <span className="ml-1.5">({sym}{info.expected.toLocaleString()})</span>
+                    </p>
+                  </div>
+                )}
+
+                {/* 거래 내역 */}
+                <div>
+                  <p className="text-[11px] font-bold mb-1.5" style={{ color: '#9ca3af' }}>
+                    {ko ? `납부 거래 (${feeHistoryTxns.length}건)` : `Transactions (${feeHistoryTxns.length})`}
+                  </p>
+                  {feeHistoryLoading ? (
+                    <p className="text-xs text-center py-4" style={{ color: '#94a3b8' }}>{ko ? '불러오는 중…' : 'Loading…'}</p>
+                  ) : feeHistoryTxns.length === 0 ? (
+                    <p className="text-xs text-center py-4" style={{ color: '#94a3b8' }}>{ko ? '아직 납부 기록이 없습니다.' : 'No payments yet.'}</p>
+                  ) : (
+                    <div className="rounded-xl overflow-hidden"
+                      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                      {feeHistoryTxns.map((t: any, i: number) => (
+                        <div key={t.id}
+                          className="px-3 py-2 flex items-center gap-2"
+                          style={{ borderTop: i > 0 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs text-white truncate">{t.description}</p>
+                            <p className="text-[10px]" style={{ color: '#94a3b8' }}>
+                              {t.transaction_date}
+                              {t.recorder?.full_name && <> · {ko ? '기록' : 'rec'}: {t.recorder.full_name}</>}
+                            </p>
+                          </div>
+                          <span className="text-xs font-bold text-green-400 flex-shrink-0">
+                            +{sym}{Number(t.amount).toLocaleString()}
+                          </span>
+                          {canManage && (
+                            <button onClick={() => deleteFeeTxn(t.id)}
+                              title={ko ? '삭제' : 'Delete'}
+                              className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                              style={{ background: 'rgba(239,68,68,0.10)', color: '#fca5a5' }}>
+                              <Trash2 size={12} />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 납부 추가 폼 — canManage (총무) 전용 */}
+                {canManage && (
+                  <div className="rounded-xl p-3 space-y-2.5"
+                    style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.25)' }}>
+                    <p className="text-xs font-bold flex items-center gap-1.5" style={{ color: '#86efac' }}>
+                      <Plus size={12} />{ko ? '회비 추가 납부' : 'Add Payment'}
+                    </p>
+                    {(clubFees.monthly > 0 || clubFees.annual > 0) && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {clubFees.monthly > 0 && [1,2,3,6].map(n => (
+                          <button key={`m${n}`} type="button"
+                            onClick={() => setAddPayForm(f => ({...f, amount: String(clubFees.monthly * n)}))}
+                            className="text-[10px] font-bold px-2 py-1 rounded-md active:scale-95"
+                            style={{ background: 'rgba(96,165,250,0.15)', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.35)' }}>
+                            {n}{ko ? '개월' : 'mo'}
+                          </button>
+                        ))}
+                        {clubFees.annual > 0 && (
+                          <button type="button"
+                            onClick={() => setAddPayForm(f => ({...f, amount: String(clubFees.annual)}))}
+                            className="text-[10px] font-bold px-2 py-1 rounded-md active:scale-95"
+                            style={{ background: 'rgba(251,191,36,0.15)', color: '#fcd34d', border: '1px solid rgba(251,191,36,0.35)' }}>
+                            {ko ? '년회비' : 'Annual'}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px]" style={{ color: '#94a3b8' }}>{ko ? '금액' : 'Amount'} ({sym})</label>
+                        <input type="text" inputMode="numeric"
+                          value={addPayForm.amount ? Number((addPayForm.amount || '').replace(/[^\d]/g,'') || '0').toLocaleString() : ''}
+                          onChange={e => setAddPayForm(f => ({...f, amount: e.target.value.replace(/[^\d]/g,'')}))}
+                          placeholder="0"
+                          className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-2 text-white text-sm font-bold focus:outline-none focus:border-green-500" />
+                      </div>
+                      <div>
+                        <label className="text-[10px]" style={{ color: '#94a3b8' }}>{ko ? '날짜' : 'Date'}</label>
+                        <input type="date"
+                          value={addPayForm.date}
+                          onChange={e => setAddPayForm(f => ({...f, date: e.target.value}))}
+                          className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-2 text-white text-xs focus:outline-none focus:border-green-500" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[10px]" style={{ color: '#94a3b8' }}>{ko ? '메모 (선택)' : 'Note (optional)'}</label>
+                      <input type="text"
+                        value={addPayForm.note}
+                        onChange={e => setAddPayForm(f => ({...f, note: e.target.value}))}
+                        placeholder={fee === 'monthly' ? `${memberName} ${Number(addPayForm.date.slice(5,7))}월 회비 납부` : ''}
+                        className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-2 text-white text-xs focus:outline-none focus:border-green-500" />
+                    </div>
+                    {addPayError && (
+                      <p className="text-[11px]" style={{ color: '#fca5a5' }}>{addPayError}</p>
+                    )}
+                    <button onClick={addFeePaymentForMember}
+                      disabled={addPaySaving || enteredAmt <= 0}
+                      className="w-full py-2 rounded-lg text-xs font-bold disabled:opacity-50 active:scale-95"
+                      style={{ background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.5)', color: '#86efac' }}>
+                      {addPaySaving ? '...' : (ko ? `+ ${sym}${enteredAmt.toLocaleString()} 등록` : `+ Add ${sym}${enteredAmt.toLocaleString()}`)}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="px-5 py-3 flex-shrink-0"
+                style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
+                <button onClick={() => setFeeHistoryMember(null)}
+                  className="w-full py-2.5 rounded-xl text-sm"
+                  style={{ background: 'rgba(255,255,255,0.05)', color: '#9ca3af' }}>
+                  {ko ? '닫기' : 'Close'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })(), document.body)}
 
       {/* ━━ 이중 확인 삭제 모달 — 실수 방지 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
       {confirmDelete && (
