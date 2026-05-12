@@ -34,8 +34,8 @@
 
   /* ── Text — warm cream ───────────────────────────────── */
   --text:     #f2ede6;   /* warm cream white                */
-  --text-2:   #9a938a;   /* warm mid-gray                   */
-  --text-3:   #5c5650;   /* muted / placeholder             */
+  --text-2:   #a8a097;   /* warm mid-gray  (was #9a938a — bumped for dark-bg legibility) */
+  --text-3:   #7a7268;   /* muted          (was #5c5650 — was nearly invisible)         */
 
   /* ── Misc ────────────────────────────────────────────── */
   --radius:   14px;

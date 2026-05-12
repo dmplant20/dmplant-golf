@@ -863,12 +863,12 @@ export default function FinancePage() {
           <span className="text-sm font-semibold text-white flex-1 text-left">
             {ko ? `회비 납부 현황 (${currentYear}년)` : `Fee Status (${currentYear})`}
           </span>
-          <span className="text-xs mr-1" style={{ color: '#5a7a5a' }}>
+          <span className="text-xs mr-1" style={{ color: '#9aae9a' }}>
             {ko
               ? `납부 ${paidCount}명 / 미납 ${unpaidCount}명`
               : `Paid ${paidCount} / Unpaid ${unpaidCount}`}
           </span>
-          {showFeeStatus ? <ChevronUp size={14} style={{ color: '#5a7a5a' }} /> : <ChevronDown size={14} style={{ color: '#5a7a5a' }} />}
+          {showFeeStatus ? <ChevronUp size={14} style={{ color: '#9aae9a' }} /> : <ChevronDown size={14} style={{ color: '#9aae9a' }} />}
         </button>
         {showFeeStatus && (
           <div className="px-4 pb-4 space-y-3" style={{ borderTop: '1px solid rgba(34,197,94,0.1)' }}>
@@ -904,7 +904,7 @@ export default function FinancePage() {
                         ))}
                       </div>
                       {!canViewFinance && (
-                        <p className="text-[10px] mt-1.5" style={{ color: '#5a7a5a' }}>
+                        <p className="text-[10px] mt-1.5" style={{ color: '#9aae9a' }}>
                           {ko
                             ? `전체 납부자 명단은 회장·총무·감사·고문만 볼 수 있습니다.`
                             : `Only president/secretary/auditor/advisor can see the full paid list.`}
@@ -995,7 +995,7 @@ export default function FinancePage() {
                         ))}
                       </div>
                       {!canViewFinance && (
-                        <p className="text-[10px] mt-1.5" style={{ color: '#5a7a5a' }}>
+                        <p className="text-[10px] mt-1.5" style={{ color: '#9aae9a' }}>
                           {ko
                             ? `전체 미납자 명단은 회장·총무·감사·고문만 볼 수 있습니다.`
                             : `Only president/secretary/auditor/advisor can see the full unpaid list.`}
@@ -1007,7 +1007,7 @@ export default function FinancePage() {
               </div>
             )}
             {paidMembers.length === 0 && unpaidMembers.length === 0 && (
-              <p className="text-xs text-gray-600 mt-3 text-center">{ko ? '회원 데이터가 없습니다' : 'No member data'}</p>
+              <p className="text-xs text-gray-400 mt-3 text-center">{ko ? '회원 데이터가 없습니다' : 'No member data'}</p>
             )}
           </div>
         )}
@@ -1023,13 +1023,13 @@ export default function FinancePage() {
             <Building2 size={16} className="text-blue-400" />
             <p className="text-sm font-semibold text-white flex-1 text-left">{ko ? '회비 납부 계좌' : 'Payment Account'}</p>
             {payInfo?.bank_name && (
-              <span className="text-xs mr-1 truncate max-w-[140px]" style={{ color: '#5a7a5a' }}>
+              <span className="text-xs mr-1 truncate max-w-[140px]" style={{ color: '#9aae9a' }}>
                 {payInfo.bank_name}
               </span>
             )}
             {showPayInfo
-              ? <ChevronUp   size={14} style={{ color: '#5a7a5a' }} />
-              : <ChevronDown size={14} style={{ color: '#5a7a5a' }} />}
+              ? <ChevronUp   size={14} style={{ color: '#9aae9a' }} />
+              : <ChevronDown size={14} style={{ color: '#9aae9a' }} />}
           </button>
           {showPayInfo && (
             <div className="px-4 pb-4 space-y-3" style={{ borderTop: '1px solid rgba(34,197,94,0.1)' }}>
@@ -1048,13 +1048,13 @@ export default function FinancePage() {
                   <div className="flex-1 space-y-2">
                     {payInfo.bank_name && (
                       <div>
-                        <p className="text-xs text-gray-500">{ko ? '은행/앱' : 'Bank'}</p>
+                        <p className="text-xs text-gray-400">{ko ? '은행/앱' : 'Bank'}</p>
                         <p className="text-sm font-semibold text-white">{payInfo.bank_name}</p>
                       </div>
                     )}
                     {payInfo.bank_account && (
                       <div>
-                        <p className="text-xs text-gray-500">{ko ? '계좌번호' : 'Account No.'}</p>
+                        <p className="text-xs text-gray-400">{ko ? '계좌번호' : 'Account No.'}</p>
                         <div className="flex items-center gap-2">
                           <p className="text-sm font-mono text-white">{payInfo.bank_account}</p>
                           <button onClick={copyAccount}
@@ -1067,7 +1067,7 @@ export default function FinancePage() {
                     )}
                     {payInfo.bank_holder && (
                       <div>
-                        <p className="text-xs text-gray-500">{ko ? '예금주' : 'Holder'}</p>
+                        <p className="text-xs text-gray-400">{ko ? '예금주' : 'Holder'}</p>
                         <p className="text-sm text-white">{payInfo.bank_holder}</p>
                       </div>
                     )}
@@ -1088,8 +1088,8 @@ export default function FinancePage() {
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-2 py-3 text-center">
-                  <QrCode size={28} className="text-gray-600" />
-                  <p className="text-xs text-gray-500">
+                  <QrCode size={28} className="text-gray-400" />
+                  <p className="text-xs text-gray-400">
                     {ko ? '총무가 계좌 정보를 등록하면 여기에 표시됩니다.' : 'Secretary can register payment info here.'}
                   </p>
                 </div>
@@ -1125,7 +1125,7 @@ export default function FinancePage() {
             <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#fbbf24' }}>
               {ko ? '지출 분류별' : 'Expenses by Category'}
             </p>
-            <p className="text-[11px] text-gray-500">
+            <p className="text-[11px] text-gray-400">
               {ko ? `총 ${sym}${byType.expense.toLocaleString()}` : `Total ${sym}${byType.expense.toLocaleString()}`}
             </p>
           </div>
@@ -1152,7 +1152,7 @@ export default function FinancePage() {
             {expenseUncategorized > 0 && (
               <div className="bg-gray-800/60 rounded-xl px-3 py-2.5 col-span-2">
                 <div className="flex justify-between items-center">
-                  <span className="text-xs text-gray-500">{ko ? '미분류 지출' : 'Uncategorized'}</span>
+                  <span className="text-xs text-gray-400">{ko ? '미분류 지출' : 'Uncategorized'}</span>
                   <span className="text-xs font-semibold text-gray-400">{sym}{expenseUncategorized.toLocaleString()}</span>
                 </div>
               </div>
@@ -1180,15 +1180,15 @@ export default function FinancePage() {
       <div className="space-y-2">
         <h3 className="text-sm font-semibold text-gray-400 flex items-center gap-2">
           📁 {ko ? '월별 거래 내역' : 'Transactions by Month'}
-          <span className="text-[10px] font-normal" style={{ color: '#5a7a5a' }}>
+          <span className="text-[10px] font-normal" style={{ color: '#9aae9a' }}>
             {ko ? '(개인 회비 제외)' : '(excl. personal fees)'}
           </span>
         </h3>
         {(() => {
           // 회원별 회비 납부(type=fee + member_id) 만 숨김
           const visibleTxns = txns.filter(t => !(t.type === 'fee' && t.member_id))
-          if (loading) return <p className="text-center text-gray-600 py-6">{ko ? '로딩 중...' : 'Loading...'}</p>
-          if (visibleTxns.length === 0) return <p className="text-center text-gray-600 py-6">{ko ? '내역이 없습니다' : 'No transactions'}</p>
+          if (loading) return <p className="text-center text-gray-400 py-6">{ko ? '로딩 중...' : 'Loading...'}</p>
+          if (visibleTxns.length === 0) return <p className="text-center text-gray-400 py-6">{ko ? '내역이 없습니다' : 'No transactions'}</p>
 
           // 1) 월별 그룹화
           const byMonth: Record<string, any[]> = {}
@@ -1264,7 +1264,7 @@ export default function FinancePage() {
                             style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                             <span className="text-xs font-bold flex items-center gap-1.5" style={{ color: b.color }}>
                               <span>{b.emoji}</span> {b.label}
-                              <span className="text-[10px] font-normal" style={{ color: '#6b7280' }}>· {b.items.length}건</span>
+                              <span className="text-[10px] font-normal" style={{ color: '#94a3b8' }}>· {b.items.length}건</span>
                             </span>
                             <span className="text-xs font-bold" style={{ color: b.color }}>
                               {sym}{b.total.toLocaleString()}
@@ -1283,7 +1283,7 @@ export default function FinancePage() {
                                       {t.description}
                                       {t.item_name && <span className="ml-1 text-[10px]" style={{ color: '#c4b5fd' }}>🎁 {t.item_name}</span>}
                                     </p>
-                                    <p className="text-[10px]" style={{ color: '#6b7280' }}>
+                                    <p className="text-[10px]" style={{ color: '#94a3b8' }}>
                                       {t.transaction_date?.slice(5) ?? ''}
                                       {(t.users?.full_name || extractMemberName(t)) && (
                                         <> · {t.users?.full_name ?? extractMemberName(t)}</>
@@ -1293,7 +1293,7 @@ export default function FinancePage() {
                                   <span className={`text-xs font-semibold flex-shrink-0 ${isIncome ? 'text-green-400' : 'text-red-400'}`}>
                                     {isIncome ? '+' : '-'}{sym}{Number(t.amount).toLocaleString()}
                                   </span>
-                                  <ChevronRight size={12} className="text-gray-600 flex-shrink-0" />
+                                  <ChevronRight size={12} className="text-gray-400 flex-shrink-0" />
                                 </button>
                               )
                             })}
@@ -1345,7 +1345,7 @@ export default function FinancePage() {
                   <div>
                     <label className="text-sm text-gray-400 block mb-1">
                       {ko ? '물품명' : 'Item Name'}
-                      <span className="text-[10px] ml-1 text-gray-600">{ko ? '(예: 근조화환, 골프공 1박스)' : '(e.g. Funeral wreath, Golf balls)'}</span>
+                      <span className="text-[10px] ml-1 text-gray-400">{ko ? '(예: 근조화환, 골프공 1박스)' : '(e.g. Funeral wreath, Golf balls)'}</span>
                     </label>
                     <input
                       type="text"
@@ -1425,7 +1425,7 @@ export default function FinancePage() {
             <div className="flex items-center gap-2 mb-2">
               <Building2 size={18} className="text-blue-400" />
               <h3 className="text-base font-bold text-white flex-1">{ko ? '납부 계좌 등록' : 'Register Payment Info'}</h3>
-              <button onClick={() => setShowPayEdit(false)} className="text-gray-500"><X size={18} /></button>
+              <button onClick={() => setShowPayEdit(false)} className="text-gray-400"><X size={18} /></button>
             </div>
 
             <div>
@@ -1494,7 +1494,7 @@ export default function FinancePage() {
               ) : (
                 <button
                   onClick={() => qrInputRef.current?.click()}
-                  className="w-full flex flex-col items-center gap-2 py-6 border-2 border-dashed border-gray-700 hover:border-green-700 rounded-xl transition text-gray-500 hover:text-green-400"
+                  className="w-full flex flex-col items-center gap-2 py-6 border-2 border-dashed border-gray-700 hover:border-green-700 rounded-xl transition text-gray-400 hover:text-green-400"
                 >
                   <Upload size={22} />
                   <span className="text-xs">{ko ? '이미지 선택 (카메라 / 갤러리)' : 'Select Image (camera / gallery)'}</span>
@@ -1535,7 +1535,7 @@ export default function FinancePage() {
               {ko ? '🏌️ 벌금 규정' : '🏌️ Fine Rules'}
             </span>
             {fineRules?.fine_handicap_per_stroke && (
-              <span className="text-xs mr-1" style={{ color: '#5a7a5a' }}>
+              <span className="text-xs mr-1" style={{ color: '#9aae9a' }}>
                 {sym}{Number(fineRules.fine_handicap_per_stroke).toLocaleString()}{ko ? '/타' : '/stroke'}
               </span>
             )}
@@ -1549,7 +1549,7 @@ export default function FinancePage() {
                 <Edit2 size={11} />
               </button>
             )}
-            {showFineRules ? <ChevronUp size={14} style={{ color: '#5a7a5a' }} /> : <ChevronDown size={14} style={{ color: '#5a7a5a' }} />}
+            {showFineRules ? <ChevronUp size={14} style={{ color: '#9aae9a' }} /> : <ChevronDown size={14} style={{ color: '#9aae9a' }} />}
           </div>
           {showFineRules && (
             <div className="px-4 pb-4 space-y-2.5" style={{ borderTop: '1px solid rgba(34,197,94,0.1)' }}>
@@ -1564,7 +1564,7 @@ export default function FinancePage() {
                     <span className="text-xs font-normal ml-1" style={{ color: '#a3b8a3' }}>{ko ? '/ 타당' : '/ stroke'}</span>
                     {fineRules.fine_handicap_max && (
                       <>
-                        <span style={{ color: '#5a7a5a' }}> · </span>
+                        <span style={{ color: '#9aae9a' }}> · </span>
                         <span style={{ color: '#fde68a' }}>{ko ? '최고' : 'max'} </span>
                         {sym}{Number(fineRules.fine_handicap_max).toLocaleString()}
                       </>
@@ -1572,7 +1572,7 @@ export default function FinancePage() {
                   </p>
                 </div>
               ) : canManage && (
-                <p className="text-xs text-center mt-3" style={{ color: '#5a7a5a' }}>
+                <p className="text-xs text-center mt-3" style={{ color: '#9aae9a' }}>
                   {ko ? '편집 버튼으로 벌금 규정을 설정하세요.' : 'Use the edit button to set fine rules.'}
                 </p>
               )}
@@ -1596,7 +1596,7 @@ export default function FinancePage() {
             <div className="flex items-center gap-2">
               <Gift size={14} style={{ color: '#a78bfa' }} />
               <h3 className="text-sm font-semibold" style={{ color: '#a3b8a3' }}>{ko ? '찬조 내역' : 'Sponsorships'}</h3>
-              <span className="text-[11px]" style={{ color: '#5a7a5a' }}>
+              <span className="text-[11px]" style={{ color: '#9aae9a' }}>
                 ({sponsorships.length})
               </span>
             </div>
@@ -1611,7 +1611,7 @@ export default function FinancePage() {
           </div>
           {sponsorships.length === 0 ? (
             <div className="glass-card rounded-xl py-6 text-center">
-              <p className="text-sm" style={{ color: '#3a5a3a' }}>{ko ? '찬조 내역이 없습니다' : 'No sponsorships'}</p>
+              <p className="text-sm" style={{ color: '#7a9a7a' }}>{ko ? '찬조 내역이 없습니다' : 'No sponsorships'}</p>
             </div>
           ) : sponsorships.map(s => {
             const cSym = { KRW: '₩', VND: '₫', IDR: 'Rp' }[s.currency as string] ?? sym
@@ -1848,26 +1848,26 @@ export default function FinancePage() {
               <div className="rounded-xl divide-y divide-white/5"
                 style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
                 <div className="px-3 py-2 flex justify-between text-xs">
-                  <span className="text-gray-500">{ko ? '날짜' : 'Date'}</span>
+                  <span className="text-gray-400">{ko ? '날짜' : 'Date'}</span>
                   <span className="text-white">{detailTxn.transaction_date}</span>
                 </div>
                 {(detailTxn.users?.full_name || extractMemberName(detailTxn)) && (
                   <div className="px-3 py-2 flex justify-between text-xs">
-                    <span className="text-gray-500">{ko ? '관련 회원' : 'Member'}</span>
+                    <span className="text-gray-400">{ko ? '관련 회원' : 'Member'}</span>
                     <span className="text-white">{detailTxn.users?.full_name ?? extractMemberName(detailTxn)}</span>
                   </div>
                 )}
                 {detailTxn.recorder && (
                   <div className="px-3 py-2 flex justify-between text-xs">
-                    <span className="text-gray-500">{ko ? '기록자' : 'Recorded by'}</span>
+                    <span className="text-gray-400">{ko ? '기록자' : 'Recorded by'}</span>
                     <span className="text-white">
                       {lang === 'ko' ? detailTxn.recorder.full_name : (detailTxn.recorder.full_name_en || detailTxn.recorder.full_name)}
                     </span>
                   </div>
                 )}
                 <div className="px-3 py-2 flex justify-between text-xs">
-                  <span className="text-gray-500">{ko ? '거래 ID' : 'Transaction ID'}</span>
-                  <span className="text-gray-600 font-mono text-[10px]">{detailTxn.id?.slice(0, 8)}…</span>
+                  <span className="text-gray-400">{ko ? '거래 ID' : 'Transaction ID'}</span>
+                  <span className="text-gray-400 font-mono text-[10px]">{detailTxn.id?.slice(0, 8)}…</span>
                 </div>
               </div>
 
@@ -1963,7 +1963,7 @@ export default function FinancePage() {
           )}
           {payInfo.bank_holder && <p className="text-gray-400 text-sm">{payInfo.bank_holder}</p>}
           {payInfo.memo && <p className="text-xs text-yellow-400 text-center max-w-xs">{payInfo.memo}</p>}
-          <p className="text-gray-600 text-xs mt-2">{ko ? '탭하여 닫기' : 'Tap to close'}</p>
+          <p className="text-gray-400 text-xs mt-2">{ko ? '탭하여 닫기' : 'Tap to close'}</p>
         </div>
       )}
 
@@ -2001,7 +2001,7 @@ export default function FinancePage() {
                   ? `${payingMember.users?.full_name} 회비 납부 확인`
                   : `Confirm Fee: ${payingMember.users?.full_name_en || payingMember.users?.full_name}`}
               </h3>
-              <button onClick={() => setPayingMember(null)} className="text-gray-500"><X size={18} /></button>
+              <button onClick={() => setPayingMember(null)} className="text-gray-400"><X size={18} /></button>
             </div>
 
             {/* 납부 방식 토글 — 년납 / 월납 */}
@@ -2171,7 +2171,7 @@ export default function FinancePage() {
             <div className="flex items-center gap-2 mb-2">
               <AlertTriangle size={18} style={{ color: '#fbbf24' }} />
               <h3 className="text-base font-bold text-white flex-1">{ko ? '벌금 규정 편집' : 'Edit Fine Rules'}</h3>
-              <button onClick={() => setShowFineEdit(false)} className="text-gray-500"><X size={18} /></button>
+              <button onClick={() => setShowFineEdit(false)} className="text-gray-400"><X size={18} /></button>
             </div>
 
             <div>

@@ -181,7 +181,7 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => setShowPw(v => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300 transition"
                   >
                     {showPw ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
@@ -213,7 +213,7 @@ export default function LoginPage() {
             <div className="mt-4 text-right">
               <Link
                 href="/forgot-password"
-                className="text-xs text-gray-500 hover:text-green-400 transition"
+                className="text-xs text-gray-400 hover:text-green-400 transition"
               >
                 {ko ? '비밀번호를 잊으셨나요?' : 'Forgot password?'}
               </Link>
@@ -222,7 +222,7 @@ export default function LoginPage() {
 
           {/* 회원가입 링크 */}
           <div className="mt-5 text-center space-y-2">
-            <p className="text-gray-500 text-sm">
+            <p className="text-gray-400 text-sm">
               {ko ? '계정이 없으신가요?' : "Don't have an account?"}
               {' '}
               <Link href="/register" className="text-green-400 font-medium hover:text-green-300 transition">
@@ -230,7 +230,7 @@ export default function LoginPage() {
               </Link>
             </p>
             <p>
-              <Link href="/club-register" className="text-xs text-gray-600 hover:text-green-500 transition">
+              <Link href="/club-register" className="text-xs text-gray-400 hover:text-green-500 transition">
                 {ko ? '+ 새 클럽 등록' : '+ Register New Club'}
               </Link>
             </p>
@@ -248,7 +248,7 @@ export default function LoginPage() {
 
       {/* 하단 */}
       <div className="relative z-10 pb-6 text-center">
-        <p className="text-gray-700 text-xs">Inter Stellar GOLF v1.0.0</p>
+        <p className="text-gray-400 text-xs">Inter Stellar GOLF v1.0.0</p>
       </div>
     </div>
   )

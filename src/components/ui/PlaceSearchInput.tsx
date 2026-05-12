@@ -103,7 +103,7 @@ export default function PlaceSearchInput({
   return (
     <div ref={wrapRef} className={`relative ${className}`}>
       <div className="relative">
-        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#5a7a5a' }} />
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#9aae9a' }} />
         <input
           ref={inputRef}
           value={value}
@@ -117,7 +117,7 @@ export default function PlaceSearchInput({
           ? <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin" style={{ color: '#22c55e' }} />
           : value && (
             <button type="button" onClick={() => { onChange(''); setOpen(false); setResults([]) }}
-              className="absolute right-3 top-1/2 -translate-y-1/2 hover:opacity-70 transition-opacity" style={{ color: '#5a7a5a' }}>
+              className="absolute right-3 top-1/2 -translate-y-1/2 hover:opacity-70 transition-opacity" style={{ color: '#9aae9a' }}>
               <X size={14} />
             </button>
           )
@@ -138,7 +138,7 @@ export default function PlaceSearchInput({
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-white truncate">{place.name}</p>
                   <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-[10px] truncate" style={{ color: '#5a7a5a' }}>{place.address}</span>
+                    <span className="text-[10px] truncate" style={{ color: '#9aae9a' }}>{place.address}</span>
                     {place.rating && (
                       <span className="flex items-center gap-0.5 text-[10px] flex-shrink-0" style={{ color: '#fbbf24' }}>
                         <Star size={9} fill="#fbbf24" />{place.rating}
@@ -170,7 +170,7 @@ export default function PlaceSearchInput({
       {open && !loading && results.length === 0 && value.trim().length >= 1 && (
         <div className={dropdownClass} style={useFixed ? dropdownStyle : {}}>
           <div className="px-4 py-3 text-center">
-            <p className="text-sm" style={{ color: '#5a7a5a' }}>검색 결과가 없습니다</p>
+            <p className="text-sm" style={{ color: '#9aae9a' }}>검색 결과가 없습니다</p>
             <button type="button"
               onClick={() => { onSelect({ place_id: '', name: value.trim(), address: '', lat: null, lng: null, rating: null }); setOpen(false) }}
               className="text-xs mt-1" style={{ color: '#fb923c' }}>

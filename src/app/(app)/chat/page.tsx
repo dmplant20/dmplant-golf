@@ -436,7 +436,7 @@ export default function ChatPage() {
             </div>
             <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
               {dmGroupRooms.length === 0 ? (
-                <div className="text-center py-8 text-gray-500 text-sm flex flex-col items-center gap-2">
+                <div className="text-center py-8 text-gray-400 text-sm flex flex-col items-center gap-2">
                   <MessageCircle size={28} className="opacity-30" />
                   <p className="text-xs">{ko ? 'DM·그룹 채팅이 없습니다' : 'No DM/group chats'}</p>
                 </div>
@@ -453,9 +453,9 @@ export default function ChatPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold text-white truncate">{r.display_name}</p>
-                      {sub && <p className="text-xs text-gray-500 truncate mt-0.5">{sub}</p>}
+                      {sub && <p className="text-xs text-gray-400 truncate mt-0.5">{sub}</p>}
                     </div>
-                    {time && <span className="text-[10px] text-gray-600 flex-shrink-0">{time}</span>}
+                    {time && <span className="text-[10px] text-gray-400 flex-shrink-0">{time}</span>}
                   </button>
                 )
               })}
@@ -503,7 +503,7 @@ export default function ChatPage() {
             </div>
             <div className="px-4 py-3 flex-shrink-0">
               <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-900 border border-gray-700">
-                <Search size={14} className="text-gray-500" />
+                <Search size={14} className="text-gray-400" />
                 <input value={memberSearch} onChange={e => setMemberSearch(e.target.value)}
                   placeholder={ko ? '이름 검색...' : 'Search name...'}
                   className="flex-1 bg-transparent text-sm text-white focus:outline-none" />
@@ -511,7 +511,7 @@ export default function ChatPage() {
             </div>
             <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-1.5">
               {filteredMembers.length === 0 && (
-                <p className="text-center text-xs text-gray-500 py-8">{ko ? '회원이 없습니다' : 'No members'}</p>
+                <p className="text-center text-xs text-gray-400 py-8">{ko ? '회원이 없습니다' : 'No members'}</p>
               )}
               {filteredMembers.map(m => (
                 <button key={m.user_id} onClick={() => startDm(m.user_id)} disabled={creating}
@@ -551,12 +551,12 @@ export default function ChatPage() {
                 className="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-green-500" />
             </div>
             <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-900 border border-gray-700">
-              <Search size={14} className="text-gray-500" />
+              <Search size={14} className="text-gray-400" />
               <input value={memberSearch} onChange={e => setMemberSearch(e.target.value)}
                 placeholder={ko ? '이름 검색...' : 'Search name...'}
                 className="flex-1 bg-transparent text-sm text-white focus:outline-none" />
             </div>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-gray-400">
               {ko ? `선택된 회원: ${groupSelectedIds.length}명` : `Selected: ${groupSelectedIds.length}`}
             </p>
           </div>
@@ -626,7 +626,7 @@ export default function ChatPage() {
               {activeRoom.display_name ?? (ko ? activeRoom.name : (activeRoom.name_en ?? activeRoom.name))}
             </p>
             {activeRoom.type === 'group' && activeRoom.member_count != null && (
-              <p className="text-[11px] text-gray-500">{activeRoom.member_count}{ko ? '명' : ' members'}</p>
+              <p className="text-[11px] text-gray-400">{activeRoom.member_count}{ko ? '명' : ' members'}</p>
             )}
           </div>
           {/* + 새 대화 (DM·그룹 만들기) — 항상 사용 가능 */}
@@ -647,7 +647,7 @@ export default function ChatPage() {
                   <div className="w-8 h-8 bg-green-800 rounded-full flex items-center justify-center text-sm flex-shrink-0">👤</div>
                 )}
                 <div className={`max-w-[75%] flex flex-col gap-0.5 ${isMe ? 'items-end' : 'items-start'}`}>
-                  {!isMe && <span className="text-xs text-gray-500 px-1">{name}</span>}
+                  {!isMe && <span className="text-xs text-gray-400 px-1">{name}</span>}
                   {/* 이미지 첨부 — 인라인 표시 */}
                   {msg.attachment_type === 'image' && msg.attachment_url && (
                     <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer"
@@ -678,7 +678,7 @@ export default function ChatPage() {
                       {msg.content}
                     </div>
                   )}
-                  <span className="text-[10px] text-gray-600 px-1">
+                  <span className="text-[10px] text-gray-400 px-1">
                     {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
@@ -686,7 +686,7 @@ export default function ChatPage() {
             )
           })}
           {messages.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-600">
+            <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-400">
               <MessageCircle size={40} />
               <p className="text-sm">{ko ? '첫 메시지를 보내보세요!' : 'Send the first message!'}</p>
             </div>
@@ -750,9 +750,9 @@ export default function ChatPage() {
       </div>
 
       {loadingRooms ? (
-        <div className="text-center py-12 text-gray-500 text-sm">{ko ? '불러오는 중...' : 'Loading...'}</div>
+        <div className="text-center py-12 text-gray-400 text-sm">{ko ? '불러오는 중...' : 'Loading...'}</div>
       ) : dmGroupRooms.length === 0 ? (
-        <div className="text-center py-12 text-gray-500 text-sm flex flex-col items-center gap-2">
+        <div className="text-center py-12 text-gray-400 text-sm flex flex-col items-center gap-2">
           <MessageCircle size={36} className="opacity-30" />
           <p>{ko ? '대화방이 없습니다' : 'No chats yet'}</p>
           <p className="text-xs">{ko ? '＋ 버튼으로 시작하세요' : 'Tap + to start'}</p>
@@ -774,9 +774,9 @@ export default function ChatPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-white truncate">{r.display_name}</p>
-                  {subtitle && <p className="text-xs text-gray-500 truncate mt-0.5">{subtitle}</p>}
+                  {subtitle && <p className="text-xs text-gray-400 truncate mt-0.5">{subtitle}</p>}
                 </div>
-                {time && <span className="text-[10px] text-gray-600 flex-shrink-0">{time}</span>}
+                {time && <span className="text-[10px] text-gray-400 flex-shrink-0">{time}</span>}
               </button>
             )
           })}

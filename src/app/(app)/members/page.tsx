@@ -339,7 +339,7 @@ export default function MembersPage() {
             </div>
             <div className="flex items-center gap-1.5 flex-shrink-0">
               <CopyButton text={`${addSuccess.email} / ${addSuccess.tempPassword}`} ko={ko} />
-              <button onClick={() => setAddSuccess(null)} className="text-gray-500 hover:text-white transition">
+              <button onClick={() => setAddSuccess(null)} className="text-gray-400 hover:text-white transition">
                 <X size={15} />
               </button>
             </div>
@@ -348,7 +348,7 @@ export default function MembersPage() {
       )}
 
       {loading ? (
-        <div className="text-center text-gray-500 py-10">{ko ? '로딩 중...' : 'Loading...'}</div>
+        <div className="text-center text-gray-400 py-10">{ko ? '로딩 중...' : 'Loading...'}</div>
       ) : tab === 'approved' ? (
 
         /* ── 활성 회원 ── */
@@ -382,7 +382,7 @@ export default function MembersPage() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="font-semibold text-sm"
-                    style={hasLoggedIn ? { color: '#fff' } : { color: '#6b7280' }}
+                    style={hasLoggedIn ? { color: '#fff' } : { color: '#94a3b8' }}
                     title={hasLoggedIn ? undefined : (ko ? '아직 한 번도 접속하지 않은 회원' : 'Never logged in')}>
                     {lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}
                   </span>
@@ -418,13 +418,13 @@ export default function MembersPage() {
               {canManage && (
                 <div className="flex items-center gap-1.5 flex-shrink-0">
                   <button onClick={() => setQuickHcMember(m)} title={ko ? '핸디 수정' : 'Edit HC'}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 transition"
+                    className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 transition"
                     onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--gold-l)'; (e.currentTarget as HTMLButtonElement).style.background = 'rgba(201,168,76,0.12)' }}
                     onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = ''; (e.currentTarget as HTMLButtonElement).style.background = '' }}>
                     <GaugeCircle size={15} />
                   </button>
                   <button onClick={() => setEditMember(m)} title={ko ? '정보 수정' : 'Edit'}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 transition"
+                    className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 transition"
                     onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--gold-l)'; (e.currentTarget as HTMLButtonElement).style.background = 'rgba(201,168,76,0.12)' }}
                     onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = ''; (e.currentTarget as HTMLButtonElement).style.background = '' }}>
                     <Edit2 size={15} />
@@ -432,7 +432,7 @@ export default function MembersPage() {
                   {/* 탈퇴 처리: 본인 제외 */}
                   {m.user_id !== user?.id && (
                     <button onClick={() => setWithdrawTarget(m)} title={ko ? '탈퇴 처리' : 'Withdraw'}
-                      className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-600 hover:text-red-400 hover:bg-red-900/20 transition">
+                      className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-400 hover:bg-red-900/20 transition">
                       <UserMinus size={15} />
                     </button>
                   )}
@@ -442,7 +442,7 @@ export default function MembersPage() {
           )})}
           {members.length === 0 && (
             <div className="glass-card rounded-2xl p-8 text-center">
-              <p className="text-gray-500">{ko ? '회원이 없습니다' : 'No members'}</p>
+              <p className="text-gray-400">{ko ? '회원이 없습니다' : 'No members'}</p>
             </div>
           )}
         </div>
@@ -459,8 +459,8 @@ export default function MembersPage() {
                   <p className="text-white font-medium text-sm">
                     {lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}
                   </p>
-                  {m.users?.phone && <p className="text-gray-500 text-xs mt-0.5">{m.users.phone}</p>}
-                  <p className="text-[10px] text-gray-600 mt-0.5">
+                  {m.users?.phone && <p className="text-gray-400 text-xs mt-0.5">{m.users.phone}</p>}
+                  <p className="text-[10px] text-gray-400 mt-0.5">
                     {ko ? '가입 신청일:' : 'Applied:'} {new Date(m.created_at).toLocaleDateString(ko ? 'ko-KR' : 'en-US')}
                   </p>
                 </div>
@@ -482,8 +482,8 @@ export default function MembersPage() {
           ))}
           {pending.length === 0 && (
             <div className="glass-card rounded-2xl p-8 text-center">
-              <Clock size={28} className="mx-auto text-gray-600 mb-2" />
-              <p className="text-gray-500 text-sm">{ko ? '대기 중인 가입 신청이 없습니다' : 'No pending requests'}</p>
+              <Clock size={28} className="mx-auto text-gray-400 mb-2" />
+              <p className="text-gray-400 text-sm">{ko ? '대기 중인 가입 신청이 없습니다' : 'No pending requests'}</p>
             </div>
           )}
         </div>
@@ -502,20 +502,20 @@ export default function MembersPage() {
             <div key={m.id} className="glass-card rounded-2xl px-4 py-3 opacity-75">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center text-lg flex-shrink-0">
-                  <UserX size={18} className="text-gray-600" />
+                  <UserX size={18} className="text-gray-400" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-gray-300 font-medium text-sm">
                     {lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}
-                    <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-gray-800 text-gray-500">{ko ? '탈퇴' : 'Withdrawn'}</span>
+                    <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-gray-800 text-gray-400">{ko ? '탈퇴' : 'Withdrawn'}</span>
                   </p>
                   {m.withdrawn_at && (
-                    <p className="text-[10px] text-gray-600 mt-0.5">
+                    <p className="text-[10px] text-gray-400 mt-0.5">
                       {ko ? '탈퇴일:' : 'Date:'} {new Date(m.withdrawn_at).toLocaleDateString(ko ? 'ko-KR' : 'en-US')}
                     </p>
                   )}
                   {m.withdrawal_reason && (
-                    <p className="text-[10px] text-gray-600 mt-0.5">
+                    <p className="text-[10px] text-gray-400 mt-0.5">
                       {ko ? '사유:' : 'Reason:'} {m.withdrawal_reason}
                     </p>
                   )}
@@ -535,7 +535,7 @@ export default function MembersPage() {
           ))}
           {withdrawn.length === 0 && (
             <div className="glass-card rounded-2xl p-8 text-center">
-              <p className="text-gray-500 text-sm">{ko ? '탈퇴한 회원이 없습니다' : 'No withdrawn members'}</p>
+              <p className="text-gray-400 text-sm">{ko ? '탈퇴한 회원이 없습니다' : 'No withdrawn members'}</p>
             </div>
           )}
         </div>
@@ -564,12 +564,12 @@ export default function MembersPage() {
                       {actionLabel}
                       {oldLabel && newLabel ? ` · ${oldLabel} → ${newLabel}` : ''}
                     </p>
-                    {log.note && <p className="text-[10px] text-gray-600 mt-0.5">{log.note}</p>}
-                    <p className="text-[10px] text-gray-700 mt-0.5">
+                    {log.note && <p className="text-[10px] text-gray-400 mt-0.5">{log.note}</p>}
+                    <p className="text-[10px] text-gray-400 mt-0.5">
                       {ko ? '처리자:' : 'By:'} {log.actor?.full_name ?? '—'}
                     </p>
                   </div>
-                  <p className="text-[10px] text-gray-600 flex-shrink-0 mt-0.5">
+                  <p className="text-[10px] text-gray-400 flex-shrink-0 mt-0.5">
                     {new Date(log.created_at).toLocaleDateString(ko ? 'ko-KR' : 'en-US', { month: 'short', day: 'numeric' })}
                   </p>
                 </div>
@@ -578,7 +578,7 @@ export default function MembersPage() {
           })}
           {activityLog.length === 0 && (
             <div className="glass-card rounded-2xl p-8 text-center">
-              <p className="text-gray-500 text-sm">{ko ? '활동 기록이 없습니다' : 'No activity yet'}</p>
+              <p className="text-gray-400 text-sm">{ko ? '활동 기록이 없습니다' : 'No activity yet'}</p>
             </div>
           )}
         </div>
@@ -717,7 +717,7 @@ function AddMemberModal({ ko, clubId, onClose, onSuccess }: {
             <UserPlus size={16} className="text-white" />
           </div>
           <h2 className="text-base font-bold text-white flex-1">{ko ? '회원 추가' : 'Add Member'}</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-white transition"><X size={18} /></button>
+          <button onClick={onClose} className="text-gray-400 hover:text-white transition"><X size={18} /></button>
         </div>
 
         <div className="px-5 py-4 space-y-4">
@@ -811,7 +811,7 @@ function AddMemberModal({ ko, clubId, onClose, onSuccess }: {
                 {ko ? '새로' : 'New'}
               </button>
             </div>
-            <p className="text-[11px] text-gray-600 mt-1">{ko ? '회원이 처음 로그인 후 변경할 수 있습니다' : 'Member can change this after first login'}</p>
+            <p className="text-[11px] text-gray-400 mt-1">{ko ? '회원이 처음 로그인 후 변경할 수 있습니다' : 'Member can change this after first login'}</p>
           </div>
 
           {/* 에러 */}
@@ -948,7 +948,7 @@ function EditMemberModal({ member, ko, myRole, members, onClose, onSave, onDeleg
                   className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition border ${
                     role === r.v
                       ? `${r.color} border-current opacity-100 ring-1 ring-white/20`
-                      : 'bg-gray-800 text-gray-500 border-gray-700 hover:text-gray-300'
+                      : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-gray-300'
                   }`}>
                   {r.label}
                 </button>
@@ -1105,7 +1105,7 @@ function WithdrawModal({ member, ko, onClose, onConfirm }: any) {
                 {ko ? `"${name}" 회원을 탈퇴 처리하시겠습니까?` : `Withdraw "${name}" from the club?`}
               </p>
               {reason && (
-                <p className="text-[11px] text-gray-500 mt-2">{ko ? '사유:' : 'Reason:'} {reason}</p>
+                <p className="text-[11px] text-gray-400 mt-2">{ko ? '사유:' : 'Reason:'} {reason}</p>
               )}
             </div>
             <div className="flex gap-3">

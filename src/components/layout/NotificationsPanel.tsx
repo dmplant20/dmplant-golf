@@ -106,9 +106,9 @@ export default function NotificationsPanel({ open, onClose }: { open: boolean; o
         {/* 본문 */}
         <div className="flex-1 overflow-y-auto p-3 space-y-3">
           {loading ? (
-            <p className="text-center text-xs text-gray-500 py-8">{ko ? '불러오는 중...' : 'Loading...'}</p>
+            <p className="text-center text-xs text-gray-400 py-8">{ko ? '불러오는 중...' : 'Loading...'}</p>
           ) : !hasAny ? (
-            <div className="flex flex-col items-center gap-2 py-10 text-gray-500">
+            <div className="flex flex-col items-center gap-2 py-10 text-gray-400">
               <Sparkles size={28} className="opacity-40" />
               <p className="text-xs">{ko ? '새 알림이 없습니다' : 'No new notifications'}</p>
             </div>

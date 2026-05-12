@@ -195,7 +195,7 @@ export default function ProfilePage() {
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center">
-                <User size={44} className="text-gray-500" />
+                <User size={44} className="text-gray-400" />
               </div>
             )}
             {/* 어두운 오버레이 + 카메라 아이콘 */}
@@ -231,9 +231,9 @@ export default function ProfilePage() {
 
           {/* 이름(한글) */}
           <div className="flex items-center gap-3 px-4 py-3.5">
-            <AtSign size={16} className="text-gray-500 flex-shrink-0" />
+            <AtSign size={16} className="text-gray-400 flex-shrink-0" />
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-gray-500 mb-0.5">{ko ? '이름 (한글)' : 'Name (Korean)'}</p>
+              <p className="text-xs text-gray-400 mb-0.5">{ko ? '이름 (한글)' : 'Name (Korean)'}</p>
               <input
                 type="text"
                 value={form.full_name}
@@ -246,9 +246,9 @@ export default function ProfilePage() {
 
           {/* 이름(영문) */}
           <div className="flex items-center gap-3 px-4 py-3.5">
-            <Languages size={16} className="text-gray-500 flex-shrink-0" />
+            <Languages size={16} className="text-gray-400 flex-shrink-0" />
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-gray-500 mb-0.5">{ko ? '이름 (영문)' : 'Name (English)'}</p>
+              <p className="text-xs text-gray-400 mb-0.5">{ko ? '이름 (영문)' : 'Name (English)'}</p>
               <input
                 type="text"
                 value={form.full_name_en}
@@ -261,9 +261,9 @@ export default function ProfilePage() {
 
           {/* 약칭 */}
           <div className="flex items-center gap-3 px-4 py-3.5">
-            <span className="text-gray-500 text-sm flex-shrink-0 w-4 text-center font-bold">A</span>
+            <span className="text-gray-400 text-sm flex-shrink-0 w-4 text-center font-bold">A</span>
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-gray-500 mb-0.5">{ko ? '약칭 · 이니셜' : 'Abbreviation'}</p>
+              <p className="text-xs text-gray-400 mb-0.5">{ko ? '약칭 · 이니셜' : 'Abbreviation'}</p>
               <input
                 type="text"
                 value={form.name_abbr}
@@ -276,9 +276,9 @@ export default function ProfilePage() {
 
           {/* 전화번호 */}
           <div className="flex items-center gap-3 px-4 py-3.5">
-            <Phone size={16} className="text-gray-500 flex-shrink-0" />
+            <Phone size={16} className="text-gray-400 flex-shrink-0" />
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-gray-500 mb-0.5">{ko ? '전화번호' : 'Phone'}</p>
+              <p className="text-xs text-gray-400 mb-0.5">{ko ? '전화번호' : 'Phone'}</p>
               <input
                 type="tel"
                 value={form.phone}
@@ -291,9 +291,9 @@ export default function ProfilePage() {
 
           {/* 생년월일 */}
           <div className="flex items-center gap-3 px-4 py-3.5">
-            <Cake size={16} className="text-gray-500 flex-shrink-0" />
+            <Cake size={16} className="text-gray-400 flex-shrink-0" />
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-gray-500 mb-0.5">{ko ? '생년월일' : 'Date of Birth'}</p>
+              <p className="text-xs text-gray-400 mb-0.5">{ko ? '생년월일' : 'Date of Birth'}</p>
               <input
                 type="date"
                 value={form.birth_date}
@@ -303,7 +303,7 @@ export default function ProfilePage() {
                 style={{ colorScheme: 'dark' }}
               />
               {!form.birth_date && (
-                <p className="text-[10px] text-gray-600 mt-0.5">
+                <p className="text-[10px] text-gray-400 mt-0.5">
                   {ko ? '🎂 생일 알림 전송에 사용됩니다' : '🎂 Used for birthday notifications'}
                 </p>
               )}
@@ -314,17 +314,17 @@ export default function ProfilePage() {
         {/* 읽기 전용 정보 */}
         <div className="glass-card rounded-2xl divide-y divide-gray-800/60 overflow-hidden">
           <div className="flex items-center gap-3 px-4 py-3.5">
-            <Mail size={16} className="text-gray-500 flex-shrink-0" />
+            <Mail size={16} className="text-gray-400 flex-shrink-0" />
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-gray-500 mb-0.5">{ko ? '이메일' : 'Email'}</p>
+              <p className="text-xs text-gray-400 mb-0.5">{ko ? '이메일' : 'Email'}</p>
               <p className="text-sm text-gray-400 truncate">{user?.email}</p>
             </div>
           </div>
           {myMembership && (
             <div className="flex items-center gap-3 px-4 py-3.5">
-              <span className="text-gray-500 text-base flex-shrink-0 w-4 text-center">⛳</span>
+              <span className="text-gray-400 text-base flex-shrink-0 w-4 text-center">⛳</span>
               <div className="flex-1 min-w-0">
-                <p className="text-xs text-gray-500 mb-0.5">{ko ? '클럽 역할' : 'Club Role'}</p>
+                <p className="text-xs text-gray-400 mb-0.5">{ko ? '클럽 역할' : 'Club Role'}</p>
                 <p className="text-sm text-gray-300">{roleLabel} · {myMembership.name}</p>
               </div>
             </div>
@@ -340,7 +340,7 @@ export default function ProfilePage() {
               ? 'bg-green-800 text-green-200'
               : hasChanges
               ? 'bg-green-600 hover:bg-green-500 text-white shadow-lg shadow-green-900/40 active:scale-95'
-              : 'bg-gray-800 text-gray-600 cursor-default'
+              : 'bg-gray-800 text-gray-400 cursor-default'
           }`}
         >
           {saving ? (
@@ -362,19 +362,19 @@ export default function ProfilePage() {
             onClick={() => { setPwOpen(o => !o); setPwError(null); setPwSaved(false) }}
             className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-white/5 transition"
           >
-            <Lock size={16} className="text-gray-500 flex-shrink-0" />
+            <Lock size={16} className="text-gray-400 flex-shrink-0" />
             <div className="flex-1 text-left">
               <p className="text-sm text-white">{ko ? '비밀번호 변경' : 'Change Password'}</p>
-              <p className="text-xs text-gray-500">{ko ? '새 비밀번호 설정' : 'Set a new password'}</p>
+              <p className="text-xs text-gray-400">{ko ? '새 비밀번호 설정' : 'Set a new password'}</p>
             </div>
-            {pwOpen ? <ChevronUp size={16} className="text-gray-500" /> : <ChevronDown size={16} className="text-gray-500" />}
+            {pwOpen ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
           </button>
 
           {pwOpen && (
             <div className="border-t border-gray-800/60 px-4 pb-4 pt-3 space-y-3">
               {/* 새 비밀번호 */}
               <div>
-                <p className="text-xs text-gray-500 mb-1">{ko ? '새 비밀번호' : 'New Password'}</p>
+                <p className="text-xs text-gray-400 mb-1">{ko ? '새 비밀번호' : 'New Password'}</p>
                 <div className="relative">
                   <input
                     type={showNewPw ? 'text' : 'password'}
@@ -387,7 +387,7 @@ export default function ProfilePage() {
                   <button
                     type="button"
                     onClick={() => setShowNewPw(v => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300"
                   >
                     {showNewPw ? <EyeOff size={15} /> : <Eye size={15} />}
                   </button>
@@ -399,7 +399,7 @@ export default function ProfilePage() {
 
               {/* 비밀번호 확인 */}
               <div>
-                <p className="text-xs text-gray-500 mb-1">{ko ? '비밀번호 확인' : 'Confirm Password'}</p>
+                <p className="text-xs text-gray-400 mb-1">{ko ? '비밀번호 확인' : 'Confirm Password'}</p>
                 <div className="relative">
                   <input
                     type={showConfirmPw ? 'text' : 'password'}
@@ -412,7 +412,7 @@ export default function ProfilePage() {
                   <button
                     type="button"
                     onClick={() => setShowConfirmPw(v => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300"
                   >
                     {showConfirmPw ? <EyeOff size={15} /> : <Eye size={15} />}
                   </button>
@@ -503,7 +503,7 @@ export default function ProfilePage() {
                 </div>
                 <div className="text-left">
                   <p className="text-sm font-medium text-white">{ko ? '카메라로 촬영' : 'Take Photo'}</p>
-                  <p className="text-xs text-gray-500">{ko ? '셀피 카메라를 사용합니다' : 'Use front camera'}</p>
+                  <p className="text-xs text-gray-400">{ko ? '셀피 카메라를 사용합니다' : 'Use front camera'}</p>
                 </div>
               </button>
 
@@ -521,7 +521,7 @@ export default function ProfilePage() {
                 </div>
                 <div className="text-left">
                   <p className="text-sm font-medium text-white">{ko ? '갤러리에서 선택' : 'Choose from Gallery'}</p>
-                  <p className="text-xs text-gray-500">{ko ? '사진 앨범에서 선택합니다' : 'Pick from your photos'}</p>
+                  <p className="text-xs text-gray-400">{ko ? '사진 앨범에서 선택합니다' : 'Pick from your photos'}</p>
                 </div>
               </button>
 
@@ -536,7 +536,7 @@ export default function ProfilePage() {
                   </div>
                   <div className="text-left">
                     <p className="text-sm font-medium text-red-400">{ko ? '사진 제거' : 'Remove Photo'}</p>
-                    <p className="text-xs text-gray-500">{ko ? '기본 아이콘으로 변경됩니다' : 'Revert to default icon'}</p>
+                    <p className="text-xs text-gray-400">{ko ? '기본 아이콘으로 변경됩니다' : 'Revert to default icon'}</p>
                   </div>
                 </button>
               )}

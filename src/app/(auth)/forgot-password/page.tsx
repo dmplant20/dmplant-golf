@@ -52,7 +52,7 @@ export default function ForgotPasswordPage() {
                 ? `${email} 으로 비밀번호 재설정 링크를 보냈습니다.`
                 : `We sent a password reset link to ${email}`}
             </p>
-            <p className="text-gray-600 text-xs">
+            <p className="text-gray-400 text-xs">
               {ko ? '이메일이 안 보이면 스팸함을 확인하세요.' : 'Check your spam folder if you don\'t see it.'}
             </p>
             <Link href="/login" className="block mt-6 text-green-400 text-sm hover:underline">

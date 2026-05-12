@@ -277,7 +277,7 @@ export default function SettingsPage() {
 
   if (loading) return (
     <div className="flex items-center justify-center min-h-screen bg-gray-950">
-      <p className="text-gray-500">{ko ? '로딩 중...' : 'Loading...'}</p>
+      <p className="text-gray-400">{ko ? '로딩 중...' : 'Loading...'}</p>
     </div>
   )
 
@@ -356,7 +356,7 @@ export default function SettingsPage() {
                 <h2 className="text-sm font-semibold text-green-400 uppercase tracking-wide">
                   {ko ? '회비 설정' : 'Fee Settings'}
                 </h2>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-gray-400 mt-1">
                   {ko
                     ? '년회비와 월회비를 모두 설정할 수 있습니다. 회원별로 회비 유형을 따로 지정하세요.'
                     : 'Set both annual and monthly fee amounts. Assign fee type per member individually.'}
@@ -419,7 +419,7 @@ export default function SettingsPage() {
               <span className="text-sm font-semibold text-white flex-1 text-left">
                 {ko ? `골프장 관리 (${courses.length}개)` : `Golf Courses (${courses.length})`}
               </span>
-              {showCourseSection ? <ChevronUp size={16} className="text-gray-500" /> : <ChevronDown size={16} className="text-gray-500" />}
+              {showCourseSection ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
             </button>
 
             {showCourseSection && (
@@ -427,7 +427,7 @@ export default function SettingsPage() {
                 {/* 검색 + 추가 버튼 */}
                 <div className="flex gap-2 pt-3">
                   <div className="flex-1 relative">
-                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input
                       value={courseSearch}
                       onChange={e => setCourseSearch(e.target.value)}
@@ -448,9 +448,9 @@ export default function SettingsPage() {
                       <div className="flex-1 min-w-0">
                         <p className="text-white text-sm font-medium truncate">{c.name}</p>
                         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                          <span className="text-xs text-gray-500">{c.province}</span>
+                          <span className="text-xs text-gray-400">{c.province}</span>
                           <span className="text-xs text-green-500">{c.holes}H / Par{c.par}</span>
-                          {c.distance_km && <span className="text-xs text-gray-600">{c.distance_km}km</span>}
+                          {c.distance_km && <span className="text-xs text-gray-400">{c.distance_km}km</span>}
                         </div>
                         {c.sub_courses && (
                           <p className="text-xs text-blue-400/70 mt-0.5 truncate">{c.sub_courses}</p>
@@ -458,18 +458,18 @@ export default function SettingsPage() {
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <button onClick={() => openEditCourse(c)}
-                          className="text-gray-500 hover:text-green-400 transition">
+                          className="text-gray-400 hover:text-green-400 transition">
                           <Edit2 size={14} />
                         </button>
                         <button onClick={() => deactivateCourse(c.id)}
-                          className="text-gray-600 hover:text-red-400 transition">
+                          className="text-gray-400 hover:text-red-400 transition">
                           <X size={14} />
                         </button>
                       </div>
                     </div>
                   ))}
                   {filteredCourses.length === 0 && (
-                    <p className="text-center text-gray-600 py-4 text-sm">
+                    <p className="text-center text-gray-400 py-4 text-sm">
                       {ko ? '골프장이 없습니다' : 'No courses found'}
                     </p>
                   )}
@@ -495,7 +495,7 @@ export default function SettingsPage() {
               <h3 className="text-base font-bold text-white flex-1">
                 {editCourse?.id ? (ko ? '골프장 수정' : 'Edit Course') : (ko ? '골프장 추가' : 'Add Course')}
               </h3>
-              <button onClick={() => setEditCourse(null)} className="text-gray-500"><X size={20} /></button>
+              <button onClick={() => setEditCourse(null)} className="text-gray-400"><X size={20} /></button>
             </div>
 
             {/* 스크롤 폼 */}
@@ -625,7 +625,7 @@ export default function SettingsPage() {
                   <div className="mt-2 bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
                     {/* 검색 입력 */}
                     <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-700">
-                      <Search size={13} className="text-gray-500 flex-shrink-0" />
+                      <Search size={13} className="text-gray-400 flex-shrink-0" />
                       <input
                         autoFocus
                         value={addrQ}
@@ -646,7 +646,7 @@ export default function SettingsPage() {
                       />
                       {addrLoading
                         ? <span className="text-green-400 text-xs animate-pulse">검색중...</span>
-                        : <button type="button" onClick={() => setAddrOpen(false)} className="text-gray-600 hover:text-gray-400"><X size={14} /></button>
+                        : <button type="button" onClick={() => setAddrOpen(false)} className="text-gray-400 hover:text-gray-400"><X size={14} /></button>
                       }
                     </div>
 
@@ -675,12 +675,12 @@ export default function SettingsPage() {
                           className="w-full text-left px-3 py-2.5 hover:bg-gray-700 transition border-b border-gray-700/50 last:border-0"
                         >
                           <p className="text-sm text-white font-medium truncate">{r.name}</p>
-                          {r.address && <p className="text-xs text-gray-500 truncate mt-0.5">{r.address}</p>}
+                          {r.address && <p className="text-xs text-gray-400 truncate mt-0.5">{r.address}</p>}
                         </button>
                       )) : addrQ.trim().length >= 2 && !addrLoading ? (
-                        <p className="text-center text-gray-600 text-xs py-3">{ko ? '결과 없음 — 위 구글 지도 링크를 이용하세요' : 'No results — try Google Maps link above'}</p>
+                        <p className="text-center text-gray-400 text-xs py-3">{ko ? '결과 없음 — 위 구글 지도 링크를 이용하세요' : 'No results — try Google Maps link above'}</p>
                       ) : addrLoading ? null : (
-                        <p className="text-center text-gray-600 text-xs py-3">{ko ? '검색어를 입력하세요' : 'Enter search term'}</p>
+                        <p className="text-center text-gray-400 text-xs py-3">{ko ? '검색어를 입력하세요' : 'Enter search term'}</p>
                       )}
                     </div>
                   </div>
@@ -737,7 +737,7 @@ export default function SettingsPage() {
                   <div className="space-y-2">
                     {courseForm.sub_courses.map((name, idx) => (
                       <div key={idx} className="flex items-center gap-2">
-                        <span className="text-xs text-gray-500 w-14 flex-shrink-0">
+                        <span className="text-xs text-gray-400 w-14 flex-shrink-0">
                           {idx + 1}번 코스
                         </span>
                         <input
@@ -753,7 +753,7 @@ export default function SettingsPage() {
                       </div>
                     ))}
                   </div>
-                  <p className="text-xs text-gray-600 mt-1.5">
+                  <p className="text-xs text-gray-400 mt-1.5">
                     {ko ? '스코어카드에서 어떤 코스 조합으로 라운딩했는지 표시됩니다' : 'Shown in scorecard when selecting course combination'}
                   </p>
                 </div>
@@ -811,12 +811,12 @@ function CourseListReadOnly({ courses, ko }: { courses: any[], ko: boolean }) {
         <span className="text-sm font-semibold text-white flex-1 text-left">
           {ko ? `등록 골프장 (${courses.length}개)` : `Golf Courses (${courses.length})`}
         </span>
-        {open ? <ChevronUp size={16} className="text-gray-500" /> : <ChevronDown size={16} className="text-gray-500" />}
+        {open ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
       </button>
       {open && (
         <div className="px-4 pb-4 space-y-3 border-t border-gray-800">
           <div className="relative pt-3">
-            <Search size={14} className="absolute left-3 top-1/2 translate-y-[2px] text-gray-500" />
+            <Search size={14} className="absolute left-3 top-1/2 translate-y-[2px] text-gray-400" />
             <input value={search} onChange={e => setSearch(e.target.value)}
               placeholder={ko ? '골프장 검색...' : 'Search...'}
               className="w-full bg-gray-800 border border-gray-700 rounded-xl pl-8 pr-3 py-2 text-sm text-white focus:outline-none focus:border-green-500" />
@@ -825,11 +825,11 @@ function CourseListReadOnly({ courses, ko }: { courses: any[], ko: boolean }) {
             {filtered.map(c => (
               <div key={c.id} className="bg-gray-800/60 rounded-xl px-3 py-2.5">
                 <p className="text-white text-sm font-medium">{c.name}</p>
-                {c.name_vn && <p className="text-gray-500 text-xs">{c.name_vn}</p>}
+                {c.name_vn && <p className="text-gray-400 text-xs">{c.name_vn}</p>}
                 <div className="flex items-center gap-3 mt-1 flex-wrap">
-                  <span className="text-xs text-gray-500">{c.province}</span>
+                  <span className="text-xs text-gray-400">{c.province}</span>
                   <span className="text-xs text-green-500">{c.holes}H / Par {c.par}</span>
-                  {c.distance_km && <span className="text-xs text-gray-600">{c.distance_km}km</span>}
+                  {c.distance_km && <span className="text-xs text-gray-400">{c.distance_km}km</span>}
                   {c.green_fee_weekday_vnd && (
                     <span className="text-xs text-yellow-600">
                       {ko ? '평일' : 'WD'} ₫{(c.green_fee_weekday_vnd/1000).toFixed(0)}K

@@ -99,11 +99,11 @@ export default function PwaInstallPrompt() {
               </div>
               <div>
                 <p className="text-white font-bold text-sm">홈 화면에 앱 추가</p>
-                <p className="text-xs" style={{ color: '#5a7a5a' }}>오프라인에서도 빠르게 사용</p>
+                <p className="text-xs" style={{ color: '#9aae9a' }}>오프라인에서도 빠르게 사용</p>
               </div>
             </div>
             <button onClick={() => dismiss('pwa-ios-dismissed')}
-              className="text-gray-500 hover:text-gray-300 p-1 -mr-1">
+              className="text-gray-400 hover:text-gray-300 p-1 -mr-1">
               <X size={16} />
             </button>
           </div>
@@ -119,7 +119,7 @@ export default function PwaInstallPrompt() {
               <span><strong className="text-white">홈 화면에 추가</strong>를 선택하세요</span>
             </div>
           </div>
-          <p className="text-center text-xs mt-3" style={{ color: '#3a5a3a' }}>
+          <p className="text-center text-xs mt-3" style={{ color: '#7a9a7a' }}>
             또는{' '}
             <a href="/install" className="text-green-500 underline underline-offset-2">
               설치 안내 페이지
@@ -154,7 +154,7 @@ export default function PwaInstallPrompt() {
               <p className="text-xs" style={{ color: '#a3956a' }}>Chrome 메뉴에서 설치할 수 있습니다</p>
             </div>
             <button onClick={() => dismiss('pwa-install-dismissed')}
-              className="text-gray-500 hover:text-gray-300 p-1 -mr-1 flex-shrink-0">
+              className="text-gray-400 hover:text-gray-300 p-1 -mr-1 flex-shrink-0">
               <X size={16} />
             </button>
           </div>
@@ -200,7 +200,7 @@ export default function PwaInstallPrompt() {
             <p className="text-xs" style={{ color: '#a3956a' }}>홈 화면에 앱 아이콘을 설치하세요</p>
           </div>
           <button onClick={() => dismiss('pwa-install-dismissed')}
-            className="text-gray-500 hover:text-gray-300 p-1 -mr-1 flex-shrink-0">
+            className="text-gray-400 hover:text-gray-300 p-1 -mr-1 flex-shrink-0">
             <X size={16} />
           </button>
         </div>

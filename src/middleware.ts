@@ -154,7 +154,7 @@ function makeRedirectPage(targetUrl: string, ua: string): string {
       font-size:12px;color:#22c55e;font-family:monospace;word-break:break-all;text-align:center;
     }
 
-    .divider{width:100%;max-width:360px;display:flex;align-items:center;gap:10px;margin:4px 0 14px;color:#3a5a3a;font-size:11px}
+    .divider{width:100%;max-width:360px;display:flex;align-items:center;gap:10px;margin:4px 0 14px;color:#7a9a7a;font-size:11px}
     .divider::before,.divider::after{content:'';flex:1;height:1px;background:rgba(255,255,255,0.07)}
   </style>
 </head>

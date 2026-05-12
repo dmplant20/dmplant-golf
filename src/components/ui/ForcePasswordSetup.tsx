@@ -108,7 +108,7 @@ export default function ForcePasswordSetup() {
               <button
                 type="button"
                 onClick={() => setShowPw(v => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300 transition"
               >
                 {showPw ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
@@ -154,7 +154,7 @@ export default function ForcePasswordSetup() {
           >
             {loading ? (ko ? '설정 중...' : 'Saving...') : success ? (ko ? '✓ 완료' : '✓ Done') : (ko ? '비밀번호 등록' : 'Save Password')}
           </button>
-          <p className="text-[10px] mt-3 text-center" style={{ color: '#5a7a5a' }}>
+          <p className="text-[10px] mt-3 text-center" style={{ color: '#9aae9a' }}>
             {ko ? '비밀번호를 등록해야 앱을 사용할 수 있습니다.' : 'Password registration is required to use the app.'}
           </p>
         </div>

@@ -58,7 +58,7 @@ export default function MapEmbed({ name, address, lat, lng, height = 200, classN
           <div className="text-4xl">🗺️</div>
           <div className="text-center px-4">
             {name    && <p className="text-sm font-semibold text-white truncate">{name}</p>}
-            {address && <p className="text-xs mt-0.5" style={{ color: '#5a7a5a' }}>{address}</p>}
+            {address && <p className="text-xs mt-0.5" style={{ color: '#9aae9a' }}>{address}</p>}
           </div>
         </div>
       )}

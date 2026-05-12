@@ -136,7 +136,7 @@ export default function MorePage() {
                   <Icon size={17} style={{ color }} />
                 </div>
                 <span className="text-white text-sm font-medium flex-1">{label}</span>
-                <ChevronRight size={14} style={{ color: '#3a5a3a' }} />
+                <ChevronRight size={14} style={{ color: '#7a9a7a' }} />
               </Link>
             ))}
           </div>
@@ -168,7 +168,7 @@ export default function MorePage() {
         <span className="text-sm font-medium">{ko ? '로그아웃' : 'Logout'}</span>
       </button>
 
-      <p className="text-center text-xs pt-1" style={{ color: '#1a3a1a' }}>Inter Stellar GOLF v1.0.0</p>
+      <p className="text-center text-xs pt-1" style={{ color: '#5a7a5a' }}>Inter Stellar GOLF v1.0.0</p>
     </div>
   )
 }

@@ -106,7 +106,7 @@ export default function InstallPage() {
         </div>
       </div>
       <h1 className="text-2xl font-extrabold text-white">Inter Stellar GOLF</h1>
-      <p className="text-sm text-gray-500 mt-1">골프 모임 관리 앱</p>
+      <p className="text-sm text-gray-400 mt-1">골프 모임 관리 앱</p>
     </div>
   )
 
@@ -160,7 +160,7 @@ export default function InstallPage() {
             </div>
             <div className="flex-1">
               <p className="text-white text-sm font-bold">{s.title}</p>
-              <p className="text-gray-500 text-xs mt-0.5">{s.desc}</p>
+              <p className="text-gray-400 text-xs mt-0.5">{s.desc}</p>
             </div>
             <span className="text-xl">{s.icon}</span>
           </div>
@@ -173,7 +173,7 @@ export default function InstallPage() {
         style={{ background: 'rgba(22,163,74,0.12)', border: '1px solid rgba(34,197,94,0.25)', color: '#22c55e' }}>
         🔄 새로고침 — 자동 설치 버튼 시도
       </button>
-      <p className="text-xs text-gray-600 text-center max-w-xs">
+      <p className="text-xs text-gray-400 text-center max-w-xs">
         새로고침하면 "지금 설치하기" 버튼이 나타날 수 있습니다
       </p>
     </div>
@@ -204,7 +204,7 @@ export default function InstallPage() {
             </div>
             <div className="flex-1">
               <p className="text-white text-sm font-bold">{s.title}</p>
-              <p className="text-gray-500 text-xs mt-0.5">{s.desc}</p>
+              <p className="text-gray-400 text-xs mt-0.5">{s.desc}</p>
             </div>
             <span className="text-xl">{s.icon}</span>
           </div>
@@ -241,7 +241,7 @@ export default function InstallPage() {
               </div>
               <div className="flex-1">
                 <p className="text-white text-sm font-bold">{s.title}</p>
-                <p className="text-gray-500 text-xs mt-0.5">{s.desc}</p>
+                <p className="text-gray-400 text-xs mt-0.5">{s.desc}</p>
               </div>
               <span className="text-xl">{s.icon}</span>
             </div>
@@ -250,7 +250,7 @@ export default function InstallPage() {
       </div>
       <div className="flex flex-col items-center pb-8 pt-2">
         <div className="text-3xl animate-bounce">⬇️</div>
-        <p className="text-xs text-gray-600">Safari 하단 공유 버튼 (□↑)</p>
+        <p className="text-xs text-gray-400">Safari 하단 공유 버튼 (□↑)</p>
       </div>
     </div>
   )
@@ -267,7 +267,7 @@ export default function InstallPage() {
       </div>
 
       <div className="w-full max-w-xs bg-gray-800/80 rounded-xl px-4 py-3 text-center mb-4">
-        <p className="text-xs text-gray-500 mb-1.5">Chrome 주소창에 이 주소 입력:</p>
+        <p className="text-xs text-gray-400 mb-1.5">Chrome 주소창에 이 주소 입력:</p>
         <p className="text-green-400 text-sm font-mono break-all mb-3">{appUrl}/install</p>
         <button onClick={copyUrl}
           className="text-xs font-bold px-4 py-2 rounded-full"

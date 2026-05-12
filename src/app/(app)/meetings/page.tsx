@@ -1155,13 +1155,13 @@ export default function MeetingsPage() {
       )}
 
       {loading ? (
-        <p className="text-center text-gray-500 py-16">{ko ? '로딩 중...' : 'Loading...'}</p>
+        <p className="text-center text-gray-400 py-16">{ko ? '로딩 중...' : 'Loading...'}</p>
       ) : !pattern ? (
         <div className="glass-card rounded-2xl p-8 flex flex-col items-center gap-4 text-center">
-          <CalendarDays size={36} className="text-gray-600" />
+          <CalendarDays size={36} className="text-gray-400" />
           <div>
             <p className="text-white font-semibold">{ko ? '정기 일정이 설정되지 않았습니다' : 'No recurring pattern set'}</p>
-            <p className="text-xs text-gray-500 mt-1">{ko ? '패턴을 설정하면 매월 일정이 자동으로 생성됩니다.' : 'Set a pattern to auto-generate monthly schedules.'}</p>
+            <p className="text-xs text-gray-400 mt-1">{ko ? '패턴을 설정하면 매월 일정이 자동으로 생성됩니다.' : 'Set a pattern to auto-generate monthly schedules.'}</p>
           </div>
           {canManage && (
             <button onClick={() => { loadCourses(); setShowPatternModal(true) }}
@@ -1518,9 +1518,9 @@ export default function MeetingsPage() {
               </div>
               {groups.length === 0 ? (
                 <div className="text-center py-3">
-                  <p className="text-xs text-gray-500">{ko ? '아직 조 편성이 없습니다.' : 'No groups yet.'}</p>
+                  <p className="text-xs text-gray-400">{ko ? '아직 조 편성이 없습니다.' : 'No groups yet.'}</p>
                   {canManage && !isPastView && (
-                    <p className="text-[10px] text-gray-600 mt-1">{ko ? '위 "조편성" 버튼을 눌러 자동/수동으로 배정하세요.' : 'Use the "Assign" button above to set groups.'}</p>
+                    <p className="text-[10px] text-gray-400 mt-1">{ko ? '위 "조편성" 버튼을 눌러 자동/수동으로 배정하세요.' : 'Use the "Assign" button above to set groups.'}</p>
                   )}
                 </div>
               ) : (
@@ -1574,7 +1574,7 @@ export default function MeetingsPage() {
                 <p className="text-sm font-semibold text-white flex items-center gap-2">
                   <BarChart2 size={15} className="text-yellow-400" />
                   {ko ? `${displayMeeting.month}월 스코어` : `${displayMeeting.date.toLocaleDateString('en-US',{month:'short'})} Scores`}
-                  {isPastView && <span className="text-[10px] text-gray-500 font-normal">{ko ? '(기록)' : '(archived)'}</span>}
+                  {isPastView && <span className="text-[10px] text-gray-400 font-normal">{ko ? '(기록)' : '(archived)'}</span>}
                 </p>
                 <div className="flex items-center gap-2">
                   {scores.length > 0 && (
@@ -1617,7 +1617,7 @@ export default function MeetingsPage() {
                     <div key={att.user_id} className="flex items-center gap-3 bg-gray-800/60 rounded-xl px-3 py-2.5">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-white truncate">{name}{abbr ? ` (${abbr})` : ''}</p>
-                        {hcInfo != null && <p className="text-xs text-gray-500">HC {hcInfo}</p>}
+                        {hcInfo != null && <p className="text-xs text-gray-400">HC {hcInfo}</p>}
                       </div>
                       {canEdit ? (
                         <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -1634,7 +1634,7 @@ export default function MeetingsPage() {
                             className="w-7 h-7 rounded-lg bg-gray-700 text-white text-sm font-bold hover:bg-gray-600 transition">+</button>
                         </div>
                       ) : (
-                        <span className={`text-sm font-bold flex-shrink-0 ${existing ? 'text-yellow-300' : 'text-gray-600'}`}>
+                        <span className={`text-sm font-bold flex-shrink-0 ${existing ? 'text-yellow-300' : 'text-gray-400'}`}>
                           {existing ? existing.gross_score : '—'}
                         </span>
                       )}
@@ -1683,7 +1683,7 @@ export default function MeetingsPage() {
                     style={{ background: pushEnabled ? 'rgba(251,146,60,0.15)' : 'rgba(255,255,255,0.04)' }}>
                     {pushEnabled
                       ? <Bell size={13} style={{ color: '#fb923c' }} />
-                      : <BellOff size={13} style={{ color: '#5a7a5a' }} />}
+                      : <BellOff size={13} style={{ color: '#9aae9a' }} />}
                   </button>
                   {canManage && (
                     <button onClick={() => { setSForm(secondMeeting ? { name: secondMeeting.restaurant_name, address: secondMeeting.restaurant_address ?? '', placeId: secondMeeting.google_place_id ?? '', lat: secondMeeting.lat ? String(secondMeeting.lat) : '', lng: secondMeeting.lng ? String(secondMeeting.lng) : '', time: secondMeeting.time ?? '19:00', notes: secondMeeting.notes ?? '' } : emptySecondForm); setShowSecondModal(true) }}
@@ -1699,7 +1699,7 @@ export default function MeetingsPage() {
               {/* 내용 */}
               {!secondMeeting ? (
                 <div className="px-4 py-6 text-center">
-                  <p className="text-sm" style={{ color: '#5a7a5a' }}>
+                  <p className="text-sm" style={{ color: '#9aae9a' }}>
                     {canManage
                       ? (ko ? '2차 모임 장소를 등록해 주세요' : 'Add an after-party venue')
                       : (ko ? '2차 모임 장소가 아직 미정입니다' : 'After-party venue TBD')}
@@ -1721,7 +1721,7 @@ export default function MeetingsPage() {
                         </p>
                       )}
                       {secondMeeting.restaurant_address && (
-                        <p className="text-xs mt-0.5" style={{ color: '#5a7a5a' }}>{secondMeeting.restaurant_address}</p>
+                        <p className="text-xs mt-0.5" style={{ color: '#9aae9a' }}>{secondMeeting.restaurant_address}</p>
                       )}
                     </div>
                     {(secondMeeting.lat && secondMeeting.lng) && (
@@ -1754,7 +1754,7 @@ export default function MeetingsPage() {
                       <p className="text-xs font-semibold" style={{ color: '#fb923c' }}>
                         {ko ? '2차 참석 여부' : '2nd RSVP'}
                       </p>
-                      <span className="text-xs" style={{ color: '#5a7a5a' }}>
+                      <span className="text-xs" style={{ color: '#9aae9a' }}>
                         {secondAtts.filter((a: any) => a.status === 'attending').length}{ko ? '명 참석' : ' going'}
                       </span>
                     </div>
@@ -1800,7 +1800,7 @@ export default function MeetingsPage() {
                     </div>
                   )}
                   {secondMeeting.notes && (
-                    <p className="text-xs px-3 py-2 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', color: '#6b7280' }}>
+                    <p className="text-xs px-3 py-2 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', color: '#94a3b8' }}>
                       {secondMeeting.notes}
                     </p>
                   )}
@@ -1950,7 +1950,7 @@ export default function MeetingsPage() {
 
         <div>
           <label className="text-xs text-gray-400 block mb-1">2️⃣ {ko ? '자동 조편성' : 'Auto grouping'}</label>
-          <p className="text-[10px] text-gray-500 mb-2">
+          <p className="text-[10px] text-gray-400 mb-2">
             {ko ? '4명씩 같은 조로 순서대로 배정됩니다' : 'Players are cut into groups of 4 in order'}
           </p>
           <div className="flex gap-2">
@@ -1969,7 +1969,7 @@ export default function MeetingsPage() {
               <Shuffle size={14} />
               <span>
                 <span className="block text-xs font-bold">{ko ? '랜덤' : 'Random'}</span>
-                <span className="block text-[10px] text-gray-500">{ko ? '무작위 배정' : 'shuffle'}</span>
+                <span className="block text-[10px] text-gray-400">{ko ? '무작위 배정' : 'shuffle'}</span>
               </span>
             </button>
           </div>
@@ -2010,7 +2010,7 @@ export default function MeetingsPage() {
                             {p.isGuest && <span className="text-[10px] mr-1 px-1 py-0.5 rounded" style={{ background: 'rgba(167,139,250,0.3)', color: '#c4b5fd' }}>게스트</span>}
                             {p.name}
                           </span>
-                          {p.handicap != null && <span className="text-[10px] text-gray-500">HC {p.handicap}</span>}
+                          {p.handicap != null && <span className="text-[10px] text-gray-400">HC {p.handicap}</span>}
                         </div>
                         <div className="flex gap-1 flex-shrink-0 items-center">
                           {cur == null && <span className="text-[10px] text-amber-500 mr-1">미배정</span>}
@@ -2029,7 +2029,7 @@ export default function MeetingsPage() {
                 </div>
               </div>
             ) : (
-              <p className="text-xs text-gray-500 text-center py-4">{ko ? '참석자가 없습니다.' : 'No attendees yet.'}</p>
+              <p className="text-xs text-gray-400 text-center py-4">{ko ? '참석자가 없습니다.' : 'No attendees yet.'}</p>
             )}
             {unassignedCount > 0 && (
               <p className="text-[11px] text-amber-400 bg-amber-900/20 border border-amber-700/30 rounded-lg px-3 py-2 mt-2">
@@ -2288,7 +2288,7 @@ export default function MeetingsPage() {
                     style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.15)' }}>
                     <div>
                       <span className="text-sm text-white font-medium">{nm}</span>
-                      {abbr && <span className="text-xs text-gray-500 ml-1.5">({abbr})</span>}
+                      {abbr && <span className="text-xs text-gray-400 ml-1.5">({abbr})</span>}
                     </div>
                     <div className="flex items-center gap-2">
                       {hc != null && <span className="text-[11px] text-gray-400">HC {hc}</span>}
@@ -2358,7 +2358,7 @@ export default function MeetingsPage() {
         )}
 
         {attending.length === 0 && absent.length === 0 && (
-          <p className="text-center text-gray-500 text-sm py-6">{ko ? '아직 응답이 없습니다.' : 'No responses yet.'}</p>
+          <p className="text-center text-gray-400 text-sm py-6">{ko ? '아직 응답이 없습니다.' : 'No responses yet.'}</p>
         )}
       </BottomSheet>
 
@@ -2405,7 +2405,7 @@ export default function MeetingsPage() {
                   autoFocus
                   className="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-sm font-mono focus:outline-none focus:border-green-500"
                 />
-                <p className="text-[10px] mt-1" style={{ color: '#6b7280' }}>
+                <p className="text-[10px] mt-1" style={{ color: '#94a3b8' }}>
                   {ko
                     ? '※ 조 번호가 없으면 줄 순서대로 1·2·3… 자동 부여'
                     : 'Tip: missing group numbers auto-fill as 1, 2, 3…'}
@@ -2517,7 +2517,7 @@ export default function MeetingsPage() {
                 )}
                 <button onClick={() => setProxyTarget(null)}
                   className="w-full py-2.5 rounded-xl text-xs"
-                  style={{ color: '#6b7280' }}>
+                  style={{ color: '#94a3b8' }}>
                   {ko ? '닫기' : 'Cancel'}
                 </button>
               </div>
@@ -2536,12 +2536,12 @@ export default function MeetingsPage() {
         }
       >
         {yearlyLoading ? (
-          <p className="text-center text-gray-500 py-8">{ko ? '분석 중...' : 'Analyzing...'}</p>
+          <p className="text-center text-gray-400 py-8">{ko ? '분석 중...' : 'Analyzing...'}</p>
         ) : yearlyByUser.length === 0 ? (
-          <p className="text-center text-gray-500 py-8">{ko ? '올해 등록된 스코어가 없습니다.' : 'No scores recorded this year.'}</p>
+          <p className="text-center text-gray-400 py-8">{ko ? '올해 등록된 스코어가 없습니다.' : 'No scores recorded this year.'}</p>
         ) : (
           <>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-gray-400">
               {ko ? `총 ${yearlyByUser.reduce((s, u) => s + u.rounds, 0)}라운드 · ${yearlyByUser.length}명` : `${yearlyByUser.reduce((s, u) => s + u.rounds, 0)} rounds · ${yearlyByUser.length} members`}
             </p>
             <div className="space-y-3">
@@ -2561,19 +2561,19 @@ export default function MeetingsPage() {
                     </div>
                     <div className="grid grid-cols-4 gap-1.5 text-center">
                       <div className="bg-gray-900/60 rounded-lg py-1.5">
-                        <p className="text-[10px] text-gray-500">{ko ? '라운드' : 'Rounds'}</p>
+                        <p className="text-[10px] text-gray-400">{ko ? '라운드' : 'Rounds'}</p>
                         <p className="text-sm font-bold text-white">{u.rounds}</p>
                       </div>
                       <div className="bg-gray-900/60 rounded-lg py-1.5">
-                        <p className="text-[10px] text-gray-500">{ko ? '평균' : 'Avg'}</p>
+                        <p className="text-[10px] text-gray-400">{ko ? '평균' : 'Avg'}</p>
                         <p className="text-sm font-bold text-yellow-300">{u.avg.toFixed(1)}</p>
                       </div>
                       <div className="bg-gray-900/60 rounded-lg py-1.5">
-                        <p className="text-[10px] text-gray-500">{ko ? '최저' : 'Best'}</p>
+                        <p className="text-[10px] text-gray-400">{ko ? '최저' : 'Best'}</p>
                         <p className="text-sm font-bold text-green-300">{u.min}</p>
                       </div>
                       <div className="bg-gray-900/60 rounded-lg py-1.5">
-                        <p className="text-[10px] text-gray-500">{ko ? '평균-파' : 'Avg-Par'}</p>
+                        <p className="text-[10px] text-gray-400">{ko ? '평균-파' : 'Avg-Par'}</p>
                         <p className={`text-sm font-bold ${u.avg - u.par < (u.clubHc ?? 99) ? 'text-green-300' : 'text-red-300'}`}>
                           +{(u.avg - u.par).toFixed(0)}
                         </p>
@@ -2598,7 +2598,7 @@ export default function MeetingsPage() {
               })}
             </div>
             {canManage && (
-              <p className="text-xs text-gray-500 text-center">
+              <p className="text-xs text-gray-400 text-center">
                 {ko ? '* 핸디 실제 변경은 회원 관리에서 수동으로 적용하세요' : '* Apply HC changes manually in Members page'}
               </p>
             )}

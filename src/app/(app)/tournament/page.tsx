@@ -228,7 +228,7 @@ export default function ChampionshipPage() {
           <button
             onClick={() => { setView('list'); setSelectedEvent(null); setShowPrizePanel(false) }}
             className="flex items-center gap-1.5 text-xs font-medium mb-3 -ml-0.5"
-            style={{ color: '#5a7a5a' }}>
+            style={{ color: '#9aae9a' }}>
             <ChevronLeft size={14} />
             {ko ? '대회 목록' : 'All Events'}
           </button>
@@ -314,7 +314,7 @@ export default function ChampionshipPage() {
                 className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold transition-all"
                 style={tab === t
                   ? { background: 'linear-gradient(135deg,rgba(22,163,74,0.22),rgba(14,53,29,0.5))', color: '#4ade80', border: '1px solid rgba(34,197,94,0.2)', boxShadow: 'inset 0 1px 0 rgba(34,197,94,0.1)' }
-                  : { color: '#3a5a3a' }}>
+                  : { color: '#7a9a7a' }}>
                 <span>{ic}</span>{label}
               </button>
             ))}
@@ -326,7 +326,7 @@ export default function ChampionshipPage() {
       {loading ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3">
           <div className="w-7 h-7 rounded-full border-2 animate-spin" style={{ borderColor: 'rgba(34,197,94,0.2)', borderTopColor: '#22c55e' }} />
-          <p className="text-xs" style={{ color: '#3a5a3a' }}>{ko ? '불러오는 중...' : 'Loading...'}</p>
+          <p className="text-xs" style={{ color: '#7a9a7a' }}>{ko ? '불러오는 중...' : 'Loading...'}</p>
         </div>
 
       ) : view === 'detail' && selectedEvent ? (
@@ -362,7 +362,7 @@ export default function ChampionshipPage() {
                   🎖 {ko ? '시상 등록' : 'Add Prize'}
                 </span>
                 <button onClick={() => { setShowPrizePanel(false); setPrizeForm(emptyPrize) }}
-                  className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.04)', color: '#5a7a5a' }}>
+                  className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.04)', color: '#9aae9a' }}>
                   <X size={13} />
                 </button>
               </div>
@@ -374,7 +374,7 @@ export default function ChampionshipPage() {
                       className="py-2 rounded-xl text-[11px] font-semibold transition flex flex-col items-center gap-0.5"
                       style={prizeForm.prize_type === pt.value
                         ? { background: 'rgba(251,191,36,0.16)', border: '1px solid rgba(251,191,36,0.35)', color: '#fbbf24' }
-                        : { background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', color: '#5a7a5a' }}>
+                        : { background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', color: '#9aae9a' }}>
                       <span className="text-base leading-none">{pt.icon}</span>
                       {ko ? pt.ko : pt.en}
                     </button>
@@ -389,7 +389,7 @@ export default function ChampionshipPage() {
                         className="flex-1 py-2.5 rounded-xl text-sm font-bold transition flex items-center justify-center gap-1.5"
                         style={prizeForm.prize_rank === i + 1
                           ? { background: m.bg, color: m.tc, boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }
-                          : { background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', color: '#3a5a3a' }}>
+                          : { background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', color: '#7a9a7a' }}>
                         <span>{m.emoji}</span> {ko ? m.label : `${i + 1}${['st','nd','rd'][i]}`}
                       </button>
                     ))}
@@ -414,11 +414,11 @@ export default function ChampionshipPage() {
                 {/* 스코어 */}
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-[10px] font-semibold block mb-1" style={{ color: '#5a7a5a' }}>{ko ? 'GROSS' : 'GROSS'}</label>
+                    <label className="text-[10px] font-semibold block mb-1" style={{ color: '#9aae9a' }}>{ko ? 'GROSS' : 'GROSS'}</label>
                     <input type="number" value={prizeForm.gross_score} onChange={e => setPrizeForm(f => ({ ...f, gross_score: e.target.value }))} placeholder="78" className="input-field text-sm text-center" />
                   </div>
                   <div>
-                    <label className="text-[10px] font-semibold block mb-1" style={{ color: '#5a7a5a' }}>{ko ? 'NET' : 'NET'}</label>
+                    <label className="text-[10px] font-semibold block mb-1" style={{ color: '#9aae9a' }}>{ko ? 'NET' : 'NET'}</label>
                     <input type="number" value={prizeForm.net_score} onChange={e => setPrizeForm(f => ({ ...f, net_score: e.target.value }))} placeholder="66" className="input-field text-sm text-center" />
                   </div>
                 </div>
@@ -460,7 +460,7 @@ export default function ChampionshipPage() {
                         </div>
                       ) : (
                         <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-                          style={{ background: 'rgba(255,255,255,0.04)', color: '#5a7a5a' }}>
+                          style={{ background: 'rgba(255,255,255,0.04)', color: '#9aae9a' }}>
                           {i + 1}
                         </div>
                       )}
@@ -468,7 +468,7 @@ export default function ChampionshipPage() {
                       <div className="flex items-center gap-2 flex-shrink-0">
                         {m.handicap_used != null && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                            style={{ background: 'rgba(34,197,94,0.08)', color: '#5a7a5a' }}>
+                            style={{ background: 'rgba(34,197,94,0.08)', color: '#9aae9a' }}>
                             HC{m.handicap_used}
                           </span>
                         )}
@@ -536,7 +536,7 @@ export default function ChampionshipPage() {
 
           {/* 조 편성 & 스코어 */}
           <div>
-            <p className="text-[10px] font-bold tracking-widest uppercase mb-2.5 flex items-center gap-2" style={{ color: '#3a5a3a' }}>
+            <p className="text-[10px] font-bold tracking-widest uppercase mb-2.5 flex items-center gap-2" style={{ color: '#7a9a7a' }}>
               <Users size={11} />
               {ko ? '조 편성 및 스코어' : 'Groups & Scores'}
             </p>
@@ -552,7 +552,7 @@ export default function ChampionshipPage() {
                     <span className="text-xs font-semibold" style={{ color: '#22c55e' }}>
                       {ko ? `${g.group_number}조` : `Group ${g.group_number}`}
                     </span>
-                    {g.tee_time && <span className="text-[11px] ml-auto" style={{ color: '#5a7a5a' }}>{g.tee_time}</span>}
+                    {g.tee_time && <span className="text-[11px] ml-auto" style={{ color: '#9aae9a' }}>{g.tee_time}</span>}
                   </div>
                   <div className="divide-y" style={{ borderColor: 'rgba(34,197,94,0.04)' }}>
                     {g.tournament_group_members?.map((m: any) => {
@@ -562,7 +562,7 @@ export default function ChampionshipPage() {
                           <span className="text-sm text-white flex-1 truncate">{mName}</span>
                           {m.handicap_used != null && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded font-medium flex-shrink-0"
-                              style={{ background: 'rgba(34,197,94,0.07)', color: '#5a7a5a' }}>
+                              style={{ background: 'rgba(34,197,94,0.07)', color: '#9aae9a' }}>
                               HC{m.handicap_used}
                             </span>
                           )}
@@ -574,7 +574,7 @@ export default function ChampionshipPage() {
                                 style={{ background: 'rgba(34,197,94,0.07)', border: '1px solid rgba(34,197,94,0.15)', color: '#fff', outline: 'none' }}
                                 placeholder="—" />
                               {m.net_score != null && (
-                                <span className="text-[11px] w-10 text-right tabular-nums" style={{ color: '#5a7a5a' }}>
+                                <span className="text-[11px] w-10 text-right tabular-nums" style={{ color: '#9aae9a' }}>
                                   {m.net_score}
                                 </span>
                               )}
@@ -593,7 +593,7 @@ export default function ChampionshipPage() {
               ))}
               {groups.length === 0 && (
                 <div className="rounded-2xl py-10 flex flex-col items-center gap-2" style={{ background: 'rgba(255,255,255,0.01)', border: '1px dashed rgba(34,197,94,0.1)' }}>
-                  <Users size={28} style={{ color: '#1a3a1a' }} />
+                  <Users size={28} style={{ color: '#5a7a5a' }} />
                   <p className="text-xs" style={{ color: '#2a4a2a' }}>{ko ? '조편성이 없습니다' : 'No groups formed'}</p>
                 </div>
               )}
@@ -611,7 +611,7 @@ export default function ChampionshipPage() {
                 className="flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap"
                 style={y === selectedYear
                   ? { background: 'linear-gradient(135deg,#16a34a,#14532d)', color: '#fff', boxShadow: '0 2px 10px rgba(22,163,74,0.35)' }
-                  : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(34,197,94,0.1)', color: '#3a5a3a' }}>
+                  : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(34,197,94,0.1)', color: '#7a9a7a' }}>
                 {y}{ko ? '년' : ''}
               </button>
             ))}
@@ -621,7 +621,7 @@ export default function ChampionshipPage() {
             <div className="flex flex-col items-center justify-center py-16 gap-3">
               <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
                 style={{ background: 'rgba(34,197,94,0.04)', border: '1px dashed rgba(34,197,94,0.12)' }}>
-                <Trophy size={28} style={{ color: '#1a3a1a' }} />
+                <Trophy size={28} style={{ color: '#5a7a5a' }} />
               </div>
               <div className="text-center">
                 <p className="text-sm font-medium" style={{ color: '#2a4a2a' }}>
@@ -714,12 +714,12 @@ export default function ChampionshipPage() {
                 </div>
                 <div>
                   <p className="text-base font-bold text-white">{ko ? '대회 생성' : 'Create Event'}</p>
-                  <p className="text-[10px]" style={{ color: '#3a5a3a' }}>{ko ? '새 클럽 대회를 등록합니다' : 'Register a new championship'}</p>
+                  <p className="text-[10px]" style={{ color: '#7a9a7a' }}>{ko ? '새 클럽 대회를 등록합니다' : 'Register a new championship'}</p>
                 </div>
               </div>
               <button onClick={() => setShowCreate(false)}
                 className="w-8 h-8 rounded-xl flex items-center justify-center transition"
-                style={{ background: 'rgba(255,255,255,0.04)', color: '#3a5a3a' }}>
+                style={{ background: 'rgba(255,255,255,0.04)', color: '#7a9a7a' }}>
                 <X size={16} />
               </button>
             </div>
@@ -727,7 +727,7 @@ export default function ChampionshipPage() {
             <div className="px-5 py-4 space-y-5">
               {/* 대회 유형 */}
               <div>
-                <label className="text-[10px] font-bold tracking-widest uppercase block mb-2.5" style={{ color: '#3a5a3a' }}>
+                <label className="text-[10px] font-bold tracking-widest uppercase block mb-2.5" style={{ color: '#7a9a7a' }}>
                   {ko ? '대회 유형' : 'EVENT TYPE'}
                 </label>
                 <div className="grid grid-cols-4 gap-2">
@@ -739,7 +739,7 @@ export default function ChampionshipPage() {
                         : { background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
                       <span className="text-2xl leading-none">{et.emoji}</span>
                       <span className="text-[10px] font-semibold mt-0.5"
-                        style={{ color: form.eventType === et.value ? et.color : '#3a5a3a' }}>
+                        style={{ color: form.eventType === et.value ? et.color : '#7a9a7a' }}>
                         {ko ? et.ko : et.en}
                       </span>
                     </button>
@@ -752,7 +752,7 @@ export default function ChampionshipPage() {
               {/* 대회명 */}
               <div className="space-y-3">
                 <div>
-                  <label className="text-[10px] font-bold tracking-widest uppercase block mb-2" style={{ color: '#3a5a3a' }}>
+                  <label className="text-[10px] font-bold tracking-widest uppercase block mb-2" style={{ color: '#7a9a7a' }}>
                     {ko ? '대회명 *' : 'EVENT NAME *'}
                   </label>
                   <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
@@ -765,7 +765,7 @@ export default function ChampionshipPage() {
                     className="input-field" autoFocus />
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold tracking-widest uppercase block mb-2" style={{ color: '#3a5a3a' }}>
+                  <label className="text-[10px] font-bold tracking-widest uppercase block mb-2" style={{ color: '#7a9a7a' }}>
                     {ko ? '대회명 영문 (선택)' : 'NAME (KO, OPTIONAL)'}
                   </label>
                   <input value={form.nameEn} onChange={e => setForm(f => ({ ...f, nameEn: e.target.value }))} className="input-field" />
@@ -777,13 +777,13 @@ export default function ChampionshipPage() {
               {/* 날짜 + 골프장 */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] font-bold tracking-widest uppercase block mb-2" style={{ color: '#3a5a3a' }}>
+                  <label className="text-[10px] font-bold tracking-widest uppercase block mb-2" style={{ color: '#7a9a7a' }}>
                     {ko ? '날짜 *' : 'DATE *'}
                   </label>
                   <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} className="input-field text-sm" />
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold tracking-widest uppercase block mb-2" style={{ color: '#3a5a3a' }}>
+                  <label className="text-[10px] font-bold tracking-widest uppercase block mb-2" style={{ color: '#7a9a7a' }}>
                     {ko ? '골프장' : 'VENUE'}
                   </label>
                   <CourseSearchInput value={form.venue} onChange={v => setForm(f => ({ ...f, venue: v }))} onSelect={c => setForm(f => ({ ...f, venue: c.name }))} placeholder={ko ? '골프장' : 'Course'} className="text-sm" useFixed />
@@ -794,7 +794,7 @@ export default function ChampionshipPage() {
 
               {/* 조편성 */}
               <div>
-                <label className="text-[10px] font-bold tracking-widest uppercase block mb-2.5" style={{ color: '#3a5a3a' }}>
+                <label className="text-[10px] font-bold tracking-widest uppercase block mb-2.5" style={{ color: '#7a9a7a' }}>
                   {ko ? '조편성 방식' : 'GROUPING'}
                 </label>
                 <div className="grid grid-cols-3 gap-2">
@@ -807,7 +807,7 @@ export default function ChampionshipPage() {
                       className="py-2.5 rounded-xl text-xs font-semibold transition flex flex-col items-center gap-1"
                       style={form.groupingMethod === m.v
                         ? { background: 'rgba(34,197,94,0.14)', border: '1px solid rgba(34,197,94,0.28)', color: '#4ade80' }
-                        : { background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', color: '#3a5a3a' }}>
+                        : { background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', color: '#7a9a7a' }}>
                       <span className="text-base leading-none">{m.icon}</span>
                       {ko ? m.ko : m.en}
                     </button>
@@ -882,7 +882,7 @@ function RecordsTab({ allEvents, years, ko, lang, sym, clubId }: {
             className="flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap"
             style={y === selYear
               ? { background: 'linear-gradient(135deg,#16a34a,#14532d)', color: '#fff', boxShadow: '0 2px 10px rgba(22,163,74,0.35)' }
-              : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(34,197,94,0.1)', color: '#3a5a3a' }}>
+              : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(34,197,94,0.1)', color: '#7a9a7a' }}>
             {y}{ko ? '년' : ''}
           </button>
         ))}
@@ -921,7 +921,7 @@ function RecordsTab({ allEvents, years, ko, lang, sym, clubId }: {
         </div>
       ) : yearEvents.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 gap-2">
-          <Trophy size={32} style={{ color: '#1a3a1a' }} />
+          <Trophy size={32} style={{ color: '#5a7a5a' }} />
           <p className="text-xs" style={{ color: '#2a4a2a' }}>{ko ? `${selYear}년 기록이 없습니다` : `No records for ${selYear}`}</p>
         </div>
       ) : (
@@ -953,11 +953,11 @@ function RecordsTab({ allEvents, years, ko, lang, sym, clubId }: {
                           <span className="text-sm font-bold" style={{ color: '#fbbf24' }}>
                             {ko ? champ.member_name : (champ.users?.full_name_en || champ.member_name)}
                           </span>
-                          {champ.net_score && <span className="text-[11px]" style={{ color: '#5a7a5a' }}>· net {champ.net_score}</span>}
+                          {champ.net_score && <span className="text-[11px]" style={{ color: '#9aae9a' }}>· net {champ.net_score}</span>}
                         </div>
                       )}
                       {!champ && ev.status !== 'completed' && (
-                        <span className="text-[11px] mt-1 inline-block" style={{ color: '#3a5a3a' }}>
+                        <span className="text-[11px] mt-1 inline-block" style={{ color: '#7a9a7a' }}>
                           {ev.status === 'upcoming' ? (ko ? '대회 예정' : 'Upcoming') : (ko ? '진행중' : 'In progress')}
                         </span>
                       )}
@@ -999,7 +999,7 @@ function RecordsTab({ allEvents, years, ko, lang, sym, clubId }: {
                             {p.prize_description && <p className="text-[11px] mt-0.5" style={{ color: '#fde68a' }}>{p.prize_description}</p>}
                           </div>
                           {(p.net_score || p.gross_score) && (
-                            <span className="text-[11px] flex-shrink-0 tabular-nums" style={{ color: '#5a7a5a' }}>
+                            <span className="text-[11px] flex-shrink-0 tabular-nums" style={{ color: '#9aae9a' }}>
                               {p.net_score ? `net ${p.net_score}` : `${p.gross_score}`}
                             </span>
                           )}

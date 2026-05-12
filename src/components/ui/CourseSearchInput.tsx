@@ -176,7 +176,7 @@ export default function CourseSearchInput({
   return (
     <div ref={wrapRef} className={`relative ${className}`}>
       <div className="relative">
-        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#5a7a5a' }} />
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#9aae9a' }} />
         <input
           ref={inputRef}
           value={value}
@@ -192,7 +192,7 @@ export default function CourseSearchInput({
           ? <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin" style={{ color: '#22c55e' }} />
           : value && (
             <button type="button" onClick={() => { onChange(''); setOpen(false); setResults([]) }}
-              className="absolute right-3 top-1/2 -translate-y-1/2 hover:opacity-70 transition-opacity" style={{ color: '#5a7a5a' }}>
+              className="absolute right-3 top-1/2 -translate-y-1/2 hover:opacity-70 transition-opacity" style={{ color: '#9aae9a' }}>
               <X size={14} />
             </button>
           )
@@ -213,9 +213,9 @@ export default function CourseSearchInput({
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-white truncate">{course.name}</p>
                   <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-[10px]" style={{ color: '#5a7a5a' }}>{course.province}</span>
+                    <span className="text-[10px]" style={{ color: '#9aae9a' }}>{course.province}</span>
                     <span className="text-[10px]" style={{ color: '#22c55e' }}>{course.holes}H / Par {course.par}</span>
-                    {course.distance_km && <span className="text-[10px]" style={{ color: '#3a5a3a' }}>{course.distance_km}km</span>}
+                    {course.distance_km && <span className="text-[10px]" style={{ color: '#7a9a7a' }}>{course.distance_km}km</span>}
                   </div>
                 </div>
               </div>
@@ -242,7 +242,7 @@ export default function CourseSearchInput({
       {open && !loading && results.length === 0 && value.trim().length >= minChars && (
         <div className={dropdownClass} style={emptyDropStyle}>
           <div className="px-4 py-3 text-center">
-            <p className="text-sm" style={{ color: '#5a7a5a' }}>검색 결과가 없습니다</p>
+            <p className="text-sm" style={{ color: '#9aae9a' }}>검색 결과가 없습니다</p>
             <button type="button"
               onClick={() => { onSelect({ id: '', name: value.trim(), name_vn: null, province: '', holes: 18, par: 72, distance_km: null }); setOpen(false) }}
               className="text-xs mt-1" style={{ color: '#22c55e' }}>

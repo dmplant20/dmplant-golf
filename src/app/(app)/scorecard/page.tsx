@@ -937,7 +937,7 @@ export default function ScorecardPage() {
               <div className="flex gap-3 pt-1 pb-2">
                 <button onClick={() => setEditingName(false)}
                   className="flex-1 py-3 rounded-xl text-sm font-bold"
-                  style={{ background: 'rgba(255,255,255,0.06)', color: '#6b7280' }}>
+                  style={{ background: 'rgba(255,255,255,0.06)', color: '#94a3b8' }}>
                   {ko ? '취소' : 'Cancel'}
                 </button>
                 <button
@@ -1088,7 +1088,7 @@ export default function ScorecardPage() {
                     className="flex-shrink-0 flex items-center justify-center h-full px-3.5 transition-colors active:bg-red-900/30"
                     style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}
                     title={ko ? '삭제' : 'Delete'}>
-                    <Trash2 size={16} style={{ color: '#6b7280' }} />
+                    <Trash2 size={16} style={{ color: '#94a3b8' }} />
                   </button>
                 </div>
               )
@@ -1328,7 +1328,7 @@ export default function ScorecardPage() {
             <div className="flex gap-3 px-5 py-4 flex-shrink-0" style={{ borderTop: '1px solid rgba(201,168,76,0.12)' }}>
               <button onClick={() => { setShowNew(false); resetNewForm() }}
                 className="flex-1 py-3.5 rounded-xl font-bold text-sm"
-                style={{ background: 'rgba(255,255,255,0.06)', color: '#6b7280' }}>
+                style={{ background: 'rgba(255,255,255,0.06)', color: '#94a3b8' }}>
                 {ko ? '취소' : 'Cancel'}
               </button>
               <button onClick={createRound}
@@ -1404,7 +1404,7 @@ function ScoreTable({ holes, label, localHoles, holeData, sumScores, sumPars, on
                 {ko ? '파' : 'Par'}
               </td>
               {holes.map(h => (
-                <td key={h} className="text-center py-2 font-semibold" style={{ color: '#6b7280' }}>
+                <td key={h} className="text-center py-2 font-semibold" style={{ color: '#94a3b8' }}>
                   {holeData(h).par}
                 </td>
               ))}
@@ -1626,7 +1626,7 @@ function HoleEditModal({ hole, totalHoles, data, ko, onClose, onNavigate, onChan
                     className="flex-1 py-1.5 rounded-lg text-[10px] font-bold transition"
                     style={putts === p
                       ? { background: 'rgba(59,130,246,0.25)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.35)' }
-                      : { background: 'rgba(255,255,255,0.04)', color: '#6b7280' }}>
+                      : { background: 'rgba(255,255,255,0.04)', color: '#94a3b8' }}>
                     {p}
                   </button>
                 ))}
@@ -1652,7 +1652,7 @@ function HoleEditModal({ hole, totalHoles, data, ko, onClose, onNavigate, onChan
               onClick={() => onNavigate(hole - 1)}
               disabled={hole <= 1}
               className="w-11 h-12 rounded-xl flex items-center justify-center font-bold transition disabled:opacity-25"
-              style={{ background: 'rgba(255,255,255,0.07)', color: '#6b7280' }}>
+              style={{ background: 'rgba(255,255,255,0.07)', color: '#94a3b8' }}>
               <ChevronLeft size={18} />
             </button>
 
@@ -1668,7 +1668,7 @@ function HoleEditModal({ hole, totalHoles, data, ko, onClose, onNavigate, onChan
               onClick={() => onNavigate(hole + 1)}
               disabled={hole >= totalHoles}
               className="w-11 h-12 rounded-xl flex items-center justify-center font-bold transition disabled:opacity-25"
-              style={{ background: 'rgba(255,255,255,0.07)', color: '#6b7280' }}>
+              style={{ background: 'rgba(255,255,255,0.07)', color: '#94a3b8' }}>
               <ChevronRight size={18} />
             </button>
           </div>

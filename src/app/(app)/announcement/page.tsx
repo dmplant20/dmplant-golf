@@ -734,15 +734,15 @@ export default function AnnouncementPage() {
           <h1 className="text-lg font-bold text-white">{ko ? '공지 · 경조사' : 'Notices & Events'}</h1>
           {tab === 'notice' && !isOfficer && (
             <div className="flex items-center gap-1 mt-0.5">
-              <Lock size={10} style={{ color: '#5a7a5a' }} />
-              <p className="text-xs" style={{ color: '#5a7a5a' }}>
+              <Lock size={10} style={{ color: '#9aae9a' }} />
+              <p className="text-xs" style={{ color: '#9aae9a' }}>
                 {ko ? '공지사항: 열람 전용 (임원 이상 작성)' : 'Notices: view only — officers can post'}
               </p>
             </div>
           )}
           {tab === 'event' && (
             <div className="flex items-center gap-1 mt-0.5">
-              <p className="text-xs" style={{ color: '#5a7a5a' }}>
+              <p className="text-xs" style={{ color: '#9aae9a' }}>
                 {ko ? '경조사: 회원 누구나 등록 가능' : 'Events: any member can post'}
               </p>
             </div>
@@ -842,7 +842,7 @@ export default function AnnouncementPage() {
             className="flex-1 py-2 rounded-xl text-sm font-medium transition"
             style={tab === t
               ? { background: 'linear-gradient(135deg,rgba(22,163,74,0.28),rgba(14,53,29,0.6))', color: '#22c55e', border: '1px solid rgba(34,197,94,0.22)' }
-              : { color: '#5a7a5a' }}>
+              : { color: '#9aae9a' }}>
             {label}
           </button>
         ))}
@@ -858,7 +858,7 @@ export default function AnnouncementPage() {
         /* ═══ 공지사항 목록 ═══════════════════════════════════════════ */
         <div className="space-y-3">
           {notices.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16" style={{ color: '#3a5a3a' }}>
+            <div className="flex flex-col items-center justify-center py-16" style={{ color: '#7a9a7a' }}>
               <Bell size={40} className="mb-3 opacity-30" />
               <p className="text-sm">{ko ? '공지사항이 없습니다' : 'No announcements yet'}</p>
             </div>
@@ -903,7 +903,7 @@ export default function AnnouncementPage() {
                         )}
                         <p className="text-white font-semibold text-sm leading-snug">{title}</p>
                       </div>
-                      <p className="text-xs mt-1" style={{ color: '#5a7a5a' }}>
+                      <p className="text-xs mt-1" style={{ color: '#9aae9a' }}>
                         {author && <span>{author} · </span>}
                         {new Date(n.created_at).toLocaleDateString(ko ? 'ko-KR' : 'en-US', { month: 'short', day: 'numeric' })}
                       </p>
@@ -956,7 +956,7 @@ export default function AnnouncementPage() {
         /* ═══ 경조사 목록 ════════════════════════════════════════════ */
         <div className="space-y-4">
           {events.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16" style={{ color: '#3a5a3a' }}>
+            <div className="flex flex-col items-center justify-center py-16" style={{ color: '#7a9a7a' }}>
               <span className="text-5xl mb-3 opacity-40">🎊</span>
               <p className="text-sm">{ko ? '등록된 경조사가 없습니다' : 'No life events yet'}</p>
             </div>
@@ -1103,7 +1103,7 @@ export default function AnnouncementPage() {
                 </h3>
                 <button onClick={() => setShowAdd(false)}
                   className="w-8 h-8 rounded-xl flex items-center justify-center"
-                  style={{ background: 'rgba(255,255,255,0.05)', color: '#5a7a5a' }}>
+                  style={{ background: 'rgba(255,255,255,0.05)', color: '#9aae9a' }}>
                   <X size={16} />
                 </button>
               </div>
@@ -1116,7 +1116,7 @@ export default function AnnouncementPage() {
               /* ── 공지 폼 ──────────────────────────────────────── */
               <>
                 <div>
-                  <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#5a7a5a' }}>
+                  <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#9aae9a' }}>
                     {ko ? '제목 *' : 'Title *'}
                   </label>
                   <input value={nForm.title} onChange={e => setNForm(f => ({ ...f, title: e.target.value }))}
@@ -1125,7 +1125,7 @@ export default function AnnouncementPage() {
                     className="input-field" autoFocus />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#5a7a5a' }}>
+                  <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#9aae9a' }}>
                     {ko ? '내용' : 'Content'}
                   </label>
                   <textarea rows={4} value={nForm.content}
@@ -1135,7 +1135,7 @@ export default function AnnouncementPage() {
                 </div>
                 {/* 장소 (선택) — 구글 Places 검색 (베트남 호치민 기준), 회원 길찾기 가능 */}
                 <div>
-                  <label className="text-xs font-semibold mb-1.5 block flex items-center gap-1" style={{ color: '#5a7a5a' }}>
+                  <label className="text-xs font-semibold mb-1.5 block flex items-center gap-1" style={{ color: '#9aae9a' }}>
                     <MapPin size={11} />
                     {ko ? '장소 (선택) — 검색 또는 직접 입력' : 'Location (optional) — search or type'}
                   </label>
@@ -1160,7 +1160,7 @@ export default function AnnouncementPage() {
                     </p>
                   )}
                   {nForm.location_name.trim() && !nForm.location_address && (
-                    <p className="text-[10px] mt-1 flex items-center gap-1" style={{ color: '#5a7a5a' }}>
+                    <p className="text-[10px] mt-1 flex items-center gap-1" style={{ color: '#9aae9a' }}>
                       💡 {ko ? '검색 결과에서 선택하면 정확한 주소가 저장됩니다' : 'Pick from search results for accurate address'}
                     </p>
                   )}
@@ -1180,13 +1180,13 @@ export default function AnnouncementPage() {
                       className="w-5 h-5 accent-green-500"
                     />
                   </label>
-                  <p className="text-[11px] mt-1" style={{ color: '#5a7a5a' }}>
+                  <p className="text-[11px] mt-1" style={{ color: '#9aae9a' }}>
                     {ko ? '체크하면 공지 목록 맨 위에 고정됩니다' : 'Pinned to the top of the notices list'}
                   </p>
 
                   {/* 날짜 (선택) */}
                   <div className="mt-3">
-                    <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#5a7a5a' }}>
+                    <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#9aae9a' }}>
                       {ko ? '관련 날짜 (선택)' : 'Related date (optional)'}
                     </label>
                     <input
@@ -1195,7 +1195,7 @@ export default function AnnouncementPage() {
                       onChange={e => setNForm(f => ({ ...f, event_date: e.target.value }))}
                       className="input-field"
                     />
-                    <p className="text-[11px] mt-1" style={{ color: '#5a7a5a' }}>
+                    <p className="text-[11px] mt-1" style={{ color: '#9aae9a' }}>
                       {ko ? '날짜 입력 시 그 날까지 유지 후 자동 숨김' : 'Hidden automatically the day after'}
                     </p>
                   </div>
@@ -1203,7 +1203,7 @@ export default function AnnouncementPage() {
                   {/* 유지 기간 — 날짜 없을 때만 활성 */}
                   {!nForm.event_date && (
                     <div className="mt-3">
-                      <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#5a7a5a' }}>
+                      <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#9aae9a' }}>
                         {ko ? '유지 기간 (일)' : 'Retention (days)'}
                       </label>
                       <div className="flex items-center gap-2">
@@ -1220,7 +1220,7 @@ export default function AnnouncementPage() {
                           {ko ? '일 후 자동 숨김' : 'days then hide'}
                         </span>
                       </div>
-                      <p className="text-[11px] mt-1" style={{ color: '#5a7a5a' }}>
+                      <p className="text-[11px] mt-1" style={{ color: '#9aae9a' }}>
                         {ko ? '0 = 영구 보관' : '0 = keep forever'}
                       </p>
                     </div>
@@ -1408,7 +1408,7 @@ export default function AnnouncementPage() {
 
                 {/* 유형 선택 */}
                 <div>
-                  <label className="text-xs font-semibold mb-2 block" style={{ color: '#5a7a5a' }}>
+                  <label className="text-xs font-semibold mb-2 block" style={{ color: '#9aae9a' }}>
                     {ko ? '유형 선택 *' : 'Event Type *'}
                   </label>
                   <div className="grid grid-cols-3 gap-2">
@@ -1427,7 +1427,7 @@ export default function AnnouncementPage() {
 
                 {/* 제목 */}
                 <div>
-                  <label className="text-xs font-semibold mb-1.5 block flex items-center gap-1" style={{ color: '#5a7a5a' }}>
+                  <label className="text-xs font-semibold mb-1.5 block flex items-center gap-1" style={{ color: '#9aae9a' }}>
                     {ko ? '제목 *' : 'Title *'}
                     {isAutoFilled('title') && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: 'rgba(139,92,246,0.2)', color: '#a78bfa' }}>자동입력</span>}
                   </label>
@@ -1446,7 +1446,7 @@ export default function AnnouncementPage() {
 
                 {/* 당사자 이름 */}
                 <div>
-                  <label className="text-xs font-semibold mb-1.5 block flex items-center gap-1" style={{ color: '#5a7a5a' }}>
+                  <label className="text-xs font-semibold mb-1.5 block flex items-center gap-1" style={{ color: '#9aae9a' }}>
                     {eForm.type === 'wedding'    ? (ko ? '신랑 · 신부 이름'  : 'Bride & Groom') :
                      eForm.type === 'condolence' ? (ko ? '고인 성함'         : 'Deceased name') :
                      eForm.type === 'birth'      ? (ko ? '부모 이름'         : 'Parent name(s)') :
@@ -1470,7 +1470,7 @@ export default function AnnouncementPage() {
                 {/* 날짜 + 시간 */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs font-semibold mb-1.5 block flex items-center gap-1" style={{ color: '#5a7a5a' }}>
+                    <label className="text-xs font-semibold mb-1.5 block flex items-center gap-1" style={{ color: '#9aae9a' }}>
                       {eForm.type === 'condolence' ? (ko ? '발인 날짜 *' : 'Funeral Date *') : (ko ? '날짜 *' : 'Date *')}
                       {isAutoFilled('date') && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: 'rgba(139,92,246,0.2)', color: '#a78bfa' }}>자동</span>}
                     </label>
@@ -1480,7 +1480,7 @@ export default function AnnouncementPage() {
                       style={isAutoFilled('date') ? { borderColor: 'rgba(139,92,246,0.5)', boxShadow: '0 0 0 1px rgba(139,92,246,0.2)' } : {}} />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold mb-1.5 block flex items-center gap-1" style={{ color: '#5a7a5a' }}>
+                    <label className="text-xs font-semibold mb-1.5 block flex items-center gap-1" style={{ color: '#9aae9a' }}>
                       {ko ? '시간' : 'Time'}
                       {isAutoFilled('time') && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: 'rgba(139,92,246,0.2)', color: '#a78bfa' }}>자동</span>}
                     </label>
@@ -1493,7 +1493,7 @@ export default function AnnouncementPage() {
 
                 {/* 장소 */}
                 <div>
-                  <label className="text-xs font-semibold mb-1.5 block flex items-center gap-1" style={{ color: '#5a7a5a' }}>
+                  <label className="text-xs font-semibold mb-1.5 block flex items-center gap-1" style={{ color: '#9aae9a' }}>
                     <MapPin size={11} className="inline" />
                     {eForm.type === 'condolence' ? (ko ? '빈소 위치' : 'Funeral Hall') :
                      eForm.type === 'wedding'    ? (ko ? '예식장'    : 'Venue')        :
@@ -1513,7 +1513,7 @@ export default function AnnouncementPage() {
 
                 {/* 연락처 */}
                 <div>
-                  <label className="text-xs font-semibold mb-1.5 block flex items-center gap-1" style={{ color: '#5a7a5a' }}>
+                  <label className="text-xs font-semibold mb-1.5 block flex items-center gap-1" style={{ color: '#9aae9a' }}>
                     <Phone size={11} className="inline" />
                     {eForm.type === 'condolence' ? (ko ? '유족 연락처' : 'Family contact') : ko ? '연락처' : 'Contact'}
                     {isAutoFilled('contact') && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: 'rgba(139,92,246,0.2)', color: '#a78bfa' }}>자동입력</span>}
@@ -1528,11 +1528,11 @@ export default function AnnouncementPage() {
                 {/* 원문 (자동분석에서 입력된 경우 자동 보관, 미입력 시에만 표시) */}
                 {!pasteText && (
                   <div>
-                    <label className="text-xs font-semibold mb-1 block" style={{ color: '#5a7a5a' }}>
+                    <label className="text-xs font-semibold mb-1 block" style={{ color: '#9aae9a' }}>
                       <FileText size={11} className="inline mr-1" />
                       {ko ? '원문 직접 붙여넣기 (선택)' : 'Paste original text (optional)'}
                     </label>
-                    <p className="text-xs mb-2" style={{ color: '#3a5a3a' }}>
+                    <p className="text-xs mb-2" style={{ color: '#7a9a7a' }}>
                       {ko ? '위 자동 분석을 이용하거나, 여기에 직접 붙여넣을 수 있습니다.' : 'Or paste the original message here directly.'}
                     </p>
                     <textarea rows={5} value={eForm.raw_text}
@@ -1543,7 +1543,7 @@ export default function AnnouncementPage() {
                   </div>
                 )}
                 {pasteText && (
-                  <p className="text-[11px] flex items-center gap-1" style={{ color: '#5a7a5a' }}>
+                  <p className="text-[11px] flex items-center gap-1" style={{ color: '#9aae9a' }}>
                     <FileText size={11} />
                     {ko ? '원문이 자동 분석 텍스트로 저장됩니다.' : 'Original text will be saved from the analysis input.'}
                   </p>

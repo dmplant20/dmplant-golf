@@ -104,7 +104,7 @@ export default function RegisterPage() {
               className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-green-500 transition"
               style={{ colorScheme: 'dark' }}
             />
-            <p className="text-xs text-gray-600 mt-1">
+            <p className="text-xs text-gray-400 mt-1">
               {ko ? '🎂 생일 알림을 위해 사용됩니다' : '🎂 Used for birthday notifications'}
             </p>
           </div>
@@ -118,7 +118,7 @@ export default function RegisterPage() {
           </button>
         </form>
 
-        <p className="mt-5 text-center text-gray-500 text-sm">
+        <p className="mt-5 text-center text-gray-400 text-sm">
           {ko ? '이미 계정이 있으신가요?' : 'Already have an account?'}{' '}
           <Link href="/login" className="text-green-400 hover:underline">{ko ? '로그인' : 'Sign In'}</Link>
         </p>

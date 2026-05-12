@@ -121,7 +121,7 @@ export default function EventsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-lg font-bold text-white">🎊 {ko ? '경조사' : 'Life Events'}</h1>
-          <p className="text-[11px] mt-0.5" style={{ color: '#5a7a5a' }}>
+          <p className="text-[11px] mt-0.5" style={{ color: '#9aae9a' }}>
             {ko ? '결혼·부고·생일 등 회원 가족의 행사 모음' : 'Weddings, condolences, birthdays'}
           </p>
         </div>
@@ -173,11 +173,11 @@ export default function EventsPage() {
 
       {/* 월별 리스트 */}
       {loading ? (
-        <p className="text-center text-gray-500 text-sm py-12">{ko ? '불러오는 중...' : 'Loading...'}</p>
+        <p className="text-center text-gray-400 text-sm py-12">{ko ? '불러오는 중...' : 'Loading...'}</p>
       ) : sortedMonths.length === 0 ? (
         <div className="glass-card rounded-2xl p-8 text-center">
           <p className="text-3xl mb-2 opacity-40">🎊</p>
-          <p className="text-sm text-gray-500">{ko ? '등록된 경조사가 없습니다' : 'No events yet'}</p>
+          <p className="text-sm text-gray-400">{ko ? '등록된 경조사가 없습니다' : 'No events yet'}</p>
         </div>
       ) : (
         <div className="space-y-2">

@@ -397,7 +397,7 @@ export default function AlbumPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-lg font-bold text-white">{ko ? '갤러리' : 'Gallery'}</h1>
-            <p className="text-xs mt-0.5" style={{ color: '#5a7a5a' }}>
+            <p className="text-xs mt-0.5" style={{ color: '#9aae9a' }}>
               {ko ? '회원 누구나 앨범 만들고 사진 올릴 수 있어요' : 'Any member can create albums and add photos'}
             </p>
           </div>
@@ -436,7 +436,7 @@ export default function AlbumPage() {
             <div className="w-8 h-8 rounded-full border-2 border-green-600 border-t-transparent animate-spin" />
           </div>
         ) : filteredAlbums.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16" style={{ color: '#3a5a3a' }}>
+          <div className="flex flex-col items-center justify-center py-16" style={{ color: '#7a9a7a' }}>
             <ImageIcon size={44} className="mb-3 opacity-30" />
             <p className="text-sm">{ko ? '아직 앨범이 없습니다' : 'No albums yet'}</p>
             <button onClick={() => { setCreateForm({ title: '', theme: 'casual', description: '', event_date: new Date().toISOString().slice(0,10) }); setShowCreate(true) }}
@@ -474,7 +474,7 @@ export default function AlbumPage() {
                         📅 {fmtDate(album.event_date)}
                       </p>
                     )}
-                    <p className="text-[11px] mt-0.5" style={{ color: '#5a7a5a' }}>
+                    <p className="text-[11px] mt-0.5" style={{ color: '#9aae9a' }}>
                       {album.photo_count ?? 0}{ko ? '장' : ' photos'}
                       {album.creator_name && <> · {album.creator_name}</>}
                     </p>
@@ -538,7 +538,7 @@ export default function AlbumPage() {
                   <input type="date" value={createForm.event_date}
                     onChange={e => setCreateForm(f => ({ ...f, event_date: e.target.value }))}
                     className="input-field" />
-                  <p className="text-[10px] mt-1" style={{ color: '#5a7a5a' }}>
+                  <p className="text-[10px] mt-1" style={{ color: '#9aae9a' }}>
                     {ko ? '시상식·라운드가 실제 있었던 날짜' : 'When the event actually happened'}
                   </p>
                 </div>
@@ -603,7 +603,7 @@ export default function AlbumPage() {
                       ))}
                     </div>
                   )}
-                  <p className="text-[10px]" style={{ color: '#5a7a5a' }}>
+                  <p className="text-[10px]" style={{ color: '#9aae9a' }}>
                     💡 {ko ? '비워두면 빈 앨범 생성. 첫 번째 사진이 자동으로 커버가 됩니다.' : 'Skip to create empty album. First photo becomes cover.'}
                   </p>
                 </div>
@@ -713,7 +713,7 @@ export default function AlbumPage() {
           <div className="w-8 h-8 rounded-full border-2 border-green-600 border-t-transparent animate-spin" />
         </div>
       ) : photos.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16" style={{ color: '#3a5a3a' }}>
+        <div className="flex flex-col items-center justify-center py-16" style={{ color: '#7a9a7a' }}>
           <ImageIcon size={44} className="mb-3 opacity-30" />
           <p className="text-sm">{ko ? '사진이 없습니다 — 첫 사진을 올려보세요!' : 'No photos yet'}</p>
         </div>
@@ -737,7 +737,7 @@ export default function AlbumPage() {
       )}
 
       {photos.length > 0 && (
-        <p className="text-center text-xs" style={{ color: '#3a5a3a' }}>
+        <p className="text-center text-xs" style={{ color: '#7a9a7a' }}>
           {photos.length}{ko ? '장의 사진' : ' photos'}
         </p>
       )}
