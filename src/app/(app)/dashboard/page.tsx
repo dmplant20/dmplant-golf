@@ -336,8 +336,8 @@ export default function DashboardPage() {
       {/* ── 푸시 알림 활성화 배너 (default 상태에서만 자동 노출) ─── */}
       <PushNotificationToggle variant="banner" />
 
-      {/* ── 통계 ── 클릭 시 해당 페이지로 이동, 컴팩트 카드 ────────────── */}
-      <div className="grid grid-cols-3 gap-2.5">
+      {/* ── 통계 ── 클릭 시 해당 페이지로 이동, 컴팩트 horizontal 카드 ────── */}
+      <div className="grid grid-cols-3 gap-2">
         {[
           { icon: Users,       label: ko ? '총 회원'  : 'Members', value: `${stats.members}${ko ? '명' : ''}`,                              color: '#60a5fa', bg: 'rgba(59,130,246,0.1)', href: '/members'  },
           { icon: Wallet,      label: ko ? '클럽 잔액': 'Balance',  value: stats.balance === 0 ? `${sym}0` : `${sym}${(stats.balance/1000).toFixed(0)}K`, color: '#fbbf24', bg: 'rgba(251,191,36,0.1)', href: '/finance'  },
@@ -346,13 +346,15 @@ export default function DashboardPage() {
           <Link
             key={label}
             href={href}
-            className="stat-card rounded-2xl px-3 py-2.5 flex flex-col items-start transition active:scale-[0.97] hover:bg-white/[0.02]"
+            className="stat-card rounded-xl px-2 py-1.5 flex items-center gap-2 transition active:scale-[0.97] hover:bg-white/[0.02]"
           >
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center mb-1.5 flex-shrink-0" style={{ background: bg }}>
-              <Icon size={14} style={{ color }} />
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: bg }}>
+              <Icon size={13} style={{ color }} />
             </div>
-            <p className="font-bold text-[15px] leading-none truncate w-full" style={{ color: 'var(--text)' }}>{value}</p>
-            <p className="text-[10px] mt-1 truncate w-full" style={{ color: 'var(--text-3)' }}>{label}</p>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-[13px] leading-tight truncate" style={{ color: 'var(--text)' }}>{value}</p>
+              <p className="text-[9px] leading-tight truncate" style={{ color: 'var(--text-3)' }}>{label}</p>
+            </div>
           </Link>
         ))}
       </div>
