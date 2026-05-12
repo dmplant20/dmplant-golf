@@ -169,29 +169,13 @@ export default function PlaceSearchInput({
       {/* 결과 없음 */}
       {open && !loading && results.length === 0 && value.trim().length >= 1 && (
         <div className={dropdownClass} style={useFixed ? dropdownStyle : {}}>
-          <div className="px-4 py-3 text-center space-y-2">
-            <p className="text-sm" style={{ color: '#9aae9a' }}>베트남 내 검색 결과가 없습니다</p>
-            <p className="text-[10px]" style={{ color: '#7a9a7a' }}>
-              Mapbox 데이터에 없는 식당은 Google에서 직접 확인하세요
-            </p>
-            {/* Google Maps에서 찾기 — 새 탭으로 열림, 회장님 토큰 불필요 */}
-            <a
-              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${value.trim()} Vietnam`)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg mt-1 active:scale-95"
-              style={{ background: 'rgba(96,165,250,0.15)', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.4)' }}
-              onClick={() => setOpen(false)}
-            >
-              🔍 Google Maps에서 찾기 →
-            </a>
-            <div className="pt-1">
-              <button type="button"
-                onClick={() => { onSelect({ place_id: '', name: value.trim(), address: '', lat: null, lng: null, rating: null }); setOpen(false) }}
-                className="text-xs" style={{ color: '#fb923c' }}>
-                또는 "{value.trim()}" 직접 입력
-              </button>
-            </div>
+          <div className="px-4 py-3 text-center">
+            <p className="text-sm" style={{ color: '#9aae9a' }}>검색 결과가 없습니다</p>
+            <button type="button"
+              onClick={() => { onSelect({ place_id: '', name: value.trim(), address: '', lat: null, lng: null, rating: null }); setOpen(false) }}
+              className="text-xs mt-1.5" style={{ color: '#fb923c' }}>
+              "{value.trim()}" 직접 입력
+            </button>
           </div>
         </div>
       )}
