@@ -181,12 +181,30 @@ export default function ChatPage() {
       })
   }, [currentClubId, user?.id])
 
+  // 전역 unread 재계산 헬퍼 (useEffect 보다 먼저 선언해서 호이스팅 의존 제거)
+  async function recomputeGlobalUnread(supabase: any, userId: string) {
+    try {
+      const { data: rooms } = await supabase
+        .from('chat_room_members').select('room_id, last_read_at').eq('user_id', userId)
+      if (!rooms) return
+      let total = 0
+      for (const r of rooms) {
+        const since = r.last_read_at ?? new Date(0).toISOString()
+        const { count } = await supabase.from('chat_messages')
+          .select('*', { count: 'exact', head: true })
+          .eq('room_id', r.room_id).gt('created_at', since).neq('user_id', userId)
+        total += count ?? 0
+      }
+      useChatNotify.getState().setUnread(total)
+    } catch (e) { console.warn('[chat unread recompute]', e) }
+  }
+
   // ── 활성 룸 메시지 + 실시간 ──────────────────────────────────────────────
   useEffect(() => {
     if (!activeRoom) return
     const supabase = createClient()
 
-    // 멤버 id 캐싱 (메시지 발송 시 푸시 대상)
+    // 멤버 id 캐싱 (옛 푸시 코드용 — 푸시는 비활성화됐지만 향후 다른 용도로 유지)
     if (activeRoom.type === 'dm' || activeRoom.type === 'group') {
       supabase.from('chat_room_members').select('user_id').eq('room_id', activeRoom.id)
         .then(({ data }) => setActiveRoomMemberIds((data ?? []).map((r: any) => r.user_id)))
@@ -203,26 +221,30 @@ export default function ChatPage() {
         setTimeout(() => bottomRef.current?.scrollIntoView(), 80)
       })
 
+    // 활성 방 마크 — 전역 알림 핸들러가 이 방에선 소리·카운트 안 올림 (즉시 호출)
+    useChatNotify.getState().setActiveRoom(activeRoom.id)
+
     // last_read_at 갱신 — DM·group·club_wide 모두 (전역 unread 카운터 정확도 위해)
-    supabase.from('chat_room_members').update({ last_read_at: new Date().toISOString() })
-      .eq('room_id', activeRoom.id).eq('user_id', user!.id).then(() => {
-        // 현재 활성 방 표시 — 전역 알림 핸들러가 이 방에선 소리·카운트 안 올림
-        useChatNotify.getState().setActiveRoom(activeRoom.id)
-        // 전역 unread 재계산
-        recomputeGlobalUnread(supabase, user!.id)
-      })
+    if (user?.id) {
+      supabase.from('chat_room_members').update({ last_read_at: new Date().toISOString() })
+        .eq('room_id', activeRoom.id).eq('user_id', user.id).then(() => {
+          recomputeGlobalUnread(supabase, user.id)
+        })
+    }
 
     const channel = supabase.channel(`room-${activeRoom.id}`)
       .on('postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `room_id=eq.${activeRoom.id}` },
         async (payload) => {
-          const { data } = await supabase.from('chat_messages')
-            .select('id,room_id,user_id,content,created_at,users(full_name,full_name_en,avatar_url)')
-            .eq('id', payload.new.id).single()
-          if (data) {
-            setMessages(m => [...m, data as any])
-            setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
-          }
+          try {
+            const { data } = await supabase.from('chat_messages')
+              .select('id,room_id,user_id,content,created_at,users(full_name,full_name_en,avatar_url)')
+              .eq('id', payload.new.id).single()
+            if (data) {
+              setMessages(m => [...m, data as any])
+              setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
+            }
+          } catch (e) { console.warn('[chat realtime]', e) }
         }
       ).subscribe()
 
@@ -231,23 +253,7 @@ export default function ChatPage() {
       // 방에서 나갈 때 activeRoomId 해제 → 다시 전역 알림 활성
       useChatNotify.getState().setActiveRoom(null)
     }
-  }, [activeRoom?.id])
-
-  // 전역 unread 재계산 헬퍼
-  async function recomputeGlobalUnread(supabase: any, userId: string) {
-    const { data: rooms } = await supabase
-      .from('chat_room_members').select('room_id, last_read_at').eq('user_id', userId)
-    if (!rooms) return
-    let total = 0
-    for (const r of rooms) {
-      const since = r.last_read_at ?? new Date(0).toISOString()
-      const { count } = await supabase.from('chat_messages')
-        .select('*', { count: 'exact', head: true })
-        .eq('room_id', r.room_id).gt('created_at', since).neq('user_id', userId)
-      total += count ?? 0
-    }
-    useChatNotify.getState().setUnread(total)
-  }
+  }, [activeRoom?.id, user?.id])
 
   // ── 메시지 전송 (텍스트만, 또는 첨부와 함께) + 푸시 ────────────────────
   async function sendMessageInternal(opts: {

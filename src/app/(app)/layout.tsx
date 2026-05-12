@@ -188,22 +188,24 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
     // 초기 unread 카운트 계산 — 내가 속한 모든 방에서 last_read_at 이후 메시지 수
     async function loadInitialUnread() {
-      const { data: rooms } = await supabase
-        .from('chat_room_members')
-        .select('room_id, last_read_at')
-        .eq('user_id', userId!)
-      if (!rooms || cancelled) return
-      let total = 0
-      for (const r of rooms) {
-        const since = (r as any).last_read_at ?? new Date(0).toISOString()
-        const { count } = await supabase.from('chat_messages')
-          .select('*', { count: 'exact', head: true })
-          .eq('room_id', r.room_id)
-          .gt('created_at', since)
-          .neq('user_id', userId!)
-        total += count ?? 0
-      }
-      if (!cancelled) useChatNotify.getState().setUnread(total)
+      try {
+        const { data: rooms } = await supabase
+          .from('chat_room_members')
+          .select('room_id, last_read_at')
+          .eq('user_id', userId!)
+        if (!rooms || cancelled) return
+        let total = 0
+        for (const r of rooms) {
+          const since = (r as any).last_read_at ?? new Date(0).toISOString()
+          const { count } = await supabase.from('chat_messages')
+            .select('*', { count: 'exact', head: true })
+            .eq('room_id', r.room_id)
+            .gt('created_at', since)
+            .neq('user_id', userId!)
+          total += count ?? 0
+        }
+        if (!cancelled) useChatNotify.getState().setUnread(total)
+      } catch (e) { console.warn('[chat unread init]', e) }
     }
     loadInitialUnread()
 
@@ -212,23 +214,25 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       .on('postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'chat_messages' },
         async (payload) => {
-          const msg = payload.new as any
-          if (!msg || msg.user_id === userId) return  // 본인 메시지는 무시
-          // 내가 이 방의 멤버인지 확인
-          const { data: mem } = await supabase
-            .from('chat_room_members')
-            .select('room_id').eq('room_id', msg.room_id).eq('user_id', userId!).maybeSingle()
-          if (!mem) return
-          // 현재 보고 있는 방이면 즉시 읽음 처리 + 카운트 추가 안 함
-          if (useChatNotify.getState().activeRoomId === msg.room_id) {
-            await supabase.from('chat_room_members')
-              .update({ last_read_at: new Date().toISOString() })
-              .eq('room_id', msg.room_id).eq('user_id', userId!)
-            return
-          }
-          // 그 외에는 핑 + 카운트 + 배지
-          playChatPing()
-          useChatNotify.getState().setUnread(useChatNotify.getState().totalUnread + 1)
+          try {
+            const msg = payload.new as any
+            if (!msg || msg.user_id === userId) return  // 본인 메시지는 무시
+            // 내가 이 방의 멤버인지 확인
+            const { data: mem } = await supabase
+              .from('chat_room_members')
+              .select('room_id').eq('room_id', msg.room_id).eq('user_id', userId!).maybeSingle()
+            if (!mem) return
+            // 현재 보고 있는 방이면 즉시 읽음 처리 + 카운트 추가 안 함
+            if (useChatNotify.getState().activeRoomId === msg.room_id) {
+              await supabase.from('chat_room_members')
+                .update({ last_read_at: new Date().toISOString() })
+                .eq('room_id', msg.room_id).eq('user_id', userId!)
+              return
+            }
+            // 그 외에는 핑 + 카운트 + 배지
+            playChatPing()
+            useChatNotify.getState().setUnread(useChatNotify.getState().totalUnread + 1)
+          } catch (e) { console.warn('[chat realtime]', e) }
         }
       ).subscribe()
 
