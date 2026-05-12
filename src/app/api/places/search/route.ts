@@ -45,11 +45,18 @@ export async function GET(req: NextRequest) {
   }
 
   // ── 1순위: Google Places API (textsearch) ────────────────────────────
-  // 베트남 식당·한식당까지 가장 풍부한 데이터
+  // 베트남 강제 필터 — location bias + region=vn + 주소 post-filter
   if (googleKey) {
     try {
-      const searchQuery = encodeURIComponent(`${q} ${near}`)
-      const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${searchQuery}&language=ko&key=${googleKey}`
+      const searchQuery = encodeURIComponent(q)
+      // HCMC 중심 + 반경 300km (베트남 남부 거의 전체: 호치민·빈증·동나이·붕따우 등)
+      const url = `https://maps.googleapis.com/maps/api/place/textsearch/json` +
+        `?query=${searchQuery}` +
+        `&location=10.7769,106.6953` +
+        `&radius=300000` +
+        `&region=vn` +
+        `&language=ko` +
+        `&key=${googleKey}`
       const res  = await fetch(url, { cache: 'no-store' })
       const data = await res.json()
       googleDebug.status = data.status
@@ -57,18 +64,30 @@ export async function GET(req: NextRequest) {
       googleDebug.results = data.results?.length ?? 0
 
       if (data.status === 'OK') {
-        const results = (data.results ?? []).slice(0, 8).map((p: any) => ({
-          place_id: p.place_id,
-          name:     p.name,
-          address:  p.formatted_address,
-          lat:      p.geometry?.location?.lat ?? null,
-          lng:      p.geometry?.location?.lng ?? null,
-          rating:   p.rating ?? null,
-          source:   'google',
-        }))
-        return NextResponse.json({ results, _debug: { google: googleDebug, mapbox: mapboxDebug } })
+        // 베트남 주소만 통과 — 한국·기타 결과 강제 차단
+        const VN_KEYWORDS = ['vietnam', 'việt nam', '베트남', 'ho chi minh', 'hồ chí minh', 'hanoi', 'hà nội', 'binh duong', 'bình dương']
+        const filtered = (data.results ?? []).filter((p: any) => {
+          const addr = (p.formatted_address ?? '').toLowerCase()
+          return VN_KEYWORDS.some(kw => addr.includes(kw))
+        })
+        googleDebug.results = filtered.length
+        if (filtered.length > 0) {
+          const results = filtered.slice(0, 8).map((p: any) => ({
+            place_id: p.place_id,
+            name:     p.name,
+            address:  p.formatted_address,
+            lat:      p.geometry?.location?.lat ?? null,
+            lng:      p.geometry?.location?.lng ?? null,
+            rating:   p.rating ?? null,
+            source:   'google',
+          }))
+          return NextResponse.json({ results, _debug: { google: googleDebug, mapbox: mapboxDebug } })
+        }
+        // 베트남 결과 없으면 Mapbox 폴백으로 진행
+        console.warn('[places] Google returned only non-VN results, falling back to Mapbox')
+      } else {
+        console.warn('[places] Google → fallback:', data.status, data.error_message)
       }
-      console.warn('[places] Google → fallback:', data.status, data.error_message)
     } catch (e: any) {
       googleDebug.status = 'fetch_error'
       googleDebug.error_message = e?.message
