@@ -18,22 +18,26 @@ const ROLE_COLORS: Record<string, string> = {
   advisor:        'bg-teal-900/60 text-teal-300 border-teal-700/40',
   officer:        'bg-purple-900/60 text-purple-300 border-purple-700/40',
   member:         'bg-gray-800 text-gray-300 border-gray-700/30',
+  associate:      'bg-cyan-900/40 text-cyan-300 border-cyan-700/40',
+  guest:          'bg-slate-800/60 text-slate-300 border-slate-600/40',
 }
 
 const ROLE_MAP: Record<string, [string, string]> = {
-  president:      ['회장',   'President'],
-  vice_president: ['부회장', 'Vice Pres.'],
-  secretary:      ['총무',   'Secretary'],
-  auditor:        ['감사',   'Auditor'],
-  advisor:        ['고문',   'Advisor'],
-  officer:        ['임원',   'Officer'],
-  member:         ['회원',   'Member'],
+  president:      ['회장',     'President'],
+  vice_president: ['부회장',   'Vice Pres.'],
+  secretary:      ['총무',     'Secretary'],
+  auditor:        ['감사',     'Auditor'],
+  advisor:        ['고문',     'Advisor'],
+  officer:        ['임원',     'Officer'],
+  member:         ['회원',     'Member'],
+  associate:      ['준회원',   'Associate'],
+  guest:          ['게스트',   'Guest'],
 }
 
 // 임원급 이상 (회계 상세 열람 권한)
 export const OFFICER_ROLES = ['president', 'vice_president', 'secretary', 'auditor', 'advisor', 'officer']
 
-// 회원 명부 정렬 순서 (회장 → 부회장 → 감사 → 총무 → 고문 → 임원 → 회원)
+// 회원 명부 정렬 순서 (회장 → 부회장 → 감사 → 총무 → 고문 → 임원 → 회원 → 준회원 → 게스트)
 const ROLE_ORDER: Record<string, number> = {
   president:      1,
   vice_president: 2,
@@ -42,6 +46,8 @@ const ROLE_ORDER: Record<string, number> = {
   advisor:        5,
   officer:        6,
   member:         7,
+  associate:      8,
+  guest:          9,
 }
 
 const ACTION_LABELS: Record<string, [string, string]> = {
@@ -913,6 +919,8 @@ function EditMemberModal({ member, ko, myRole, members, onClose, onSave, onDeleg
   // Role change buttons
   const officerRoles = [
     { v: 'member',         label: ko ? '회원'   : 'Member',     color: 'bg-gray-700 text-gray-300'          },
+    { v: 'associate',      label: ko ? '준회원' : 'Associate',  color: 'bg-cyan-800 text-cyan-300'          },
+    { v: 'guest',          label: ko ? '게스트' : 'Guest',      color: 'bg-slate-700 text-slate-300'        },
     { v: 'officer',        label: ko ? '임원'   : 'Officer',    color: 'bg-purple-800 text-purple-300'      },
     { v: 'auditor',        label: ko ? '감사'   : 'Auditor',    color: 'bg-red-800 text-red-300'            },
     { v: 'advisor',        label: ko ? '고문'   : 'Advisor',    color: 'bg-teal-800 text-teal-300'          },

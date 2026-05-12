@@ -10,7 +10,8 @@ import Link from 'next/link'
 
 const ROLE_KO: Record<string, string> = {
   president: '회장', vice_president: '부회장', secretary: '총무',
-  auditor: '감사', advisor: '고문', officer: '임원', member: '회원', guest: '게스트',
+  auditor: '감사', advisor: '고문', officer: '임원', member: '회원',
+  associate: '준회원', guest: '게스트',
 }
 const ROLE_COLOR: Record<string, string> = {
   president: 'text-amber-300 bg-amber-900/40',
@@ -20,6 +21,7 @@ const ROLE_COLOR: Record<string, string> = {
   advisor: 'text-teal-300 bg-teal-900/40',
   officer: 'text-purple-300 bg-purple-900/40',
   member: 'text-gray-300 bg-gray-800/60',
+  associate: 'text-cyan-300 bg-cyan-900/30',
   guest: 'text-slate-300 bg-slate-800/60',
 }
 

@@ -444,9 +444,10 @@ export default function FinancePage() {
     return { months: [], expected: clubFees.annual || 0 }
   }
 
-  // 회비 의무 보유 여부 — 게스트·미설정·미래 가입자는 제외
+  // 회비 의무 보유 여부 — 게스트·준회원·미설정·미래 가입자는 제외
   function hasFeeObligation(m: any): boolean {
     if (m.role === 'guest') return false                  // 게스트는 회비 면제
+    if (m.role === 'associate') return false              // 준회원 — 참석 시에만 납부
     const ft = m.fee_type as 'annual'|'monthly'|null
     if (!ft) return false                                 // fee_type 미설정 = 면제
     if (ft === 'monthly') {
