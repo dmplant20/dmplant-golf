@@ -1,7 +1,7 @@
 'use client'
-// ── OpenStreetMap 기반 지도 컴포넌트 ─────────────────────────────────────
-// Google Maps를 완전히 제거하고 무료 OpenStreetMap을 사용합니다.
-// WebView에서 Google Maps iframe이 계정 인증을 트리거하는 문제를 방지합니다.
+// ── 지도 임베드 ──────────────────────────────────────────────────────────
+// 1. NEXT_PUBLIC_MAPBOX_TOKEN 있으면 → Mapbox Static Image API (고품질, 깨끗한 핀)
+// 2. 토큰 없으면 → OpenStreetMap iframe (무료 폴백)
 import { ExternalLink } from 'lucide-react'
 
 interface Props {
@@ -15,7 +15,21 @@ interface Props {
 }
 
 export default function MapEmbed({ name, address, lat, lng, height = 200, className = '' }: Props) {
-  // OpenStreetMap iframe embed URL (좌표가 있을 때만)
+  const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
+
+  // Mapbox Static Image — 가장 깔끔한 한 장짜리 지도 + 핀
+  function getMapboxStatic(): string | null {
+    if (!lat || !lng || !mapboxToken) return null
+    const zoom = 15
+    const width = 600   // device-friendly, retina via @2x
+    const h = Math.min(400, Math.max(120, height))
+    // 핀: 작은 빨간 마커
+    const pin = `pin-s+ef4444(${lng},${lat})`
+    return `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/` +
+      `${pin}/${lng},${lat},${zoom}/${width}x${h}@2x?access_token=${mapboxToken}`
+  }
+
+  // OpenStreetMap iframe (폴백)
   function getOsmSrc(): string | null {
     if (!lat || !lng) return null
     const d = 0.008
@@ -34,14 +48,26 @@ export default function MapEmbed({ name, address, lat, lng, height = 200, classN
     return null
   }
 
-  const osmSrc  = getOsmSrc()
-  const mapsUrl = getMapsUrl()
+  const mapboxSrc = getMapboxStatic()
+  const osmSrc    = getOsmSrc()
+  const mapsUrl   = getMapsUrl()
 
-  if (!osmSrc && !mapsUrl) return null
+  if (!mapboxSrc && !osmSrc && !mapsUrl) return null
 
   return (
     <div className={`rounded-2xl overflow-hidden relative ${className}`} style={{ height }}>
-      {osmSrc ? (
+      {mapboxSrc ? (
+        // Mapbox 정적 이미지 (가장 깔끔, retina, 빨간 핀)
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={mapboxSrc}
+          alt={name ?? 'Map'}
+          width="100%"
+          height={height}
+          style={{ width: '100%', height, objectFit: 'cover', display: 'block' }}
+          loading="lazy"
+        />
+      ) : osmSrc ? (
         <iframe
           src={osmSrc}
           width="100%"

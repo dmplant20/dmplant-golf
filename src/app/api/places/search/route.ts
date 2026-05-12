@@ -1,14 +1,60 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-// OpenStreetMap Nominatim — 무료, API 키 불필요
-// Google Places API가 있으면 우선 사용, 없으면 Nominatim 사용
+// 검색 우선순위:
+//   1. Mapbox Geocoding API (MAPBOX_TOKEN 있음) — 베트남 + 호치민 bias, 식당·카페·호텔 우선
+//   2. Google Places API (GOOGLE_PLACES_API_KEY 있고 유효) — 폴백
+//   3. OpenStreetMap Nominatim — 마지막 폴백 (키 불필요)
 export async function GET(req: NextRequest) {
   const q    = req.nextUrl.searchParams.get('q')?.trim()
   const near = req.nextUrl.searchParams.get('near') ?? 'Vietnam'
 
   if (!q || q.length < 1) return NextResponse.json({ results: [] })
 
-  // ── 1. Google Places API (키가 유효한 경우 우선 사용) ─────────────────
+  // ── 1. Mapbox Geocoding API ───────────────────────────────────────────
+  const mapboxToken = process.env.MAPBOX_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_TOKEN
+  let mapboxDebug: { tokenConfigured: boolean; status?: string; error?: string; results?: number } = {
+    tokenConfigured: !!mapboxToken,
+  }
+  if (mapboxToken) {
+    try {
+      // Forward geocoding — 호치민 중심 proximity, 베트남 country, POI 카테고리 우선
+      // proximity 좌표: 호치민시 1군 중심 (lon, lat)
+      const proximity = '106.6953,10.7769'
+      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json` +
+        `?proximity=${proximity}` +
+        `&country=vn` +
+        `&types=poi,address,place,locality` +
+        `&limit=8` +
+        `&language=vi,ko,en` +
+        `&access_token=${mapboxToken}`
+      const res  = await fetch(url, { cache: 'no-store' })
+      const data = await res.json()
+      mapboxDebug = {
+        tokenConfigured: true,
+        status: String(res.status),
+        results: data.features?.length ?? 0,
+      }
+      if (res.ok && data.features?.length) {
+        const results = data.features.map((f: any) => ({
+          place_id: f.id,
+          name:     f.text ?? f.place_name?.split(',')[0] ?? '',
+          address:  f.place_name ?? '',
+          lat:      f.center?.[1] ?? null,   // Mapbox returns [lng, lat]
+          lng:      f.center?.[0] ?? null,
+          rating:   null,  // Mapbox Geocoding 은 rating 없음
+          source:   'mapbox',
+        }))
+        return NextResponse.json({ results, _debug: { mapbox: mapboxDebug } })
+      }
+      if (data.message) mapboxDebug.error = data.message
+      console.warn('[places] Mapbox fallback:', data.message ?? `status ${res.status}`)
+    } catch (e: any) {
+      mapboxDebug.error = e?.message
+      console.warn('[places] Mapbox fetch error, falling back:', e?.message)
+    }
+  }
+
+  // ── 2. Google Places API (키가 유효한 경우 폴백) ─────────────────────
   const googleKey = process.env.GOOGLE_PLACES_API_KEY
   let googleDebug: { keyConfigured: boolean; status?: string; error_message?: string; results?: number } = {
     keyConfigured: !!googleKey,
@@ -36,9 +82,8 @@ export async function GET(req: NextRequest) {
           rating:   p.rating ?? null,
           source:   'google',
         }))
-        return NextResponse.json({ results })
+        return NextResponse.json({ results, _debug: { mapbox: mapboxDebug, google: googleDebug } })
       }
-      // Google 실패 시 Nominatim으로 폴백
       console.warn('[places] Google fallback to Nominatim:', data.status, data.error_message)
     } catch (e: any) {
       googleDebug = { keyConfigured: true, status: 'fetch_error', error_message: e?.message }
@@ -96,10 +141,10 @@ export async function GET(req: NextRequest) {
       source:   'osm',
     }))
 
-    // _debug 필드는 Google API 키 진단용 — 클라이언트에서 무시되지만 curl로 확인 가능
-    return NextResponse.json({ results, _debug: googleDebug })
+    // _debug 필드는 진단용 — curl 로 확인 가능
+    return NextResponse.json({ results, _debug: { mapbox: mapboxDebug, google: googleDebug, source: 'osm' } })
   } catch (err: any) {
     console.error('Nominatim error:', err)
-    return NextResponse.json({ results: [], error: 'search_failed', _debug: googleDebug })
+    return NextResponse.json({ results: [], error: 'search_failed', _debug: { mapbox: mapboxDebug, google: googleDebug } })
   }
 }
