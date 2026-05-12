@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores/authStore'
+import { useChatNotify } from '@/lib/chatNotifications'
 import {
   Send, MessageCircle, Plus, X, ArrowLeft, Users, User, Hash, Search, Check,
   Paperclip, Image as ImageIcon, FileText, Loader2,
@@ -202,11 +203,14 @@ export default function ChatPage() {
         setTimeout(() => bottomRef.current?.scrollIntoView(), 80)
       })
 
-    // last_read_at 갱신 (DM/group)
-    if (activeRoom.type === 'dm' || activeRoom.type === 'group') {
-      supabase.from('chat_room_members').update({ last_read_at: new Date().toISOString() })
-        .eq('room_id', activeRoom.id).eq('user_id', user!.id).then(() => {})
-    }
+    // last_read_at 갱신 — DM·group·club_wide 모두 (전역 unread 카운터 정확도 위해)
+    supabase.from('chat_room_members').update({ last_read_at: new Date().toISOString() })
+      .eq('room_id', activeRoom.id).eq('user_id', user!.id).then(() => {
+        // 현재 활성 방 표시 — 전역 알림 핸들러가 이 방에선 소리·카운트 안 올림
+        useChatNotify.getState().setActiveRoom(activeRoom.id)
+        // 전역 unread 재계산
+        recomputeGlobalUnread(supabase, user!.id)
+      })
 
     const channel = supabase.channel(`room-${activeRoom.id}`)
       .on('postgres_changes',
@@ -222,8 +226,28 @@ export default function ChatPage() {
         }
       ).subscribe()
 
-    return () => { supabase.removeChannel(channel) }
+    return () => {
+      supabase.removeChannel(channel)
+      // 방에서 나갈 때 activeRoomId 해제 → 다시 전역 알림 활성
+      useChatNotify.getState().setActiveRoom(null)
+    }
   }, [activeRoom?.id])
+
+  // 전역 unread 재계산 헬퍼
+  async function recomputeGlobalUnread(supabase: any, userId: string) {
+    const { data: rooms } = await supabase
+      .from('chat_room_members').select('room_id, last_read_at').eq('user_id', userId)
+    if (!rooms) return
+    let total = 0
+    for (const r of rooms) {
+      const since = r.last_read_at ?? new Date(0).toISOString()
+      const { count } = await supabase.from('chat_messages')
+        .select('*', { count: 'exact', head: true })
+        .eq('room_id', r.room_id).gt('created_at', since).neq('user_id', userId)
+      total += count ?? 0
+    }
+    useChatNotify.getState().setUnread(total)
+  }
 
   // ── 메시지 전송 (텍스트만, 또는 첨부와 함께) + 푸시 ────────────────────
   async function sendMessageInternal(opts: {
@@ -249,26 +273,8 @@ export default function ChatPage() {
       return false
     }
 
-    // 푸시 — DM·group 만
-    if (activeRoom.type === 'dm' || activeRoom.type === 'group') {
-      const senderName = ko ? (user.full_name ?? '') : (user.full_name_en ?? user.full_name ?? '')
-      const title = activeRoom.type === 'dm'
-        ? `💬 ${senderName}`
-        : `💬 ${activeRoom.display_name ?? activeRoom.name} · ${senderName}`
-      const previewBody = text
-        ? text.slice(0, 120)
-        : (att?.type === 'image' ? '📷 사진' : `📎 ${att?.name ?? '파일'}`)
-      try {
-        await fetch('/api/push/send-direct', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_ids: activeRoomMemberIds, title, body: previewBody,
-            url: `/chat?room=${activeRoom.id}`,
-          }),
-        })
-      } catch (e) { console.warn('[chat push]', e) }
-    }
+    // 채팅 푸시 알림 비활성화 — 공지사항만 푸시, 채팅은 앱 내 배지 + 소리로 처리
+    // (수신측은 supabase realtime 으로 메시지를 받아 즉시 카운트·소리 갱신)
     return true
   }
 

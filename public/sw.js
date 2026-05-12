@@ -1,6 +1,6 @@
 // ── 버전 관리 ─────────────────────────────────────────────────────────────
 // 배포할 때마다 이 값을 올리면 모든 설치된 앱이 강제 업데이트됨
-const APP_VERSION  = '29b9737-proxy-rsvp-force-refresh'
+const APP_VERSION  = 'chat-badge-sound-no-push'
 const CACHE_NAME   = `is-golf-${APP_VERSION}`
 const STATIC_ASSETS = ['/', '/login', '/manifest.json']
 

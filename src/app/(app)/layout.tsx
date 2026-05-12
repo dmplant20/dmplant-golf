@@ -9,6 +9,7 @@ import NotificationModals from '@/components/ui/NotificationModals'
 import ForcePasswordSetup from '@/components/ui/ForcePasswordSetup'
 import UnpaidLoginNotice from '@/components/ui/UnpaidLoginNotice'
 import { setAppBadge, getLastSeen } from '@/lib/appBadge'
+import { useChatNotify, playChatPing } from '@/lib/chatNotifications'
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -138,7 +139,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     fetch('/api/users/heartbeat', { method: 'POST', keepalive: true }).catch(() => {})
   }, [pathname, user?.id])
 
-  // 앱 배지: 마지막 방문 이후 새로 올라온 공지/경조사 개수
+  // 앱 배지: 마지막 방문 이후 새로 올라온 공지/경조사 개수 + 채팅 미확인
   useEffect(() => {
     const userId = user?.id
     if (!currentClubId || !userId) return
@@ -156,7 +157,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           .eq('club_id', currentClubId).gt('created_at', since),
       ])
       if (cancelled) return
-      const total = (noticeCount ?? 0) + (eventCount ?? 0)
+      const chatUnread = useChatNotify.getState().totalUnread
+      const total = (noticeCount ?? 0) + (eventCount ?? 0) + chatUnread
       setAppBadge(total)
     }
 
@@ -165,13 +167,76 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     document.addEventListener('visibilitychange', onWake)
     window.addEventListener('focus', onWake)
     const id = setInterval(refreshBadge, 5 * 60_000)  // 5분마다 백그라운드 갱신
+    // 채팅 unread 변경 시 즉시 배지 갱신
+    const unsub = useChatNotify.subscribe(() => refreshBadge())
     return () => {
       cancelled = true
       document.removeEventListener('visibilitychange', onWake)
       window.removeEventListener('focus', onWake)
       clearInterval(id)
+      unsub()
     }
   }, [currentClubId, user?.id])
+
+  // ── 채팅 글로벌 알림 ─────────────────────────────────────────────────
+  // 모든 방의 새 메시지를 실시간 구독 → 활성 방이 아니면 카운트 + 소리
+  useEffect(() => {
+    const userId = user?.id
+    if (!userId) return
+    const supabase = createClient()
+    let cancelled = false
+
+    // 초기 unread 카운트 계산 — 내가 속한 모든 방에서 last_read_at 이후 메시지 수
+    async function loadInitialUnread() {
+      const { data: rooms } = await supabase
+        .from('chat_room_members')
+        .select('room_id, last_read_at')
+        .eq('user_id', userId!)
+      if (!rooms || cancelled) return
+      let total = 0
+      for (const r of rooms) {
+        const since = (r as any).last_read_at ?? new Date(0).toISOString()
+        const { count } = await supabase.from('chat_messages')
+          .select('*', { count: 'exact', head: true })
+          .eq('room_id', r.room_id)
+          .gt('created_at', since)
+          .neq('user_id', userId!)
+        total += count ?? 0
+      }
+      if (!cancelled) useChatNotify.getState().setUnread(total)
+    }
+    loadInitialUnread()
+
+    // 실시간 구독 — 모든 chat_messages INSERT (필터는 클라에서)
+    const channel = supabase.channel(`user-chat-${userId}`)
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'chat_messages' },
+        async (payload) => {
+          const msg = payload.new as any
+          if (!msg || msg.user_id === userId) return  // 본인 메시지는 무시
+          // 내가 이 방의 멤버인지 확인
+          const { data: mem } = await supabase
+            .from('chat_room_members')
+            .select('room_id').eq('room_id', msg.room_id).eq('user_id', userId!).maybeSingle()
+          if (!mem) return
+          // 현재 보고 있는 방이면 즉시 읽음 처리 + 카운트 추가 안 함
+          if (useChatNotify.getState().activeRoomId === msg.room_id) {
+            await supabase.from('chat_room_members')
+              .update({ last_read_at: new Date().toISOString() })
+              .eq('room_id', msg.room_id).eq('user_id', userId!)
+            return
+          }
+          // 그 외에는 핑 + 카운트 + 배지
+          playChatPing()
+          useChatNotify.getState().setUnread(useChatNotify.getState().totalUnread + 1)
+        }
+      ).subscribe()
+
+    return () => {
+      cancelled = true
+      supabase.removeChannel(channel)
+    }
+  }, [user?.id])
 
   const isOnboarding = pathname === '/onboarding'
 

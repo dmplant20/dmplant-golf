@@ -2,6 +2,7 @@
 import { usePathname, useRouter } from 'next/navigation'
 import { Home, Users, Wallet, CalendarDays, MessageCircle, MoreHorizontal } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
+import { useChatNotify } from '@/lib/chatNotifications'
 
 const NAV = [
   { href: '/dashboard', icon: Home,          ko: '홈',    en: 'Home' },
@@ -23,6 +24,7 @@ export default function BottomNav() {
   const myRole   = myClubs.find(c => c.id === currentClubId)?.role ?? 'member'
   const isGuest  = myRole === 'guest'
   const items    = isGuest ? NAV.filter(n => GUEST_NAV_HREFS.has(n.href)) : NAV
+  const chatUnread = useChatNotify(s => s.totalUnread)
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bottom-nav px-3 pb-2">
@@ -57,14 +59,32 @@ export default function BottomNav() {
                 />
               )}
 
-              <Icon
-                size={22}
-                strokeWidth={active ? 2.5 : 1.6}
-                style={{
-                  color: active ? '#e8c96d' : '#9090a8',
-                  transition: 'color 0.15s',
-                }}
-              />
+              <div className="relative">
+                <Icon
+                  size={22}
+                  strokeWidth={active ? 2.5 : 1.6}
+                  style={{
+                    color: active ? '#e8c96d' : '#9090a8',
+                    transition: 'color 0.15s',
+                  }}
+                />
+                {/* 채팅 미확인 카운트 배지 */}
+                {href === '/chat' && chatUnread > 0 && (
+                  <span
+                    className="absolute -top-1.5 -right-2 text-[9px] font-bold rounded-full flex items-center justify-center"
+                    style={{
+                      background: '#dc2626',
+                      color: 'white',
+                      minWidth: 16,
+                      height: 16,
+                      padding: '0 4px',
+                      border: '1.5px solid var(--bg-2)',
+                    }}
+                  >
+                    {chatUnread > 99 ? '99+' : chatUnread}
+                  </span>
+                )}
+              </div>
 
               <span
                 className="text-[10px] font-semibold transition-colors duration-150"
