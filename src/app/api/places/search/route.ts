@@ -59,9 +59,13 @@ export async function GET(req: NextRequest) {
   }
 
   // ── 2. Google Places API (키가 유효한 경우 폴백) ─────────────────────
-  const googleKey = process.env.GOOGLE_PLACES_API_KEY
-  let googleDebug: { keyConfigured: boolean; status?: string; error_message?: string; results?: number } = {
+  // 환경변수 정리: 줄바꿈·공백·따옴표 제거
+  const rawKey = process.env.GOOGLE_PLACES_API_KEY || ''
+  const googleKey = rawKey.trim().replace(/[\r\n\s]+/g, '').replace(/^["']|["']$/g, '')
+  let googleDebug: { keyConfigured: boolean; keyLength?: number; keyPrefix?: string; status?: string; error_message?: string; results?: number } = {
     keyConfigured: !!googleKey,
+    keyLength: googleKey.length,
+    keyPrefix: googleKey.slice(0, 6),
   }
   if (googleKey) {
     try {
