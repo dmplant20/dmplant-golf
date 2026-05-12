@@ -170,10 +170,13 @@ export default function PlaceSearchInput({
       {open && !loading && results.length === 0 && value.trim().length >= 1 && (
         <div className={dropdownClass} style={useFixed ? dropdownStyle : {}}>
           <div className="px-4 py-3 text-center">
-            <p className="text-sm" style={{ color: '#9aae9a' }}>검색 결과가 없습니다</p>
+            <p className="text-sm" style={{ color: '#9aae9a' }}>베트남 내 검색 결과가 없습니다</p>
+            <p className="text-[10px] mt-1" style={{ color: '#7a9a7a' }}>
+              영문/베트남어 이름으로 시도 (예: Vincom, Lotte, Pho Hoa, 한식당)
+            </p>
             <button type="button"
               onClick={() => { onSelect({ place_id: '', name: value.trim(), address: '', lat: null, lng: null, rating: null }); setOpen(false) }}
-              className="text-xs mt-1" style={{ color: '#fb923c' }}>
+              className="text-xs mt-2" style={{ color: '#fb923c' }}>
               "{value.trim()}" 직접 입력
             </button>
           </div>

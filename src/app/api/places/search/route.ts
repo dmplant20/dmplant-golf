@@ -124,16 +124,22 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // 1차: 베트남 + 호치민 우선
+    // ❗ 베트남 한정 — 한국·기타 결과 절대 표시 안 함 (2차 모임은 항상 베트남에서 열림)
+    // 1차: 베트남 + 호치민 viewbox 우선
     let data = await nominatim(q, { vnOnly: true })
-    // 2차: 베트남에 없으면 전체 검색 (한국 한식당 등도 매칭)
+    // 2차: viewbox 풀고 베트남 전체 (호치민 외 베트남 지역 식당)
     if (data.length === 0) {
-      data = await nominatim(`${q} ${near}`)
+      const params = new URLSearchParams({
+        q: q, format: 'json', limit: '8', addressdetails: '1',
+        'accept-language': 'vi,ko,en', countrycodes: 'vn',
+      })
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
+        cache: 'no-store',
+        headers: { 'User-Agent': 'ISGolf/1.0', 'Accept-Language': 'vi,ko,en' },
+      })
+      data = (await res.json()) as any[]
     }
-    // 3차: 그래도 없으면 전 세계
-    if (data.length === 0) {
-      data = await nominatim(q)
-    }
+    // 3차 — 전 세계 검색은 절대 안 함. 베트남에 없으면 빈 결과 반환.
 
     const results = data.slice(0, 8).map((p: any) => ({
       place_id: `osm_${p.osm_id}`,
