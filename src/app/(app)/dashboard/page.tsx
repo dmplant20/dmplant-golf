@@ -352,8 +352,8 @@ export default function DashboardPage() {
               <Icon size={13} style={{ color }} />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="font-bold text-[13px] leading-tight truncate" style={{ color: 'var(--text)' }}>{value}</p>
-              <p className="text-[9px] leading-tight truncate" style={{ color: 'var(--text-3)' }}>{label}</p>
+              <p className="font-bold text-[14px] leading-tight truncate" style={{ color: 'var(--text)' }}>{value}</p>
+              <p className="text-[11px] leading-tight truncate mt-0.5 font-medium" style={{ color: '#cbd5e1' }}>{label}</p>
             </div>
           </Link>
         ))}
