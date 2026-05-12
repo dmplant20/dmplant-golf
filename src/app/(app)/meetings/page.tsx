@@ -15,7 +15,7 @@ import CourseSearchInput from '@/components/ui/CourseSearchInput'
 import PlaceSearchInput  from '@/components/ui/PlaceSearchInput'
 import MapEmbed          from '@/components/ui/MapEmbed'
 import { isSuperAdmin } from '@/lib/superAdmin'
-import { romanizeKoreanName, hasHangul } from '@/lib/hangulRomanize'
+import { romanizeKoreanName, hasHangul, formatKoreanEnglishName } from '@/lib/hangulRomanize'
 
 // ── push helpers ──────────────────────────────────────────────────────────
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
@@ -728,16 +728,18 @@ export default function MeetingsPage() {
 
   // ── 영문 명단 — 시간/코스 포함하여 미리보기 모달 ──────────────────
   // 조 편성이 있으면 조별로 그룹화, 없으면 전체 명단 단순 번호 매김
-  // ❗ 강제 영문: 영문 이름이 비어있으면 자동 로마자 변환 (한글로는 절대 안 나감)
+  // ❗ 강제 영문 + 클럽 표준 포맷: "성 이름" (이름은 공백 없이 한 단어)
   function openRosterPreview() {
     const missing: string[] = []
     const enOf = (ko: string, en: string | null | undefined) => {
       const e = (en ?? '').trim()
-      if (e && !hasHangul(e)) return e            // 영문 있음 → 그대로
-      // 영문 누락 (또는 영문 필드에 한글) → 한글 이름 로마자 변환
+      if (e && !hasHangul(e)) {
+        // 영문 존재 — 표준 포맷으로 강제 정규화 ("Baik dae jun" → "Baik Daejun")
+        return formatKoreanEnglishName(e)
+      }
+      // 영문 누락 (또는 영문 필드에 한글) → 한글 이름 로마자 변환 + 포맷
       missing.push(ko || e || '?')
-      const auto = romanizeKoreanName(ko || e || '')
-      return auto || (ko || e || '')
+      return formatKoreanEnglishName(ko || e || '')
     }
     // 조 편성이 있으면 (assign 에 값이 있고 그룹별 분리 가능)
     const numsInAssign = [...new Set(Object.values(assign) as number[])].sort()

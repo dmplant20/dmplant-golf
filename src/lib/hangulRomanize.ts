@@ -58,3 +58,32 @@ export function romanizeKoreanName(input: string): string {
 export function hasHangul(s: string): boolean {
   return /[가-힣]/.test(s ?? '')
 }
+
+// 영문 이름 → 클럽 표준 포맷 (성 + 이름 통합)
+//   "Baik dae jun"   → "Baik Daejun"
+//   "Kim Jaehyun"    → "Kim Jaehyun"
+//   "An Han Sun"     → "An Hansun"
+//   "choi seong bok" → "Choi Seongbok"
+//   "Lee Jong-Seok"  → "Lee Jongseok"  (하이픈 제거)
+//
+// 규칙:
+//   ① 한글이 포함되어 있으면 먼저 romanizeKoreanName 으로 변환
+//   ② 공백·하이픈으로 토큰 분리
+//   ③ 1번째 토큰 = 성 (Title Case), 나머지 모두 합쳐서 첫 글자만 대문자 (Title Case)
+//   ④ 토큰 1개이면 그대로 Title Case
+export function formatKoreanEnglishName(input: string): string {
+  if (!input) return ''
+  // 한글이 섞여 있으면 먼저 로마자로
+  const base = /[가-힣]/.test(input) ? romanizeKoreanName(input) : input
+  const parts = base
+    .replace(/[-_]+/g, ' ')      // 하이픈·언더스코어 → 공백
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+  if (parts.length === 0) return ''
+  const cap = (s: string) => s.length > 0 ? s[0].toUpperCase() + s.slice(1).toLowerCase() : s
+  if (parts.length === 1) return cap(parts[0])
+  const surname = cap(parts[0])
+  const given   = cap(parts.slice(1).join('').toLowerCase())
+  return `${surname} ${given}`
+}
