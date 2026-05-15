@@ -689,41 +689,50 @@ export default function MeetingsPage() {
   }
 
   // ── 골프장 응답 파서 ────────────────────────────────────────────────
-  // 다양한 포맷 허용: "1조 06:30 Stella-Sole" / "1조: 06:30, Stella" /
-  // "Group 1 - 06:30 / Stella" / "06:30 Stella-Sole" 등.
-  // 조 번호가 없으면 줄 순서대로 1·2·3… 부여.
+  // 처리 규칙:
+  //   1. 시간이 없는 줄(인사말·헤더·이름)은 자동 무시.
+  //   2. "7:38/7:45/7:52am Luna-Stella" → 3개 시간 × 같은 코스 = 3 그룹
+  //   3. am/pm 이 마지막 시간에만 붙어도 같은 줄 전체에 적용.
+  //   4. 조 번호는 발견 순서대로 1·2·3… 자동 부여.
+  //   5. "1조 06:30 Stella-Sole" 같은 단일 그룹 형식도 그대로 작동.
   function parsePasteText(text: string): { group: number; time: string; course: string }[] {
     const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
     const out: { group: number; time: string; course: string }[] = []
-    lines.forEach((line, idx) => {
-      // 시간 추출 (HH:MM or H:MM)
-      const tMatch = line.match(/(\d{1,2}):(\d{2})/)
-      const time = tMatch ? `${tMatch[1].padStart(2,'0')}:${tMatch[2]}` : ''
-      // 조 번호 추출
-      const gMatch =
-        line.match(/(\d+)\s*조/) ||
-        line.match(/조\s*(\d+)/) ||
-        line.match(/(?:Group|G|#)\s*(\d+)/i)
-      const group = gMatch ? parseInt(gMatch[1]) : (idx + 1)
-      // 코스 = 원본에서 시간·조번호 표기 제거 후 남은 문자열
+    let groupNum = 0
+
+    for (const line of lines) {
+      // 한 줄의 모든 시간 추출 (HH:MM 또는 H:MM, am/pm 선택)
+      const timeMatches = [...line.matchAll(/(\d{1,2}):(\d{2})\s*(am|pm)?/gi)]
+      if (timeMatches.length === 0) continue   // 시간 없는 줄 = 인사말/이름 → 무시
+
+      // am/pm 폴백 — 마지막 시간에만 적힌 경우 같은 줄 전체에 적용
+      const ampmFallback = (timeMatches.map(m => (m[3] ?? '').toLowerCase()).find(x => x) ?? '')
+
+      // 코스 추출: 시간·조번호·구분 기호 제거
       let course = line
-        .replace(/(\d{1,2}):(\d{2})/, '')
-        .replace(/(\d+)\s*조/, '')
-        .replace(/조\s*(\d+)/, '')
-        .replace(/(?:Group|G|#)\s*\d+/i, '')
-        .replace(/[:\-\|/,]+/g, ' ')
+        .replace(/(\d{1,2}):(\d{2})\s*(am|pm)?/gi, '')
+        .replace(/(\d+)\s*조/gi, '')
+        .replace(/조\s*(\d+)/gi, '')
+        .replace(/(?:Group|G|#)\s*\d+/gi, '')
+        .replace(/[\/]+/g, ' ')                         // 시간 사이 슬래시만 제거 (Luna-Stella 의 하이픈은 보존)
+        .replace(/^[\s\-:|,;.]+|[\s\-:|,;.]+$/g, '')   // 앞뒤 군더더기 punctuation 제거
         .replace(/\s+/g, ' ')
         .trim()
-      // 너무 짧거나 숫자만 남았으면 코스 없음
-      if (!course || /^\d+$/.test(course)) course = ''
-      out.push({ group, time, course })
-    })
-    // 같은 조 번호가 여러 줄이면 첫 줄 유지
-    const seen = new Set<number>()
-    return out.filter(p => {
-      if (seen.has(p.group)) return false
-      seen.add(p.group); return true
-    }).sort((a, b) => a.group - b.group)
+      if (/^\d+$/.test(course)) course = ''
+
+      // 각 시간을 한 그룹으로
+      for (const tm of timeMatches) {
+        groupNum++
+        let hour = parseInt(tm[1])
+        const mm = tm[2]
+        const ampm = ((tm[3] ?? '').toLowerCase() || ampmFallback)
+        if (ampm === 'pm' && hour < 12) hour += 12
+        if (ampm === 'am' && hour === 12) hour = 0
+        const time = `${String(hour).padStart(2,'0')}:${mm}`
+        out.push({ group: groupNum, time, course })
+      }
+    }
+    return out
   }
   const pasteParsed = parsePasteText(pasteText)
 
