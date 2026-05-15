@@ -2063,6 +2063,11 @@ export default function MeetingsPage() {
             if (!showAllGroups && assign[p.key] != null) return false
             return true
           })
+          // 조별 인원 수 — 4명이 찬 조는 "Full" 처리 (그 조 버튼은 나머지 미배정 회원들 행에서 사라짐)
+          const groupCounts: Record<number, number> = {}
+          Object.values(assign).forEach(n => {
+            if (typeof n === 'number') groupCounts[n] = (groupCounts[n] ?? 0) + 1
+          })
           return (<>
             {participants.length > 0 ? (
               <div>
@@ -2123,7 +2128,10 @@ export default function MeetingsPage() {
                         </div>
                         <div className="flex gap-1 flex-shrink-0 items-center">
                           {cur == null && <span className="text-[10px] text-amber-500 mr-1">미배정</span>}
-                          {Array.from({ length: numButtons }, (_, i) => i + 1).map(n => (
+                          {Array.from({ length: numButtons }, (_, i) => i + 1)
+                            // 4명 찬 조 버튼은 미배정 회원들 화면에서 제거 (본인이 이미 들어가있는 조는 유지)
+                            .filter(n => cur === n || (groupCounts[n] ?? 0) < 4)
+                            .map(n => (
                             <button key={n}
                               onClick={() => setAssign(prev => ({ ...prev, [p.key]: n }))}
                               style={cur === n ? { background: 'linear-gradient(135deg,#c9a84c,#a07830)', color: '#fff' } : undefined}
