@@ -2183,31 +2183,15 @@ export default function MeetingsPage() {
                   const gMembers = participants.filter(p => assign[p.key] === gn)
                   const isSaved = hiddenGroupNums.has(gn)
                   return (
-                    <div key={gn} className="rounded-xl px-3 py-2.5"
+                    <div key={gn} className="rounded-xl px-3 py-2.5 space-y-2"
                       style={isSaved
                         ? { background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.25)', opacity: 0.85 }
                         : { background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.2)' }}>
-                      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                      {/* 1행: 조 라벨 + 저장/편집 버튼 */}
+                      <div className="flex items-center justify-between gap-2">
                         <p className="text-sm font-extrabold flex-shrink-0" style={{ color: isSaved ? '#86efac' : 'var(--gold-l)' }}>
                           {isSaved && '✅ '}{gn}조 <span className="text-[10px] font-normal opacity-70">({gMembers.length}{ko ? '명' : ''})</span>
                         </p>
-                        <input
-                          type="time"
-                          value={teeTimes[gn] ?? ''}
-                          onChange={e => setTeeTimes(prev => ({ ...prev, [gn]: e.target.value }))}
-                          className="text-xs px-2 py-1 rounded bg-gray-900 border border-gray-700 text-white"
-                          style={{ width: 90 }}
-                          title={ko ? '티오프 시간' : 'Tee time'}
-                        />
-                        <input
-                          type="text"
-                          value={courseNames[gn] ?? ''}
-                          onChange={e => setCourseNames(prev => ({ ...prev, [gn]: e.target.value }))}
-                          placeholder={ko ? '코스명 (예: Stella-Sole)' : 'Course'}
-                          className="text-xs px-2 py-1 rounded bg-gray-900 border border-gray-700 text-white flex-1 min-w-0"
-                          title={ko ? '코스 이름' : 'Course name'}
-                        />
-                        {/* 조별 저장하고 숨기기 버튼 */}
                         {!isSaved && (
                           <button
                             type="button"
@@ -2218,7 +2202,7 @@ export default function MeetingsPage() {
                               setSavingGroupNum(null)
                             }}
                             disabled={savingGroupNum !== null}
-                            className="text-[10px] font-bold px-2 py-1 rounded-md active:scale-95 disabled:opacity-50 flex-shrink-0"
+                            className="text-[10px] font-bold px-2.5 py-1 rounded-md active:scale-95 disabled:opacity-50 flex-shrink-0"
                             style={{ background: 'rgba(34,197,94,0.18)', color: '#86efac', border: '1px solid rgba(34,197,94,0.4)' }}>
                             {savingGroupNum === gn
                               ? (ko ? '저장 중...' : 'Saving…')
@@ -2229,7 +2213,6 @@ export default function MeetingsPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              // 다시 편집: 이 조 멤버 전체를 미배정으로 → 수동 지정 영역에 다시 등장
                               setHiddenGroupNums(prev => { const s = new Set(prev); s.delete(gn); return s })
                               setAssign(prev => {
                                 const next = { ...prev }
@@ -2237,12 +2220,31 @@ export default function MeetingsPage() {
                                 return next
                               })
                             }}
-                            className="text-[10px] font-bold px-2 py-1 rounded-md active:scale-95 flex-shrink-0"
+                            className="text-[10px] font-bold px-2.5 py-1 rounded-md active:scale-95 flex-shrink-0"
                             style={{ background: 'rgba(96,165,250,0.18)', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.4)' }}
                             title={ko ? '이 조의 배정을 해제하고 다시 편성' : 'Unassign and re-edit this group'}>
                             {ko ? '✏️ 다시 편집' : '✏️ Edit'}
                           </button>
                         )}
+                      </div>
+                      {/* 2행: 시간 + 코스 (좁은 화면에서도 항상 한 줄로 보이도록 단독 행) */}
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="time"
+                          value={teeTimes[gn] ?? ''}
+                          onChange={e => setTeeTimes(prev => ({ ...prev, [gn]: e.target.value }))}
+                          className="text-xs px-2 py-1.5 rounded bg-gray-900 border border-gray-700 text-white flex-shrink-0"
+                          style={{ width: 100 }}
+                          title={ko ? '티오프 시간' : 'Tee time'}
+                        />
+                        <input
+                          type="text"
+                          value={courseNames[gn] ?? ''}
+                          onChange={e => setCourseNames(prev => ({ ...prev, [gn]: e.target.value }))}
+                          placeholder={ko ? '코스명 (예: Luna-Stella)' : 'Course'}
+                          className="text-xs px-2 py-1.5 rounded bg-gray-900 border border-gray-700 text-white flex-1 min-w-0"
+                          title={ko ? '코스 이름' : 'Course name'}
+                        />
                       </div>
                       {/* 조원 이름 — 탭하면 그 조에서 빠지고 미배정으로 이동 (잘못된 배정 즉시 정정) */}
                       <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1.5 leading-relaxed">
