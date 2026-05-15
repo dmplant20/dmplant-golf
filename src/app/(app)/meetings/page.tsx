@@ -8,7 +8,7 @@ import {
   CheckCircle, XCircle, Clock, MapPin, Users, Shuffle,
   ListOrdered, Check, Ban, HelpCircle, Edit2, BarChart2,
   TrendingDown, TrendingUp, Minus, UtensilsCrossed, Bell,
-  BellOff, Navigation, Plus, Trash2, FileDown,
+  BellOff, Navigation, Plus, Trash2, FileDown, Search,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import CourseSearchInput from '@/components/ui/CourseSearchInput'
@@ -160,6 +160,8 @@ export default function MeetingsPage() {
   const [proxySaving,        setProxySaving]        = useState(false)
   const [saving,             setSaving]             = useState(false)
   const [autoGroupLoading,   setAutoGroupLoading]   = useState(false)
+  // 수동 조 지정 영역 회원 검색 — 한 글자만 쳐도 필터링
+  const [groupSearch,        setGroupSearch]         = useState('')
 
   // ── month navigation (과거 기록 열람) ──────────────────────────────────────
   const [navYM, setNavYM] = useState<{ year: number; month: number } | null>(null)
@@ -2041,12 +2043,46 @@ export default function MeetingsPage() {
           const participants = [...memberParticipants, ...guestParticipants]
           const unassignedCount = participants.filter(p => assign[p.key] == null).length
 
+          // 검색어로 필터링 — 한 글자만 쳐도 일치하는 회원이 좁혀짐 (대소문자 무시, 한글·영문 모두)
+          const q = groupSearch.trim().toLowerCase()
+          const visibleParticipants = q
+            ? participants.filter(p => (p.name ?? '').toLowerCase().includes(q))
+            : participants
           return (<>
             {participants.length > 0 ? (
               <div>
-                <label className="text-xs text-gray-400 block mb-2">{ko ? `수동 조 지정 (총 ${participants.length}명)` : `Manual assignment (${participants.length} total)`}</label>
+                <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                  <label className="text-xs text-gray-400">
+                    {ko
+                      ? `수동 조 지정 (${q ? `${visibleParticipants.length}/` : ''}총 ${participants.length}명)`
+                      : `Manual assignment (${q ? `${visibleParticipants.length}/` : ''}${participants.length} total)`}
+                  </label>
+                </div>
+                {/* 이름 검색창 */}
+                <div className="relative mb-2">
+                  <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#9aae9a' }} />
+                  <input
+                    type="text"
+                    value={groupSearch}
+                    onChange={e => setGroupSearch(e.target.value)}
+                    placeholder={ko ? '이름 검색 (한 글자만 쳐도 OK)' : 'Search by name'}
+                    className="w-full bg-gray-900 border border-gray-700 rounded-lg pl-8 pr-8 py-2 text-sm text-white focus:outline-none focus:border-yellow-500"
+                    autoComplete="off"
+                  />
+                  {groupSearch && (
+                    <button type="button" onClick={() => setGroupSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white">
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+                {q && visibleParticipants.length === 0 && (
+                  <p className="text-[11px] text-amber-400 bg-amber-900/20 border border-amber-700/30 rounded-lg px-3 py-2 mb-2">
+                    🔍 {ko ? `"${groupSearch}" 일치하는 이름이 없습니다` : `No match for "${groupSearch}"`}
+                  </p>
+                )}
                 <div className="space-y-2">
-                  {participants.map((p) => {
+                  {visibleParticipants.map((p) => {
                     const cur = assign[p.key]
                     const maxGroup = Math.max(0, ...(Object.values(assign) as number[]))
                     const numButtons = Math.min(6, Math.max(maxGroup + 1, (cur ?? 0) + 1, 4))
