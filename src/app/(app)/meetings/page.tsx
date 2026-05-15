@@ -1589,15 +1589,26 @@ export default function MeetingsPage() {
                     <div key={g.group_number}
                       className="rounded-xl p-3"
                       style={{ background: 'rgba(201,168,76,0.05)', border: '1px solid rgba(201,168,76,0.18)' }}>
-                      <div className="flex items-center gap-2 mb-2">
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <span className="text-xs font-black rounded-lg px-2 py-0.5" style={{ color: 'var(--gold-l)', background: 'rgba(201,168,76,0.15)', border: '1px solid rgba(201,168,76,0.3)' }}>
                           {g.group_number}조
                         </span>
-                        {g.tee_time && (
-                          <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
-                            <Clock size={10} />{g.tee_time}
-                          </span>
-                        )}
+                        {/* 시간 — 미설정 시 점선 — 회장·총무가 편집해서 채울 수 있다는 힌트 */}
+                        <span className="text-[11px] flex items-center gap-1 px-1.5 py-0.5 rounded"
+                          style={{ color: g.tee_time ? '#93c5fd' : '#6b7280',
+                                   background: g.tee_time ? 'rgba(96,165,250,0.10)' : 'transparent',
+                                   border: `1px ${g.tee_time ? 'solid' : 'dashed'} ${g.tee_time ? 'rgba(96,165,250,0.30)' : 'rgba(107,114,128,0.4)'}` }}>
+                          <Clock size={10} />
+                          {g.tee_time ? String(g.tee_time).slice(0, 5) : (ko ? '시간 미정' : 'No time')}
+                        </span>
+                        {/* 코스 — 미설정 시 점선 */}
+                        <span className="text-[11px] flex items-center gap-1 px-1.5 py-0.5 rounded"
+                          style={{ color: g.course_name ? '#c4b5fd' : '#6b7280',
+                                   background: g.course_name ? 'rgba(167,139,250,0.10)' : 'transparent',
+                                   border: `1px ${g.course_name ? 'solid' : 'dashed'} ${g.course_name ? 'rgba(167,139,250,0.30)' : 'rgba(107,114,128,0.4)'}` }}>
+                          <MapPin size={10} />
+                          {g.course_name || (ko ? '코스 미정' : 'No course')}
+                        </span>
                       </div>
                       <div className="flex flex-wrap gap-1.5">
                         {(g.meeting_group_members ?? []).map((m: any, idx: number) => {
