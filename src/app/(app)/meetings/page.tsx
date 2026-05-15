@@ -2114,8 +2114,9 @@ export default function MeetingsPage() {
                           ? { background: 'rgba(167,139,250,0.10)', border: '1px solid rgba(167,139,250,0.3)' }
                           : { background: 'rgb(31,41,55)' }}>
                         <div className="flex-1 min-w-0">
-                          <span className="text-sm text-white block truncate">
-                            {p.isGuest && <span className="text-[10px] mr-1 px-1 py-0.5 rounded" style={{ background: 'rgba(167,139,250,0.3)', color: '#c4b5fd' }}>게스트</span>}
+                          {/* 게스트는 이름을 보라색으로 표시 (별도 배지 없음 — 이름 자체가 색상으로 구분됨) */}
+                          <span className="text-sm block truncate"
+                            style={{ color: p.isGuest ? '#c4b5fd' : '#fff' }}>
                             {p.name}
                           </span>
                           {p.handicap != null && <span className="text-[10px] text-gray-400">HC {p.handicap}</span>}
