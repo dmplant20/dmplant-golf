@@ -668,12 +668,23 @@ export default function MeetingsPage() {
   // ── save groups ────────────────────────────────────────────────────────
   // assign 키 형식: 일반 회원 = user_id (uuid) / 게스트 = 'g:<guest_id>' prefix
   // opts.keepOpen: 조 단위 저장 시 모달을 닫지 않고 다음 조 편성으로 이어감
+  //
+  // ⭐ 강력한 체인: 그룹 번호 union 으로 저장 — 회원 배정·시간·코스 중 하나라도
+  //    값이 있으면 그 조를 살림. 그래야 paste 로 입력한 미래 조의 시간/코스가
+  //    1조 저장 사이클에서 통째로 날아가지 않음.
   async function saveGroups(opts: { keepOpen?: boolean } = {}) {
     if (!meeting || !currentClubId) return
     setSaving(true)
     const supabase = createClient()
     await supabase.from('meeting_groups').delete().eq('club_id', currentClubId).eq('year', meeting.year).eq('month', meeting.month)
-    const nums = [...new Set(Object.values(assign) as number[])].sort()
+
+    // 다중 트리 union: assign / teeTimes / courseNames 모두에서 그룹 번호 수집
+    const allGroupNums = new Set<number>()
+    Object.values(assign).forEach(n => { if (typeof n === 'number' && n > 0) allGroupNums.add(n) })
+    Object.entries(teeTimes).forEach(([k, v]) => { const n = parseInt(k); if (!isNaN(n) && n > 0 && v) allGroupNums.add(n) })
+    Object.entries(courseNames).forEach(([k, v]) => { const n = parseInt(k); if (!isNaN(n) && n > 0 && v?.trim()) allGroupNums.add(n) })
+    const nums = [...allGroupNums].sort((a, b) => a - b)
+
     for (const gNum of nums) {
       const { data: g } = await supabase.from('meeting_groups').insert({
         club_id: currentClubId, year: meeting.year, month: meeting.month,
@@ -1136,7 +1147,14 @@ export default function MeetingsPage() {
     return <span className={`text-xs px-2 py-0.5 rounded-full ${daysUntil <= 7 ? 'bg-red-900/70 text-red-300' : daysUntil <= 14 ? 'bg-yellow-900/70 text-yellow-300' : 'bg-gray-800 text-gray-400'}`}>D-{daysUntil}</span>
   }
 
-  const assignedGroupNums = [...new Set(Object.values(assign) as number[])].sort()
+  // 미리보기·저장 대상 그룹 — assign / teeTimes / courseNames 어디 하나라도 값 있으면 포함
+  const assignedGroupNums = (() => {
+    const s = new Set<number>()
+    Object.values(assign).forEach(n => { if (typeof n === 'number' && n > 0) s.add(n) })
+    Object.entries(teeTimes).forEach(([k, v]) => { const n = parseInt(k); if (!isNaN(n) && n > 0 && v) s.add(n) })
+    Object.entries(courseNames).forEach(([k, v]) => { const n = parseInt(k); if (!isNaN(n) && n > 0 && v?.trim()) s.add(n) })
+    return [...s].sort((a, b) => a - b)
+  })()
 
   // score summary for this meeting
   const thisMonthScores = scores.filter(s => parseInt(scoreInput[s.user_id] ?? '0') > 0 || s.gross_score > 0)
