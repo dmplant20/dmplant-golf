@@ -1997,28 +1997,30 @@ export default function MeetingsPage() {
         </div>
 
         <div>
-          <label className="text-xs text-gray-400 block mb-1">2️⃣ {ko ? '자동 조편성' : 'Auto grouping'}</label>
+          <label className="text-xs text-gray-400 block mb-1">2️⃣ {ko ? '조 편성 방법 (3가지 중 선택)' : 'Group assignment (3 methods)'}</label>
           <p className="text-[10px] text-gray-400 mb-2">
-            {ko ? '4명씩 같은 조로 순서대로 배정됩니다' : 'Players are cut into groups of 4 in order'}
+            {ko ? '4명씩 한 조 · 편성 후에도 자유롭게 수정 가능' : 'Groups of 4 · always editable after'}
           </p>
-          <div className="flex gap-2">
+          <div className="grid grid-cols-3 gap-1.5">
             <button onClick={() => buildAutoAssign('top4')} disabled={autoGroupLoading}
-              className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl bg-emerald-900/60 hover:bg-emerald-800/60 border border-emerald-700/40 text-emerald-300 text-sm font-medium transition disabled:opacity-50">
+              className="flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl bg-emerald-900/60 hover:bg-emerald-800/60 border border-emerald-700/40 text-emerald-300 text-sm font-medium transition disabled:opacity-50">
               {autoGroupLoading
                 ? <span className="animate-spin text-base">⏳</span>
-                : <ListOrdered size={14} />}
-              <span>
-                <span className="block text-xs font-bold">{ko ? '전달핸디 상위순' : 'Prev Handicap'}</span>
-                <span className="block text-[10px] text-emerald-500/80">{ko ? '전달 스코어 기준' : 'by last month score'}</span>
-              </span>
+                : <ListOrdered size={16} />}
+              <span className="text-[11px] font-bold">{ko ? '🏆 전달핸디' : 'HC'}</span>
+              <span className="text-[9px] text-emerald-500/80 leading-tight">{ko ? '핸디 상위순' : 'sorted'}</span>
             </button>
             <button onClick={() => buildAutoAssign('random')} disabled={autoGroupLoading}
-              className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-700/50 text-gray-200 text-sm font-medium transition disabled:opacity-50">
-              <Shuffle size={14} />
-              <span>
-                <span className="block text-xs font-bold">{ko ? '랜덤' : 'Random'}</span>
-                <span className="block text-[10px] text-gray-400">{ko ? '무작위 배정' : 'shuffle'}</span>
-              </span>
+              className="flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl bg-violet-900/40 hover:bg-violet-800/40 border border-violet-700/40 text-violet-300 text-sm font-medium transition disabled:opacity-50">
+              <Shuffle size={16} />
+              <span className="text-[11px] font-bold">{ko ? '🎲 랜덤' : 'Random'}</span>
+              <span className="text-[9px] text-violet-400/80 leading-tight">{ko ? '무작위 배정' : 'shuffle'}</span>
+            </button>
+            <button onClick={() => setAssign({})}
+              className="flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-700/50 text-gray-200 text-sm font-medium transition">
+              <Edit2 size={16} />
+              <span className="text-[11px] font-bold">{ko ? '✏️ 수동' : 'Manual'}</span>
+              <span className="text-[9px] text-gray-400 leading-tight">{ko ? '리셋·직접' : 'reset & pick'}</span>
             </button>
           </div>
         </div>
@@ -2097,7 +2099,7 @@ export default function MeetingsPage() {
                   return (
                     <div key={gn} className="rounded-xl px-3 py-2.5" style={{ background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.2)' }}>
                       <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                        <p className="text-xs font-bold flex-shrink-0" style={{ color: 'var(--gold-l)' }}>{gn}조 ({gMembers.length}{ko ? '명' : ''})</p>
+                        <p className="text-sm font-extrabold flex-shrink-0" style={{ color: 'var(--gold-l)' }}>{gn}조 <span className="text-[10px] font-normal opacity-70">({gMembers.length}{ko ? '명' : ''})</span></p>
                         <input
                           type="time"
                           value={teeTimes[gn] ?? ''}
@@ -2115,16 +2117,21 @@ export default function MeetingsPage() {
                           title={ko ? '코스 이름' : 'Course name'}
                         />
                       </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {gMembers.map(p => (
-                          <span key={p.key} className="text-xs rounded-lg px-2 py-0.5"
-                            style={p.isGuest
-                              ? { background: 'rgba(167,139,250,0.15)', border: '1px solid rgba(167,139,250,0.35)', color: '#c4b5fd' }
-                              : { background: 'rgba(201,168,76,0.1)', border: '1px solid rgba(201,168,76,0.2)', color: 'var(--text-2)' }}>
-                            {p.isGuest && '🎫 '}{p.name}{p.handicap != null ? <span className="ml-1 text-[10px]" style={{ color: 'var(--gold)' }}>HC{p.handicap}</span> : ''}
+                      {/* 조원 한 줄로 묶어서 표시 — 가독성 우선 */}
+                      <p className="text-[13px] leading-relaxed" style={{ color: 'var(--text)' }}>
+                        {gMembers.map((p, i) => (
+                          <span key={p.key}>
+                            {i > 0 && <span style={{ color: 'var(--gold)', margin: '0 6px' }}>·</span>}
+                            {p.isGuest && <span style={{ color: '#c4b5fd' }}>🎫 </span>}
+                            <span style={{ color: p.isGuest ? '#c4b5fd' : 'var(--text)' }}>
+                              {p.name}
+                            </span>
+                            {p.handicap != null && (
+                              <span className="ml-1 text-[10px]" style={{ color: 'var(--gold)' }}>HC{p.handicap}</span>
+                            )}
                           </span>
                         ))}
-                      </div>
+                      </p>
                     </div>
                   )
                 })}
