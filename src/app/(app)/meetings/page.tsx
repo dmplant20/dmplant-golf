@@ -2055,10 +2055,12 @@ export default function MeetingsPage() {
 
           // 검색어로 필터링 — 한 글자만 쳐도 일치하는 회원이 좁혀짐 (대소문자 무시, 한글·영문 모두)
           const q = groupSearch.trim().toLowerCase()
-          // 저장하고 숨김 처리한 조 멤버는 수동 지정 영역에서 제외 (다음 조 편성 집중)
+          // ⭐ 기본 정책: 이미 어느 조에든 배정된 회원은 수동 지정 영역에서 자동 숨김.
+          //    "✏️ 다시 편집" 누르면 그 조의 배정이 풀려서 다시 미배정으로 보임.
+          //    showAllGroups=true 일 때만 전체 표시.
           const visibleParticipants = participants.filter(p => {
             if (q && !(p.name ?? '').toLowerCase().includes(q)) return false
-            if (!showAllGroups && hiddenGroupNums.has(assign[p.key])) return false
+            if (!showAllGroups && assign[p.key] != null) return false
             return true
           })
           return (<>
@@ -2092,6 +2094,13 @@ export default function MeetingsPage() {
                 {q && visibleParticipants.length === 0 && (
                   <p className="text-[11px] text-amber-400 bg-amber-900/20 border border-amber-700/30 rounded-lg px-3 py-2 mb-2">
                     🔍 {ko ? `"${groupSearch}" 일치하는 이름이 없습니다` : `No match for "${groupSearch}"`}
+                  </p>
+                )}
+                {/* 미배정 회원이 0명일 때 — 전체 배정 완료 안내 */}
+                {!q && visibleParticipants.length === 0 && unassignedCount === 0 && (
+                  <p className="text-[12px] text-center py-3 rounded-lg mb-2"
+                    style={{ background: 'rgba(34,197,94,0.10)', border: '1px solid rgba(34,197,94,0.30)', color: '#86efac' }}>
+                    ✅ {ko ? '모든 회원이 조에 배정되었습니다 — 아래에서 시간·코스 입력 후 저장' : 'All members assigned — set time/course below and save'}
                   </p>
                 )}
                 <div className="space-y-2">
@@ -2141,7 +2150,7 @@ export default function MeetingsPage() {
                   <label className="text-xs text-gray-400">
                     3️⃣ {ko ? '편성 미리보기' : 'Preview'}
                   </label>
-                  {hiddenGroupNums.size > 0 && (
+                  {(hiddenGroupNums.size > 0 || assignedGroupNums.length > 0) && (
                     <button type="button"
                       onClick={() => setShowAllGroups(s => !s)}
                       className="text-[10px] px-2 py-1 rounded-md font-bold transition"
@@ -2151,8 +2160,8 @@ export default function MeetingsPage() {
                         border: `1px solid ${showAllGroups ? 'rgba(96,165,250,0.4)' : 'rgba(255,255,255,0.1)'}`,
                       }}>
                       {showAllGroups
-                        ? (ko ? `👁 저장된 조도 표시 중 (${hiddenGroupNums.size}개)` : `👁 Showing saved (${hiddenGroupNums.size})`)
-                        : (ko ? `🙈 저장된 ${hiddenGroupNums.size}개 조 숨김` : `🙈 ${hiddenGroupNums.size} hidden`)}
+                        ? (ko ? '👁 배정된 회원도 표시 중' : '👁 Showing assigned')
+                        : (ko ? '🙈 배정된 회원 숨김' : '🙈 Hiding assigned')}
                     </button>
                   )}
                 </div>
@@ -2210,9 +2219,18 @@ export default function MeetingsPage() {
                         {isSaved && (
                           <button
                             type="button"
-                            onClick={() => setHiddenGroupNums(prev => { const s = new Set(prev); s.delete(gn); return s })}
+                            onClick={() => {
+                              // 다시 편집: 이 조 멤버 전체를 미배정으로 → 수동 지정 영역에 다시 등장
+                              setHiddenGroupNums(prev => { const s = new Set(prev); s.delete(gn); return s })
+                              setAssign(prev => {
+                                const next = { ...prev }
+                                Object.entries(next).forEach(([key, num]) => { if (num === gn) delete next[key] })
+                                return next
+                              })
+                            }}
                             className="text-[10px] font-bold px-2 py-1 rounded-md active:scale-95 flex-shrink-0"
-                            style={{ background: 'rgba(96,165,250,0.18)', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.4)' }}>
+                            style={{ background: 'rgba(96,165,250,0.18)', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.4)' }}
+                            title={ko ? '이 조의 배정을 해제하고 다시 편성' : 'Unassign and re-edit this group'}>
                             {ko ? '✏️ 다시 편집' : '✏️ Edit'}
                           </button>
                         )}
