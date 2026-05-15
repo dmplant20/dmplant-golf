@@ -162,6 +162,10 @@ export default function MeetingsPage() {
   const [autoGroupLoading,   setAutoGroupLoading]   = useState(false)
   // 수동 조 지정 영역 회원 검색 — 한 글자만 쳐도 필터링
   const [groupSearch,        setGroupSearch]         = useState('')
+  // 조별로 저장 완료한 조 — 모달에서 숨김 처리 (다음 조 편성 집중)
+  const [hiddenGroupNums,    setHiddenGroupNums]     = useState<Set<number>>(new Set())
+  const [showAllGroups,      setShowAllGroups]       = useState(false)
+  const [savingGroupNum,     setSavingGroupNum]      = useState<number | null>(null)
 
   // ── month navigation (과거 기록 열람) ──────────────────────────────────────
   const [navYM, setNavYM] = useState<{ year: number; month: number } | null>(null)
@@ -663,7 +667,8 @@ export default function MeetingsPage() {
 
   // ── save groups ────────────────────────────────────────────────────────
   // assign 키 형식: 일반 회원 = user_id (uuid) / 게스트 = 'g:<guest_id>' prefix
-  async function saveGroups() {
+  // opts.keepOpen: 조 단위 저장 시 모달을 닫지 않고 다음 조 편성으로 이어감
+  async function saveGroups(opts: { keepOpen?: boolean } = {}) {
     if (!meeting || !currentClubId) return
     setSaving(true)
     const supabase = createClient()
@@ -686,7 +691,7 @@ export default function MeetingsPage() {
       }
     }
     setSaving(false)
-    setShowGroupModal(false)
+    if (!opts.keepOpen) setShowGroupModal(false)
     await loadRsvp(meeting.year, meeting.month)
   }
 
@@ -1558,7 +1563,12 @@ export default function MeetingsPage() {
                     </button>
                   )}
                   {canManage && !isPastView && (
-                    <button onClick={() => setShowGroupModal(true)}
+                    <button onClick={() => {
+                      setHiddenGroupNums(new Set())
+                      setShowAllGroups(false)
+                      setGroupSearch('')
+                      setShowGroupModal(true)
+                    }}
                       className="text-xs rounded-full px-3 py-1.5 flex items-center gap-1 transition font-semibold"
                       style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)', color: '#fff' }}>
                       <Edit2 size={11} />{ko ? (groups.length > 0 ? '편집' : '조편성') : (groups.length > 0 ? 'Edit' : 'Assign')}
@@ -1976,8 +1986,8 @@ export default function MeetingsPage() {
         footer={
           <div className="flex gap-3">
             <button onClick={() => setShowGroupModal(false)} className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 text-sm font-medium">{ko ? '취소' : 'Cancel'}</button>
-            <button onClick={saveGroups} disabled={saving || assignedGroupNums.length === 0}
-              className="flex-1 py-3 rounded-xl disabled:opacity-50 text-white font-bold text-sm" style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)' }}>{saving ? '...' : (ko ? '저장' : 'Save')}</button>
+            <button onClick={() => saveGroups()} disabled={saving || assignedGroupNums.length === 0}
+              className="flex-1 py-3 rounded-xl disabled:opacity-50 text-white font-bold text-sm" style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)' }}>{saving ? '...' : (ko ? '전체 저장 + 닫기' : 'Save All & Close')}</button>
           </div>
         }
       >
@@ -2045,9 +2055,12 @@ export default function MeetingsPage() {
 
           // 검색어로 필터링 — 한 글자만 쳐도 일치하는 회원이 좁혀짐 (대소문자 무시, 한글·영문 모두)
           const q = groupSearch.trim().toLowerCase()
-          const visibleParticipants = q
-            ? participants.filter(p => (p.name ?? '').toLowerCase().includes(q))
-            : participants
+          // 저장하고 숨김 처리한 조 멤버는 수동 지정 영역에서 제외 (다음 조 편성 집중)
+          const visibleParticipants = participants.filter(p => {
+            if (q && !(p.name ?? '').toLowerCase().includes(q)) return false
+            if (!showAllGroups && hiddenGroupNums.has(assign[p.key])) return false
+            return true
+          })
           return (<>
             {participants.length > 0 ? (
               <div>
@@ -2124,18 +2137,42 @@ export default function MeetingsPage() {
             )}
             {assignedGroupNums.length > 0 && (
               <div className="space-y-2 mt-3">
-                <label className="text-xs text-gray-400 block">
-                  3️⃣ {ko ? '편성 미리보기 — 조별 시간/코스 입력' : 'Preview — set tee time + course'}
-                </label>
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <label className="text-xs text-gray-400">
+                    3️⃣ {ko ? '편성 미리보기' : 'Preview'}
+                  </label>
+                  {hiddenGroupNums.size > 0 && (
+                    <button type="button"
+                      onClick={() => setShowAllGroups(s => !s)}
+                      className="text-[10px] px-2 py-1 rounded-md font-bold transition"
+                      style={{
+                        background: showAllGroups ? 'rgba(96,165,250,0.18)' : 'rgba(255,255,255,0.05)',
+                        color: showAllGroups ? '#93c5fd' : '#9ca3af',
+                        border: `1px solid ${showAllGroups ? 'rgba(96,165,250,0.4)' : 'rgba(255,255,255,0.1)'}`,
+                      }}>
+                      {showAllGroups
+                        ? (ko ? `👁 저장된 조도 표시 중 (${hiddenGroupNums.size}개)` : `👁 Showing saved (${hiddenGroupNums.size})`)
+                        : (ko ? `🙈 저장된 ${hiddenGroupNums.size}개 조 숨김` : `🙈 ${hiddenGroupNums.size} hidden`)}
+                    </button>
+                  )}
+                </div>
                 <p className="text-[10px]" style={{ color: '#fbbf24' }}>
-                  💡 {ko ? '골프장 응답을 보고 시간(예: 07:03)과 코스명(예: Stella-Sole)을 입력 → 영문 명단·CSV에 자동 반영' : 'Enter time and course; reflects in roster and CSV'}
+                  💡 {ko ? '조 편성 후 "이 조 저장" 누르면 다음 조 편성에 집중할 수 있습니다 (모달 닫혔다 열어도 저장 상태 유지)' : 'Save each group as you complete it to focus on the next'}
                 </p>
-                {assignedGroupNums.map(gn => {
+                {assignedGroupNums
+                  .filter(gn => showAllGroups || !hiddenGroupNums.has(gn))
+                  .map(gn => {
                   const gMembers = participants.filter(p => assign[p.key] === gn)
+                  const isSaved = hiddenGroupNums.has(gn)
                   return (
-                    <div key={gn} className="rounded-xl px-3 py-2.5" style={{ background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.2)' }}>
+                    <div key={gn} className="rounded-xl px-3 py-2.5"
+                      style={isSaved
+                        ? { background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.25)', opacity: 0.85 }
+                        : { background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.2)' }}>
                       <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                        <p className="text-sm font-extrabold flex-shrink-0" style={{ color: 'var(--gold-l)' }}>{gn}조 <span className="text-[10px] font-normal opacity-70">({gMembers.length}{ko ? '명' : ''})</span></p>
+                        <p className="text-sm font-extrabold flex-shrink-0" style={{ color: isSaved ? '#86efac' : 'var(--gold-l)' }}>
+                          {isSaved && '✅ '}{gn}조 <span className="text-[10px] font-normal opacity-70">({gMembers.length}{ko ? '명' : ''})</span>
+                        </p>
                         <input
                           type="time"
                           value={teeTimes[gn] ?? ''}
@@ -2152,8 +2189,34 @@ export default function MeetingsPage() {
                           className="text-xs px-2 py-1 rounded bg-gray-900 border border-gray-700 text-white flex-1 min-w-0"
                           title={ko ? '코스 이름' : 'Course name'}
                         />
+                        {/* 조별 저장하고 숨기기 버튼 */}
+                        {!isSaved && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              setSavingGroupNum(gn)
+                              await saveGroups({ keepOpen: true })
+                              setHiddenGroupNums(prev => { const s = new Set(prev); s.add(gn); return s })
+                              setSavingGroupNum(null)
+                            }}
+                            disabled={savingGroupNum !== null}
+                            className="text-[10px] font-bold px-2 py-1 rounded-md active:scale-95 disabled:opacity-50 flex-shrink-0"
+                            style={{ background: 'rgba(34,197,94,0.18)', color: '#86efac', border: '1px solid rgba(34,197,94,0.4)' }}>
+                            {savingGroupNum === gn
+                              ? (ko ? '저장 중...' : 'Saving…')
+                              : (ko ? `💾 ${gn}조 저장` : `💾 Save ${gn}`)}
+                          </button>
+                        )}
+                        {isSaved && (
+                          <button
+                            type="button"
+                            onClick={() => setHiddenGroupNums(prev => { const s = new Set(prev); s.delete(gn); return s })}
+                            className="text-[10px] font-bold px-2 py-1 rounded-md active:scale-95 flex-shrink-0"
+                            style={{ background: 'rgba(96,165,250,0.18)', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.4)' }}>
+                            {ko ? '✏️ 다시 편집' : '✏️ Edit'}
+                          </button>
+                        )}
                       </div>
-                      {/* 조원 한 줄로 묶어서 표시 — 가독성 우선 */}
                       <p className="text-[13px] leading-relaxed" style={{ color: 'var(--text)' }}>
                         {gMembers.map((p, i) => (
                           <span key={p.key}>
