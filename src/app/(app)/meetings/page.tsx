@@ -2244,20 +2244,26 @@ export default function MeetingsPage() {
                           </button>
                         )}
                       </div>
-                      <p className="text-[13px] leading-relaxed" style={{ color: 'var(--text)' }}>
-                        {gMembers.map((p, i) => (
-                          <span key={p.key}>
-                            {i > 0 && <span style={{ color: 'var(--gold)', margin: '0 6px' }}>·</span>}
-                            {p.isGuest && <span style={{ color: '#c4b5fd' }}>🎫 </span>}
-                            <span style={{ color: p.isGuest ? '#c4b5fd' : 'var(--text)' }}>
-                              {p.name}
-                            </span>
+                      {/* 조원 이름 — 탭하면 그 조에서 빠지고 미배정으로 이동 (잘못된 배정 즉시 정정) */}
+                      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1.5 leading-relaxed">
+                        {gMembers.map((p) => (
+                          <button
+                            key={p.key}
+                            type="button"
+                            onClick={() => setAssign(prev => { const n = { ...prev }; delete n[p.key]; return n })}
+                            title={ko ? '이 조에서 빼기 (미배정으로 이동)' : 'Remove from this group'}
+                            className="text-[13px] px-2 py-0.5 rounded-md transition active:scale-95 hover:opacity-80"
+                            style={p.isGuest
+                              ? { background: 'rgba(167,139,250,0.15)', border: '1px solid rgba(167,139,250,0.35)', color: '#c4b5fd' }
+                              : { background: 'rgba(201,168,76,0.10)', border: '1px solid rgba(201,168,76,0.25)', color: 'var(--text)' }}>
+                            {p.isGuest && '🎫 '}{p.name}
                             {p.handicap != null && (
                               <span className="ml-1 text-[10px]" style={{ color: 'var(--gold)' }}>HC{p.handicap}</span>
                             )}
-                          </span>
+                            <span className="ml-1 text-[10px] opacity-60">✕</span>
+                          </button>
                         ))}
-                      </p>
+                      </div>
                     </div>
                   )
                 })}
