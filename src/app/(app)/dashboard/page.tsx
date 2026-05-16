@@ -258,7 +258,7 @@ export default function DashboardPage() {
           .select('user_id, status')
           .eq('club_id', currentClubId).eq('year', ym.year).eq('month', ym.month),
         supabase.from('meeting_groups')
-          .select('group_number, tee_time, meeting_group_members(user_id, users(full_name, full_name_en))')
+          .select('group_number, tee_time, course_name, meeting_group_members(user_id, guest_id, users(full_name, full_name_en), meeting_guests(full_name, full_name_en))')
           .eq('club_id', currentClubId).eq('year', ym.year).eq('month', ym.month)
           .order('group_number'),
       ])
@@ -503,8 +503,21 @@ export default function DashboardPage() {
                     </span>
                     <p className="text-xs leading-relaxed" style={{ color: 'var(--text-2)' }}>
                       {(g.meeting_group_members ?? [])
-                        .map((m: any) => lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name))
-                        .join(' · ')}
+                        .map((m: any, i: number) => {
+                          const isGuest = !!m.guest_id
+                          const gst = Array.isArray(m.meeting_guests) ? m.meeting_guests[0] : m.meeting_guests
+                          const nm = isGuest
+                            ? (lang === 'ko' ? gst?.full_name : (gst?.full_name_en || gst?.full_name))
+                            : (lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name))
+                          if (!nm) return null
+                          return (
+                            <span key={m.user_id ?? m.guest_id ?? i}>
+                              {i > 0 && <span style={{ color: 'var(--gold)', margin: '0 4px' }}>·</span>}
+                              <span style={{ color: isGuest ? '#c4b5fd' : 'var(--text)' }}>{nm}</span>
+                            </span>
+                          )
+                        })
+                        .filter(Boolean)}
                     </p>
                   </div>
                 ))}
