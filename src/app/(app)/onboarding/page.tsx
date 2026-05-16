@@ -177,7 +177,7 @@ export default function OnboardingPage() {
             </div>
 
             {searching && (
-              <p className="text-center text-gray-500 text-sm">{ko ? '검색 중...' : 'Searching...'}</p>
+              <p className="text-center text-gray-400 text-sm">{ko ? '검색 중...' : 'Searching...'}</p>
             )}
 
             {searchResults.length > 0 && (
@@ -189,12 +189,12 @@ export default function OnboardingPage() {
                       <div className="w-10 h-10 bg-green-800 rounded-full flex items-center justify-center text-lg flex-shrink-0">⛳</div>
                       <div className="flex-1 min-w-0">
                         <p className="text-white font-medium text-sm truncate">{lang === 'ko' ? club.name : (club.name_en || club.name)}</p>
-                        <p className="text-gray-500 text-xs">{ko ? '가입 신청 후 승인 대기' : 'Apply and wait for approval'}</p>
+                        <p className="text-gray-400 text-xs">{ko ? '가입 신청 후 승인 대기' : 'Apply and wait for approval'}</p>
                       </div>
                       <button
                         onClick={() => handleApply(club.id)}
                         disabled={isApplied}
-                        className={`flex-shrink-0 text-xs px-3 py-1.5 rounded-lg font-medium transition ${isApplied ? 'bg-gray-700 text-gray-500' : 'bg-green-700 hover:bg-green-600 text-white'}`}>
+                        className={`flex-shrink-0 text-xs px-3 py-1.5 rounded-lg font-medium transition ${isApplied ? 'bg-gray-700 text-gray-400' : 'bg-green-700 hover:bg-green-600 text-white'}`}>
                         {isApplied ? (ko ? '신청완료' : 'Applied') : (ko ? '가입신청' : 'Apply')}
                       </button>
                     </div>
@@ -205,8 +205,8 @@ export default function OnboardingPage() {
 
             {searchResults.length === 0 && searchQuery && !searching && (
               <div className="text-center py-6 space-y-2">
-                <Users size={32} className="text-gray-700 mx-auto" />
-                <p className="text-gray-500 text-sm">{ko ? '검색 결과가 없습니다' : 'No clubs found'}</p>
+                <Users size={32} className="text-gray-400 mx-auto" />
+                <p className="text-gray-400 text-sm">{ko ? '검색 결과가 없습니다' : 'No clubs found'}</p>
                 <button onClick={() => setTab('create')} className="text-green-400 text-sm hover:underline">
                   {ko ? '새 클럽 만들기 →' : 'Create a new club →'}
                 </button>
