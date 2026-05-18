@@ -90,76 +90,110 @@ export async function GET(req: NextRequest) {
 
   const { year, month, day } = vietnamToday()
 
-  // Target date = exactly 10 days from today (VN time)
-  const target = new Date(Date.UTC(year, month - 1, day + 10))
-  const targetYear  = target.getUTCFullYear()
-  const targetMonth = target.getUTCMonth() + 1
-  const targetDay   = target.getUTCDate()
+  // 다단계 D-N 알림: 10, 7, 3, 1, 0(당일)
+  // 모임 D-Day 까지 강한 체인으로 여러 번 알림 발송
+  const DAY_OFFSETS = [10, 7, 3, 1, 0] as const
+  const todayUTC = Date.UTC(year, month - 1, day)
 
-  // ② 모든 클럽의 meeting_patterns 조회
+  // ② 모든 클럽의 정기모임 패턴 조회 (테이블 이름: recurring_meetings)
   const { data: patterns, error: patternErr } = await service
-    .from('meeting_patterns')
-    .select('club_id, week_of_month, day_of_week, start_time, venue, clubs(id, name)')
+    .from('recurring_meetings')
+    .select('club_id, week_of_month, day_of_week, start_time, venue, is_active, clubs(id, name)')
+    .eq('is_active', true)
 
   if (patternErr || !patterns?.length) {
-    return NextResponse.json({ ok: true, sent: 0, reason: 'no patterns' })
+    return NextResponse.json({ ok: true, sent: 0, reason: patternErr?.message ?? 'no patterns' })
   }
 
   let totalSent = 0
+  const breakdown: any[] = []
 
   for (const pattern of patterns) {
     const weekOfMonth = pattern.week_of_month ?? 1
     const dayOfWeek   = pattern.day_of_week ?? 0
-
-    // Calculate the meeting date for the target month
-    const meetingDate = getNthWeekdayDate(targetYear, targetMonth, weekOfMonth, dayOfWeek)
-    if (!meetingDate) continue
-
-    // Check if the meeting date is exactly 10 days from today
-    if (
-      meetingDate.getUTCFullYear() !== targetYear ||
-      meetingDate.getUTCMonth() + 1 !== targetMonth ||
-      meetingDate.getUTCDate() !== targetDay
-    ) {
-      continue
-    }
-
-    // ③ Approved members of this club who haven't responded
-    const { data: memberships } = await service
-      .from('club_memberships')
-      .select('user_id')
-      .eq('club_id', pattern.club_id)
-      .eq('status', 'approved')
-
-    if (!memberships?.length) continue
-
-    const allMemberIds = memberships.map((m: any) => m.user_id)
-
-    // Check who already responded
-    const { data: responded } = await service
-      .from('meeting_attendances')
-      .select('user_id')
-      .eq('club_id', pattern.club_id)
-      .eq('year', targetYear)
-      .eq('month', targetMonth)
-
-    const respondedIds = new Set((responded ?? []).map((r: any) => r.user_id))
-    const pendingIds = allMemberIds.filter((id: string) => !respondedIds.has(id))
-
-    if (!pendingIds.length) continue
-
     const clubRec = Array.isArray(pattern.clubs) ? pattern.clubs[0] : pattern.clubs
-    const clubName = clubRec?.name ?? pattern.club_id
+    const clubName = clubRec?.name ?? String(pattern.club_id).slice(0, 8)
 
-    if (vapidOk) {
-      const sent = await sendPushToUsers(service, pendingIds, {
-        title: `📅 [${clubName}] 정기모임 D-10`,
-        body: '10일 후 정기모임이 있습니다. 참석 여부를 알려주세요!',
-        url: '/meetings',
-      })
-      totalSent += sent
+    // 각 D-N 단계마다 해당 일자에 모임이 있는지 검사
+    for (const offset of DAY_OFFSETS) {
+      const tgt = new Date(todayUTC + offset * 86400000)
+      const tgtY = tgt.getUTCFullYear()
+      const tgtM = tgt.getUTCMonth() + 1
+      const tgtD = tgt.getUTCDate()
+
+      // 해당 월의 N째 요일이 tgt 와 일치?
+      const meetingDate = getNthWeekdayDate(tgtY, tgtM, weekOfMonth, dayOfWeek)
+      if (!meetingDate) continue
+      if (
+        meetingDate.getUTCFullYear() !== tgtY ||
+        meetingDate.getUTCMonth() + 1 !== tgtM ||
+        meetingDate.getUTCDate() !== tgtD
+      ) continue
+
+      // 모임 override 확인 — 취소된 모임은 알림 보내지 않음
+      const { data: ov } = await service
+        .from('meeting_overrides')
+        .select('status, override_date')
+        .eq('club_id', pattern.club_id).eq('year', tgtY).eq('month', tgtM).maybeSingle()
+      if (ov?.status === 'cancelled') continue
+
+      // ③ 클럽 승인 멤버 + 아직 미응답인 사람만 발송
+      const { data: memberships } = await service
+        .from('club_memberships')
+        .select('user_id')
+        .eq('club_id', pattern.club_id)
+        .eq('status', 'approved')
+
+      if (!memberships?.length) continue
+      const allMemberIds = memberships.map((m: any) => m.user_id)
+
+      const { data: responded } = await service
+        .from('meeting_attendances')
+        .select('user_id')
+        .eq('club_id', pattern.club_id)
+        .eq('year', tgtY)
+        .eq('month', tgtM)
+
+      const respondedIds = new Set((responded ?? []).map((r: any) => r.user_id))
+      // D-0(당일) 은 응답한 사람도 포함 — 모임 시작 리마인더
+      const targetIds = offset === 0
+        ? allMemberIds
+        : allMemberIds.filter((id: string) => !respondedIds.has(id))
+
+      if (!targetIds.length) continue
+
+      // 메시지 문구는 D-N 단계별로 다르게 — 더 긴급하게
+      const titleByOffset: Record<number, string> = {
+        10: `📅 [${clubName}] 정기모임 D-10`,
+         7: `📅 [${clubName}] 정기모임 D-7 — 일주일 남음`,
+         3: `⚠️ [${clubName}] 정기모임 D-3 — 3일 남음`,
+         1: `🔔 [${clubName}] 정기모임 내일입니다!`,
+         0: `⛳ [${clubName}] 오늘 정기모임 ${pattern.start_time?.slice(0,5) ?? ''} ${pattern.venue ?? ''}`.trim(),
+      }
+      const bodyByOffset: Record<number, string> = {
+        10: '10일 후 정기모임이 있습니다. 참석 여부를 알려주세요!',
+         7: '일주일 후 정기모임입니다. 아직 응답하지 않으셨습니다.',
+         3: '3일 후 정기모임입니다. 꼭 참석 여부를 알려주세요!',
+         1: '내일 정기모임입니다. 응답이 누락된 회원분만 알림을 받습니다.',
+         0: pattern.venue ? `${pattern.venue} 에서 ${pattern.start_time?.slice(0,5) ?? ''} 시작!` : '오늘 정기모임이 있습니다!',
+      }
+
+      if (vapidOk) {
+        const sent = await sendPushToUsers(service, targetIds, {
+          title: titleByOffset[offset],
+          body: bodyByOffset[offset],
+          url: '/meetings',
+        })
+        totalSent += sent
+        breakdown.push({ club: clubName, offset, sent, total: targetIds.length })
+      }
     }
   }
 
-  return NextResponse.json({ ok: true, date: `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`, totalSent })
+  return NextResponse.json({
+    ok: true,
+    date: `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`,
+    totalSent,
+    breakdown,
+  })
 }

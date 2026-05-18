@@ -1,7 +1,7 @@
 // ── 버전 관리 ─────────────────────────────────────────────────────────────
 // 배포할 때마다 이 값을 올리면 모든 설치된 앱이 강제 업데이트됨
 // scripts/bump-sw.js 가 커밋 해시로 빌드 시 자동 치환
-const APP_VERSION  = 'no-html-cache-v2'
+const APP_VERSION  = 'push-badge-v3'
 const CACHE_NAME   = `is-golf-${APP_VERSION}`
 // HTML 은 캐시하지 않음 — 정적 에셋만 캐시 (Next.js 해시 번들 = 컨텐츠 영구 불변)
 const STATIC_ASSETS = ['/manifest.json', '/icons/icon-192.png', '/icons/icon-72.png']
@@ -34,7 +34,7 @@ self.addEventListener('activate', (event) => {
   })())
 })
 
-// ── SKIP_WAITING 메시지 수신 (페이지에서 강제 업데이트 요청) ──────────────
+// ── SKIP_WAITING 메시지 수신 (별도 핸들러 — 아래 알림 관련 핸들러와 분리) ──
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting()
@@ -101,28 +101,43 @@ self.addEventListener('fetch', (event) => {
 })
 
 // ── Push Notifications ────────────────────────────────────────────────────────
+// 강력한 체인: 알림 표시 → 앱 뱃지 카운트 증가 → 클릭 시 정확한 URL 이동 + 뱃지 클리어
+
+// 뱃지 카운트 계산 — 현재 표시 중인 알림 개수 + 1 (이번에 표시할 것)
+async function updateAppBadge() {
+  try {
+    const visible = await self.registration.getNotifications()
+    const count = visible.length
+    if ('setAppBadge' in self.navigator && count > 0) {
+      await self.navigator.setAppBadge(count)
+    } else if ('clearAppBadge' in self.navigator && count === 0) {
+      await self.navigator.clearAppBadge()
+    }
+  } catch (_e) {}
+}
+
 self.addEventListener('push', (event) => {
-  if (!event.data) return
   let data = {}
-  try { data = event.data.json() } catch (e) { data = { title: 'IS Golf', body: event.data.text() } }
+  if (event.data) {
+    try { data = event.data.json() } catch (e) { data = { title: 'IS Golf', body: event.data.text() } }
+  }
 
   const title  = data.title  || 'Inter Stellar GOLF'
   const body   = data.body   || ''
-  const url    = data.url    || '/meetings'
+  const url    = data.url    || '/'
   const icon   = data.icon   || '/icons/icon-192.png'
   const badge  = data.badge  || '/icons/icon-72.png'
 
-  event.waitUntil(
-    self.registration.showNotification(title, {
+  event.waitUntil((async () => {
+    // 1. 알림 표시 — 강한 옵션 (소리·진동·요구상호작용·개별표시)
+    await self.registration.showNotification(title, {
       body,
       icon,
       badge,
-      data:     { url },
-      // 강한 알림 — 소리·진동·잠금화면 노출 + 사용자 상호작용 전까지 유지
-      silent:             false,                  // OS 기본 알림 소리 강제
-      vibrate:            [400, 100, 400, 100, 400], // 강한 진동 패턴
-      requireInteraction: true,                   // 사용자가 닫을 때까지 유지
-      // tag 를 매 푸시마다 다르게 → 알림이 합쳐지지 않고 개별 표시
+      data:     { url, receivedAt: Date.now() },
+      silent:             false,
+      vibrate:            [400, 100, 400, 100, 400],
+      requireInteraction: true,
       tag:      data.tag || `isgolf-${Date.now()}`,
       renotify: true,
       timestamp: Date.now(),
@@ -131,26 +146,88 @@ self.addEventListener('push', (event) => {
         { action: 'dismiss', title: '✕ 닫기'     },
       ],
     })
-  )
+
+    // 2. 앱 아이콘 뱃지 카운트 갱신
+    await updateAppBadge()
+
+    // 3. 열린 클라이언트에 인앱 토스트 표시용 메시지 전송 (옵션)
+    const list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+    list.forEach(c => c.postMessage({ type: 'PUSH_RECEIVED', payload: { title, body, url } }))
+  })())
 })
 
 self.addEventListener('notificationclick', (event) => {
+  // 1. 알림 닫기 (시각적 응답)
   event.notification.close()
-  if (event.action === 'dismiss') return
+  if (event.action === 'dismiss') {
+    event.waitUntil(updateAppBadge())
+    return
+  }
 
-  const targetUrl = (event.notification.data && event.notification.data.url) || '/'
+  // 2. 클릭 처리 — 견고한 URL 매칭
+  const rawUrl = (event.notification.data && event.notification.data.url) || '/'
+  // 상대 경로일 수도 있으니 절대 URL 로 정규화
+  const targetUrl = new URL(rawUrl, self.location.origin).toString()
+  const targetPath = new URL(targetUrl).pathname
 
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(list) {
-      for (var i = 0; i < list.length; i++) {
-        var client = list[i]
-        if (client.url.indexOf(self.location.origin) !== -1 && 'focus' in client) {
-          client.focus()
-          if ('navigate' in client) client.navigate(targetUrl)
-          return
-        }
-      }
-      return clients.openWindow(targetUrl)
+  event.waitUntil((async () => {
+    const list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+
+    // (a) 이미 정확히 그 페이지에 열려있는 클라이언트 있으면 focus 만
+    const exact = list.find(c => {
+      try { return new URL(c.url).pathname === targetPath } catch { return false }
+      })
+    if (exact && 'focus' in exact) {
+      await exact.focus()
+      // 같은 페이지라도 데이터 새로고침 트리거
+      exact.postMessage({ type: 'NOTIFICATION_OPEN', url: targetUrl })
+      await updateAppBadge()
+      return
+    }
+
+    // (b) 같은 origin 의 다른 클라이언트가 있으면 focus + navigate
+    const sameOrigin = list.find(c => {
+      try { return new URL(c.url).origin === self.location.origin } catch { return false }
     })
-  )
+    if (sameOrigin) {
+      try {
+        await sameOrigin.focus()
+        if ('navigate' in sameOrigin) {
+          await sameOrigin.navigate(targetUrl)
+        } else {
+          sameOrigin.postMessage({ type: 'NOTIFICATION_OPEN', url: targetUrl })
+        }
+      } catch {
+        // navigate 실패 → 메시지로 위임
+        sameOrigin.postMessage({ type: 'NOTIFICATION_OPEN', url: targetUrl })
+      }
+      await updateAppBadge()
+      return
+    }
+
+    // (c) 열린 클라이언트 없음 → 새 창 열기
+    try {
+      await self.clients.openWindow(targetUrl)
+    } catch {}
+    await updateAppBadge()
+  })())
+})
+
+// 알림 닫힘 (스와이프 등) 시 뱃지 카운트도 조정
+self.addEventListener('notificationclose', (event) => {
+  event.waitUntil(updateAppBadge())
+})
+
+// 클라이언트에서 보낸 메시지 처리 — 뱃지 클리어 요청
+self.addEventListener('message', (event) => {
+  if (!event.data) return
+  if (event.data.type === 'CLEAR_BADGE') {
+    if ('clearAppBadge' in self.navigator) {
+      self.navigator.clearAppBadge().catch(() => {})
+    }
+    // 현재 표시 중인 알림도 모두 닫기 (선택)
+    if (event.data.closeAll) {
+      self.registration.getNotifications().then(ns => ns.forEach(n => n.close()))
+    }
+  }
 })

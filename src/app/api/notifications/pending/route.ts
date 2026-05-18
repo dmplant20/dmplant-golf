@@ -94,10 +94,12 @@ export async function GET(_req: NextRequest) {
   } | null = null
 
   try {
-    // Get all clubs with meeting_patterns where user is approved member
+    // Get all clubs with recurring_meetings where user is approved member
+    // (table name: recurring_meetings — NOT meeting_patterns)
     const { data: patterns, error: patternErr } = await supabase
-      .from('meeting_patterns')
+      .from('recurring_meetings')
       .select('club_id, week_of_month, day_of_week, start_time, venue, clubs(id, name)')
+      .eq('is_active', true)
       .not('club_id', 'is', null)
 
     if (!patternErr && patterns?.length) {

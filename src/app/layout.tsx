@@ -107,10 +107,40 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       if (refreshing || onInstallPage) return; refreshing = true; window.location.reload();
     });
     navigator.serviceWorker.addEventListener('message', function(e) {
-      if (e.data && e.data.type === 'SW_ACTIVATED' && !refreshing && !onInstallPage) {
+      if (!e.data) return;
+      if (e.data.type === 'SW_ACTIVATED' && !refreshing && !onInstallPage) {
         refreshing = true; window.location.reload();
+        return;
+      }
+      // 푸시 알림 클릭으로 특정 URL 이동 요청 (SW 가 navigate 실패 시 fallback)
+      if (e.data.type === 'NOTIFICATION_OPEN' && e.data.url) {
+        try {
+          var u = new URL(e.data.url, window.location.origin);
+          if (window.location.pathname !== u.pathname) {
+            window.location.href = u.toString();
+          } else {
+            // 같은 페이지면 새로고침으로 최신 데이터 반영
+            window.location.reload();
+          }
+        } catch (err) {}
       }
     });
+
+    // 앱이 포커스/표시될 때 뱃지 카운트 클리어 — 본 알림을 다 본 것으로 간주
+    function clearBadge() {
+      try {
+        if ('clearAppBadge' in navigator) { navigator.clearAppBadge(); }
+        if (navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_BADGE', closeAll: false });
+        }
+      } catch (err) {}
+    }
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'visible') clearBadge();
+    });
+    window.addEventListener('focus', clearBadge);
+    // 페이지 로드 시에도 한 번 클리어 (앱 들어왔으니 본 것)
+    clearBadge();
   });
 })();
         ` }} />
