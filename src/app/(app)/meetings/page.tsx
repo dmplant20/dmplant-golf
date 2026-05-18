@@ -139,9 +139,25 @@ export default function MeetingsPage() {
   const router = useRouter()
   const { currentClubId, lang, myClubs, user } = useAuthStore()
   const ko = lang === 'ko'
-  const myRole = myClubs.find(c => c.id === currentClubId)?.role ?? 'member'
+  const currentClub = myClubs.find(c => c.id === currentClubId)
+  const myRole = currentClub?.role ?? 'member'
+  const currentClubName = currentClub?.name ?? ''
   const isAdmin = isSuperAdmin(user)
   const canManage = ['president', 'secretary'].includes(myRole) || isAdmin
+
+  // 응급 강제 새로고침 — stale JS/SW 캐시 의심 시 사용자가 직접 실행
+  function forceFullRefresh() {
+    try {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister()))
+      }
+      if (typeof caches !== 'undefined') {
+        caches.keys().then(ks => Promise.all(ks.map(k => caches.delete(k))))
+      }
+    } catch {}
+    // 약간의 시간 후 강제 리로드 (캐시 무시)
+    setTimeout(() => window.location.reload(), 300)
+  }
 
   const [pattern,     setPattern]     = useState<any>(null)
   const [overrides,   setOverrides]   = useState<any[]>([])
@@ -1223,15 +1239,45 @@ export default function MeetingsPage() {
       {loading ? (
         <p className="text-center text-gray-400 py-16">{ko ? '로딩 중...' : 'Loading...'}</p>
       ) : !pattern ? (
-        <div className="glass-card rounded-2xl p-8 flex flex-col items-center gap-4 text-center">
+        <div className="glass-card rounded-2xl p-6 flex flex-col items-center gap-3 text-center">
           <CalendarDays size={36} className="text-gray-400" />
           <div>
             <p className="text-white font-semibold">{ko ? '정기 일정이 설정되지 않았습니다' : 'No recurring pattern set'}</p>
-            <p className="text-xs text-gray-400 mt-1">{ko ? '패턴을 설정하면 매월 일정이 자동으로 생성됩니다.' : 'Set a pattern to auto-generate monthly schedules.'}</p>
+            <p className="text-xs text-gray-400 mt-1">
+              {ko ? '현재 클럽:' : 'Current club:'}{' '}
+              <span className="text-amber-300 font-semibold">{currentClubName || '(미선택)'}</span>
+            </p>
           </div>
+
+          {/* 디버그 정보 — 어느 클럽 보고 있는지 정확히 표시 */}
+          <div className="w-full text-left text-[10px] rounded-lg px-3 py-2 space-y-0.5"
+            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-3)' }}>
+            <p>club_id: <span className="font-mono">{currentClubId?.slice(0, 8) ?? '(없음)'}…</span></p>
+            <p>가입 클럽 ({myClubs.length}개):</p>
+            {myClubs.map(c => (
+              <p key={c.id} className={c.id === currentClubId ? 'text-amber-300 ml-2' : 'ml-2'}>
+                {c.id === currentClubId ? '▶ ' : '  '}{c.name} ({c.role})
+              </p>
+            ))}
+          </div>
+
+          {/* 가능 원인 안내 */}
+          <div className="text-xs text-gray-400 space-y-1.5 max-w-sm">
+            <p>{ko ? '가능 원인:' : 'Possible causes:'}</p>
+            <p>{ko ? '① 다른 클럽 선택됨 → 상단 클럽명 탭하여 전환' : '① Wrong club selected → tap club name at top'}</p>
+            <p>{ko ? '② 앱 버전이 오래됨 → 아래 버튼으로 새로고침' : '② Stale app version → tap refresh below'}</p>
+          </div>
+
+          {/* 응급 새로고침 — SW 캐시 완전 삭제 후 reload */}
+          <button onClick={forceFullRefresh}
+            className="text-sm px-5 py-2.5 rounded-xl font-semibold transition"
+            style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', color: '#86efac' }}>
+            🔄 {ko ? '강제 새로고침 (캐시 삭제)' : 'Force refresh (clear cache)'}
+          </button>
+
           {canManage && (
             <button onClick={() => { loadCourses(); setShowPatternModal(true) }}
-              className="text-white text-sm px-5 py-2.5 rounded-xl font-semibold transition btn-primary">
+              className="text-white text-sm px-5 py-2.5 rounded-xl font-semibold transition btn-primary mt-1">
               {ko ? '패턴 설정하기' : 'Set Pattern'}
             </button>
           )}
