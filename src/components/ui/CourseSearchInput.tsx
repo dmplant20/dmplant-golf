@@ -103,17 +103,20 @@ export default function CourseSearchInput({
       setLoading(true)
       const supabase = createClient()
       const q = value.trim().toLowerCase()
-      const { data } = await supabase
+      // 1차: DB 조회 — 스키마 불일치 환경에서도 동작하도록 select('*') + name 만으로 검색
+      // 누락된 컬럼(name_vn/province) 은 옵셔널로 코드에서 처리.
+      const { data, error } = await supabase
         .from('golf_courses')
-        .select('id,name,name_vn,province,holes,par,distance_km,green_fee_weekday_vnd,green_fee_weekend_vnd,address,phone,website,sub_courses,description')
+        .select('*')
         .eq('is_active', true)
-        .or(`name.ilike.%${q}%,name_vn.ilike.%${q}%,province.ilike.%${q}%`)
-        .order('distance_km', { nullsFirst: false })
+        .ilike('name', `%${q}%`)
         .limit(8)
 
-      // DB가 비어있으면 내장 골프장으로 폴백
-      let found: Course[] = data ?? []
-      if (found.length === 0) {
+      let found: Course[] = []
+      if (!error && data && data.length > 0) {
+        found = data as Course[]
+      } else {
+        // DB 비어있거나 에러 → 내장 골프장으로 폴백 (모든 필요한 필드 포함)
         found = BUILTIN_COURSES.filter(c =>
           c.name.toLowerCase().includes(q) ||
           (c.name_vn ?? '').toLowerCase().includes(q) ||

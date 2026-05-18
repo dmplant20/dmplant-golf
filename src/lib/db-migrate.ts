@@ -18,6 +18,21 @@ ALTER TABLE golf_courses ADD COLUMN IF NOT EXISTS phone text;
 ALTER TABLE golf_courses ADD COLUMN IF NOT EXISTS website text;
 ALTER TABLE golf_courses ADD COLUMN IF NOT EXISTS description text;
 ALTER TABLE golf_courses ADD COLUMN IF NOT EXISTS name_vn text;
+-- 누락된 핵심 컬럼 (DB 스키마와 코드 불일치 해결)
+ALTER TABLE golf_courses ADD COLUMN IF NOT EXISTS province text;
+ALTER TABLE golf_courses ADD COLUMN IF NOT EXISTS holes int DEFAULT 18;
+ALTER TABLE golf_courses ADD COLUMN IF NOT EXISTS par int DEFAULT 72;
+ALTER TABLE golf_courses ADD COLUMN IF NOT EXISTS address text;
+ALTER TABLE golf_courses ADD COLUMN IF NOT EXISTS designer text;
+ALTER TABLE golf_courses ADD COLUMN IF NOT EXISTS is_active boolean DEFAULT true;
+-- 기존 region 컬럼이 있으면 province 로 데이터 복사 (둘 다 있을 경우 province 우선)
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='golf_courses' AND column_name='region')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='golf_courses' AND column_name='province') THEN
+    UPDATE golf_courses SET province = region WHERE province IS NULL AND region IS NOT NULL;
+  END IF;
+EXCEPTION WHEN others THEN NULL;
+END $$;
 
 -- personal_round_holes 야디지 컬럼
 ALTER TABLE personal_round_holes ADD COLUMN IF NOT EXISTS yardage int

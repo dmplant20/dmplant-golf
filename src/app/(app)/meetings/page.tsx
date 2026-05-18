@@ -224,12 +224,25 @@ export default function MeetingsPage() {
     if (courses.length > 0) return
     setCoursesLoading(true)
     const supabase = createClient()
+    // 실제 DB 스키마와 마이그레이션 SQL 사이 불일치 존재 — 안전하게 select('*') 으로
+    // 받고, 결과에서 필요한 필드만 코드에서 옵셔널로 사용. 컬럼이 없는 환경에서도
+    // 콘솔 에러 없이 동작.
     const { data, error } = await supabase
       .from('golf_courses')
-      .select('id, name, name_vn, province, holes, par, distance_km, green_fee_weekday_vnd')
-      .eq('is_active', true).order('distance_km')
-    if (error) console.error('golf_courses:', error.message)
-    setCourses(data ?? [])
+      .select('*')
+      .eq('is_active', true)
+    if (error) {
+      // 테이블 자체가 없거나 RLS 차단 — 빈 배열로 폴백 (UI 는 venue 텍스트 그대로 사용)
+      console.warn('golf_courses unavailable (using fallback):', error.message)
+      setCourses([])
+    } else {
+      // distance_km 가 있으면 그 기준 정렬, 없으면 이름순
+      const sorted = (data ?? []).slice().sort((a: any, b: any) => {
+        if (a.distance_km != null && b.distance_km != null) return a.distance_km - b.distance_km
+        return String(a.name ?? '').localeCompare(String(b.name ?? ''))
+      })
+      setCourses(sorted)
+    }
     setCoursesLoading(false)
   }
 
