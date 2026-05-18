@@ -82,6 +82,57 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     }).catch(function(){});
     return;
   }
+
+  // ── 3a) 매일 자정 자동 캐시 삭제 + 강제 새로고침 ─────────────────────────
+  // 회원이 별도 액션 안 해도 매일 한 번 stale 캐시 완전 청소 후 최신 코드로 갱신
+  // 동작:
+  //   1. 로컬에 마지막 새로고침 날짜(YYYY-MM-DD) 저장
+  //   2. 앱 로드/포커스/visibility 변경 때마다 현재 날짜와 비교
+  //   3. 날짜가 바뀌었으면 (자정 지났음) → 모든 캐시 삭제 + SW 해제 + reload
+  //   4. reload 직후 새 날짜로 마킹 → 같은 날 중복 실행 방지
+  function todayKey() {
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  }
+  function checkDailyRefresh() {
+    try {
+      var key = 'isgolf-last-daily-refresh';
+      var stored = localStorage.getItem(key);
+      var today = todayKey();
+      if (stored === today) return;          // 오늘 이미 새로고침함
+      if (!stored) {
+        // 최초 설치 — 마킹만 하고 새로고침은 안 함
+        localStorage.setItem(key, today);
+        return;
+      }
+      // 다른 날짜 발견 → 자정 지났음. 캐시 삭제 후 reload.
+      localStorage.setItem(key, today);      // 먼저 마킹 — reload 후 무한루프 방지
+      // SW 해제 + 모든 캐시 삭제 → reload
+      var jobs = [];
+      if ('serviceWorker' in navigator) {
+        jobs.push(navigator.serviceWorker.getRegistrations().then(function(rs){
+          return Promise.all(rs.map(function(r){ return r.unregister(); }));
+        }));
+      }
+      if (typeof caches !== 'undefined') {
+        jobs.push(caches.keys().then(function(ks){
+          return Promise.all(ks.map(function(k){ return caches.delete(k); }));
+        }));
+      }
+      Promise.all(jobs).catch(function(){}).then(function(){
+        // 캐시 무시 reload — bfcache 우회
+        window.location.reload();
+      });
+    } catch (err) {}
+  }
+  // 페이지 로드 시 1번 + visibilitychange/focus 마다 검사
+  checkDailyRefresh();
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible') checkDailyRefresh();
+  });
+  window.addEventListener('focus', checkDailyRefresh);
+  // 앱이 계속 열려 있을 때를 위해 — 자정 직후 자동 트리거 (5분 간격 폴링)
+  setInterval(checkDailyRefresh, 5 * 60 * 1000);
   window.addEventListener('load', function() {
     navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
       .then(function(reg) {

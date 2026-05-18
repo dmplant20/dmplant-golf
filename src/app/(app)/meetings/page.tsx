@@ -145,20 +145,6 @@ export default function MeetingsPage() {
   const isAdmin = isSuperAdmin(user)
   const canManage = ['president', 'secretary'].includes(myRole) || isAdmin
 
-  // 응급 강제 새로고침 — stale JS/SW 캐시 의심 시 사용자가 직접 실행
-  function forceFullRefresh() {
-    try {
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister()))
-      }
-      if (typeof caches !== 'undefined') {
-        caches.keys().then(ks => Promise.all(ks.map(k => caches.delete(k))))
-      }
-    } catch {}
-    // 약간의 시간 후 강제 리로드 (캐시 무시)
-    setTimeout(() => window.location.reload(), 300)
-  }
-
   const [pattern,     setPattern]     = useState<any>(null)
   const [overrides,   setOverrides]   = useState<any[]>([])
   const [attendances, setAttendances] = useState<any[]>([])
@@ -1261,19 +1247,10 @@ export default function MeetingsPage() {
             ))}
           </div>
 
-          {/* 가능 원인 안내 */}
+          {/* 가능 원인 안내 — 자정마다 자동 캐시 삭제되므로 stale 문제는 자동 해결 */}
           <div className="text-xs text-gray-400 space-y-1.5 max-w-sm">
-            <p>{ko ? '가능 원인:' : 'Possible causes:'}</p>
-            <p>{ko ? '① 다른 클럽 선택됨 → 상단 클럽명 탭하여 전환' : '① Wrong club selected → tap club name at top'}</p>
-            <p>{ko ? '② 앱 버전이 오래됨 → 아래 버튼으로 새로고침' : '② Stale app version → tap refresh below'}</p>
+            <p>{ko ? '다른 클럽 선택 중일 수 있습니다 — 상단 클럽명 탭하여 전환해 보세요.' : 'You may be viewing the wrong club — tap the club name at top to switch.'}</p>
           </div>
-
-          {/* 응급 새로고침 — SW 캐시 완전 삭제 후 reload */}
-          <button onClick={forceFullRefresh}
-            className="text-sm px-5 py-2.5 rounded-xl font-semibold transition"
-            style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', color: '#86efac' }}>
-            🔄 {ko ? '강제 새로고침 (캐시 삭제)' : 'Force refresh (clear cache)'}
-          </button>
 
           {canManage && (
             <button onClick={() => { loadCourses(); setShowPatternModal(true) }}
