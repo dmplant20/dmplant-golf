@@ -78,8 +78,10 @@ function getRelevantMeeting(pattern: any, overrides: any[]) {
       date = getNthWeekday(year, month, pattern.week_of_month, pattern.day_of_week)
     }
     if (!date) continue
-    const next = new Date(date); next.setDate(next.getDate() + 1)
-    if (next < now) continue
+    // 모임 당일까지는 기본 노출, 모임 다음날부터는 다음 모임으로 자동 이동
+    // (지난 모임은 좌측 ← 화살표로 navYM 을 이동시켜 열람 — 모든 조편성/출석 데이터는 보존)
+    const meetingDay = new Date(date); meetingDay.setHours(0, 0, 0, 0)
+    if (meetingDay < now) continue
     return {
       year, month, date,
       time: ov?.override_time ?? pattern.start_time,

@@ -36,8 +36,10 @@ function getRelevantYM(pattern: any, overrides: any[]): { year: number; month: n
       date = getNthWeekday(year, month, pattern.week_of_month, pattern.day_of_week)
     }
     if (!date) continue
-    const cutoff = new Date(date); cutoff.setDate(cutoff.getDate() + 1)
-    if (cutoff < now) continue
+    // 모임 당일까지는 노출, 모임 다음날부터는 숨김
+    // (지나간 모임은 /meetings 페이지 좌측 화살표로 열람 가능 — 데이터는 DB 에 영구 보존)
+    const meetingDay = new Date(date); meetingDay.setHours(0, 0, 0, 0)
+    if (meetingDay < now) continue
     return { year, month, date }
   }
   return null
