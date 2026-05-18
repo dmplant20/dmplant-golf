@@ -31,7 +31,9 @@ const INCOME_TYPES = ['fee', 'donation', 'fine', 'other']
 export default function FinancePage() {
   const { currentClubId, lang, myClubs, user } = useAuthStore()
   const ko = lang === 'ko'
-  const myRole = myClubs.find((c) => c.id === currentClubId)?.role ?? 'member'
+  const currentClub = myClubs.find((c) => c.id === currentClubId)
+  const myRole = currentClub?.role ?? 'member'
+  const currentClubName = currentClub?.name ?? ''
   const isAdmin = isSuperAdmin(user)
   const isGuest = myRole === 'guest' && !isAdmin
   // 재무 수정·등록·삭제 권한 — 총무 전용 (회장도 불가) + DEV 슈퍼관리자 백업
@@ -86,8 +88,9 @@ export default function FinancePage() {
   // ── fee payment status ────────────────────────────────────────────────
   // 항상 기본 접힘 — 화면 정리 위해 사용자가 직접 펼쳐서 확인
   const [showFeeStatus,   setShowFeeStatus]    = useState(false)
-  // 회비 납부 계좌 카드 접기/펼치기 — 평상시 접힘
-  const [showPayInfo,     setShowPayInfo]      = useState(false)
+  // 회비 납부 계좌 카드 접기/펼치기 — 기본 펼침 (회원이 즉시 계좌 확인 가능하도록)
+  // 사용자가 직접 접으면 그 상태 유지
+  const [showPayInfo,     setShowPayInfo]      = useState(true)
   const [clubFees,        setClubFees]         = useState<{annual: number; monthly: number}>({ annual: 0, monthly: 0 })
 
   // ── 납부확인 모달 ──────────────────────────────────────────────────────
@@ -1117,7 +1120,21 @@ export default function FinancePage() {
             className="w-full px-4 py-3.5 flex items-center gap-3"
           >
             <Building2 size={16} className="text-blue-400" />
-            <p className="text-sm font-semibold text-white flex-1 text-left">{ko ? '회비 납부 계좌' : 'Payment Account'}</p>
+            <div className="flex-1 text-left min-w-0">
+              <p className="text-sm font-semibold text-white truncate">
+                {ko ? '회비 납부 계좌' : 'Payment Account'}
+                {currentClubName && (
+                  <span className="ml-1.5 text-[11px] font-medium" style={{ color: 'var(--gold-l,#c9a84c)' }}>
+                    · {currentClubName}
+                  </span>
+                )}
+              </p>
+              {!payInfo && (
+                <p className="text-[10px] text-amber-400/80 mt-0.5">
+                  {ko ? '미등록 (탭하여 확인)' : 'Not registered (tap to view)'}
+                </p>
+              )}
+            </div>
             {payInfo?.bank_name && (
               <span className="text-xs mr-1 truncate max-w-[140px]" style={{ color: '#9aae9a' }}>
                 {payInfo.bank_name}
@@ -1186,8 +1203,28 @@ export default function FinancePage() {
                 <div className="flex flex-col items-center gap-2 py-3 text-center">
                   <QrCode size={28} className="text-gray-400" />
                   <p className="text-xs text-gray-400">
-                    {ko ? '총무가 계좌 정보를 등록하면 여기에 표시됩니다.' : 'Secretary can register payment info here.'}
+                    {ko
+                      ? <>
+                          <span className="text-amber-300 font-semibold">{currentClubName || '현재 클럽'}</span>
+                          {' '}에 등록된 계좌 정보가 없습니다.
+                        </>
+                      : <>
+                          No payment account registered for <span className="text-amber-300 font-semibold">{currentClubName || 'this club'}</span>.
+                        </>
+                    }
                   </p>
+                  {myClubs.length > 1 && (
+                    <p className="text-[11px] text-gray-500">
+                      {ko
+                        ? '다른 클럽 회원이라면 상단 클럽 선택을 확인하세요.'
+                        : 'If you belong to multiple clubs, check the club selector at the top.'}
+                    </p>
+                  )}
+                  {canManage && (
+                    <p className="text-[11px] text-blue-400">
+                      {ko ? '총무: 위 "편집" 버튼으로 등록하세요.' : 'Secretary: use "Edit" above to register.'}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
