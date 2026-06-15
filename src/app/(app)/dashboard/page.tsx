@@ -93,6 +93,10 @@ export default function DashboardPage() {
 
   // RSVP submit (인라인 참석/불참 버튼용)
   const [rsvpSubmitting, setRsvpSubmitting] = useState(false)
+  // RSVP 팝업 — 정기모임 자동 공지 후 강제 노출. 클릭 응답하면 영구 사라짐.
+  // 응답 안 하고 X 누르면 같은 세션 동안만 숨김 (다음 방문 시 다시 뜸 — 응답할 때까지)
+  const [rsvpPopup, setRsvpPopup] = useState(false)
+  const [popupDismissedKey, setPopupDismissedKey] = useState<string | null>(null)
   const [rsvpError,      setRsvpError]      = useState<string | null>(null)
 
   // ── RSVP 창 (D-14 ~ D-1, 참가일 +0 까지 허용) ───────────────────────
@@ -100,6 +104,21 @@ export default function DashboardPage() {
     ? Math.ceil((nextMtg.date.getTime() - new Date(new Date().setHours(0,0,0,0)).getTime()) / 86400000)
     : null
   const rsvpOpen = daysUntilMtg !== null && daysUntilMtg <= 14 && daysUntilMtg >= -1
+
+  // 현재 모임의 고유 키 — 응답/임시닫기 추적용
+  const currentMeetingKey = nextMtg ? `${currentClubId}-${nextMtg.year}-${nextMtg.month}` : null
+
+  // 팝업 노출 조건:
+  //   1) 다음 모임이 D-14 ~ D-0 사이 (참석 응답 창 열림)
+  //   2) 본인 RSVP 가 아직 null (응답 안 함)
+  //   3) 이번 세션에 X 로 닫지 않음
+  // → 응답하면 myRsvp 가 set 되어 자동으로 영구 사라짐
+  useEffect(() => {
+    if (!nextMtg || !rsvpOpen) { setRsvpPopup(false); return }
+    if (myRsvp !== null) { setRsvpPopup(false); return }  // 이미 응답함 — 영구 숨김
+    if (popupDismissedKey === currentMeetingKey) { setRsvpPopup(false); return }
+    setRsvpPopup(true)
+  }, [nextMtg?.year, nextMtg?.month, rsvpOpen, myRsvp, popupDismissedKey, currentMeetingKey])
 
   async function submitRsvp(status: 'attending' | 'absent') {
     if (!nextMtg || !user || !currentClubId || rsvpSubmitting) return
@@ -135,6 +154,7 @@ export default function DashboardPage() {
       setMyRsvp(prev)
     } finally {
       setRsvpSubmitting(false)
+      setRsvpPopup(false)   // 응답 완료 → 팝업 영구 닫힘 (myRsvp 가 set 되어 다시 안 뜸)
       setTimeout(() => setRsvpError(null), 3500)
     }
   }
@@ -290,6 +310,92 @@ export default function DashboardPage() {
 
   return (
     <div className="px-4 pt-5 pb-6 space-y-5 animate-fade-in">
+
+      {/* ── 정기모임 RSVP 강제 팝업 ─────────────────────────────────────
+          자동 공지 등록 후 회원이 앱 열면 즉시 노출. 참석/불참 클릭하면 영구 사라짐. */}
+      {rsvpPopup && nextMtg && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.75)' }}>
+          <div className="w-full max-w-sm rounded-2xl overflow-hidden"
+            style={{ background: 'var(--surface, #1a1a1a)', border: '1px solid var(--border, rgba(255,255,255,0.1))' }}>
+
+            {/* 헤더 */}
+            <div className="px-5 pt-5 pb-3 text-center relative">
+              <button
+                onClick={() => { setPopupDismissedKey(currentMeetingKey); setRsvpPopup(false) }}
+                aria-label="닫기"
+                className="absolute top-3 right-3 w-7 h-7 rounded-full flex items-center justify-center"
+                style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-3)' }}>
+                <XCircle size={16} />
+              </button>
+              <div className="inline-flex items-center justify-center w-14 h-14 rounded-full mb-2"
+                style={{ background: 'rgba(201,168,76,0.15)' }}>
+                <CalendarDays size={26} style={{ color: 'var(--gold-l, #c9a84c)' }} />
+              </div>
+              <h2 className="text-base font-bold leading-snug" style={{ color: 'var(--text)' }}>
+                {ko ? `${nextMtg.month}월 정기모임 참석 응답` : `RSVP for ${nextMtg.date.toLocaleDateString('en-US',{month:'long'})} Meeting`}
+              </h2>
+              <p className="text-[11px] mt-1" style={{ color: 'var(--text-3)' }}>
+                {ko
+                  ? (daysUntilMtg !== null && daysUntilMtg >= 0
+                      ? `D-${daysUntilMtg} · 응답이 아직 등록되지 않았습니다`
+                      : '응답이 아직 등록되지 않았습니다')
+                  : 'Your response is missing'}
+              </p>
+            </div>
+
+            {/* 모임 정보 */}
+            <div className="mx-5 mb-4 rounded-xl px-4 py-3 space-y-1.5"
+              style={{ background: 'var(--surface-2, rgba(255,255,255,0.04))', border: '1px solid var(--border, rgba(255,255,255,0.06))' }}>
+              <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--text)' }}>
+                <Clock size={13} style={{ color: 'var(--gold-l, #c9a84c)' }} />
+                <span className="font-semibold">{nextDateStr}</span>
+              </div>
+              {nextMtg.venue && (
+                <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-2)' }}>
+                  <MapPin size={11} />
+                  <span>{nextMtg.venue}</span>
+                </div>
+              )}
+            </div>
+
+            {rsvpError && (
+              <p className="mx-5 mb-3 text-[11px] px-3 py-1.5 rounded-lg text-center"
+                style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.25)', color: '#fca5a5' }}>
+                ⚠ {rsvpError}
+              </p>
+            )}
+
+            {/* 큰 버튼 — 참석 / 불참 */}
+            <div className="px-5 pb-5 grid grid-cols-2 gap-2.5">
+              <button
+                onClick={() => submitRsvp('attending')}
+                disabled={rsvpSubmitting}
+                className="py-3 rounded-xl text-base font-bold flex items-center justify-center gap-2 transition active:scale-[0.97]"
+                style={{ background: 'rgba(34,197,94,0.18)', border: '1px solid rgba(34,197,94,0.45)', color: '#86efac' }}>
+                {rsvpSubmitting
+                  ? <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin opacity-60" />
+                  : <CheckCircle size={18} />}
+                {ko ? '참석' : 'Attending'}
+              </button>
+              <button
+                onClick={() => submitRsvp('absent')}
+                disabled={rsvpSubmitting}
+                className="py-3 rounded-xl text-base font-bold flex items-center justify-center gap-2 transition active:scale-[0.97]"
+                style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', color: '#fca5a5' }}>
+                {rsvpSubmitting
+                  ? <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin opacity-60" />
+                  : <XCircle size={18} />}
+                {ko ? '불참' : 'Absent'}
+              </button>
+            </div>
+
+            <p className="px-5 pb-4 text-[10px] text-center" style={{ color: 'var(--text-3)' }}>
+              {ko ? '응답하면 이 창은 더 이상 표시되지 않습니다.' : 'After responding, this popup will not appear again.'}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ── 히어로 카드 (2단 미니멀) ─────────────────────────────── */}
       <div className="pro-card rounded-2xl px-4 py-3 relative overflow-hidden">
