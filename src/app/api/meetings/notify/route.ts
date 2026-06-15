@@ -1,15 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import webpush from 'web-push'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
+import { sendPushWithLogging, initVapid as initVapidShared } from '@/lib/push-server'
 
-// ── VAPID 초기화 ──────────────────────────────────────────────────────────
-function initVapid() {
-  const pub  = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-  const priv = process.env.VAPID_PRIVATE_KEY
-  const mail = process.env.VAPID_EMAIL ?? 'mailto:admin@example.com'
-  if (pub && priv) { webpush.setVapidDetails(mail, pub, priv); return true }
-  return false
-}
+// ── VAPID 초기화 (공통 헬퍼 위임) ────────────────────────────────────────
+const initVapid = initVapidShared
 
 function makeService() {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -39,40 +33,24 @@ function getNthWeekdayDate(
   return new Date(Date.UTC(year, month - 1, day))
 }
 
-// ── 푸시 발송 헬퍼 ────────────────────────────────────────────────────────
+// ── 푸시 발송 헬퍼 (공통 모듈 사용) ──────────────────────────────────────
 async function sendPushToUsers(
   service: ReturnType<typeof makeService>,
   userIds: string[],
-  payload: { title: string; body: string; url: string }
-) {
+  payload: { title: string; body: string; url: string },
+  clubId?: string,
+): Promise<number> {
   if (!service || !userIds.length) return 0
-  const { data: subs } = await service
-    .from('push_subscriptions')
-    .select('endpoint,p256dh,auth')
-    .in('user_id', userIds)
-  if (!subs?.length) return 0
-
-  const raw = JSON.stringify(payload)
-  let sent = 0
-  const expired: string[] = []
-
-  await Promise.allSettled(subs.map(async (s: any) => {
-    try {
-      await webpush.sendNotification(
-        { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-        raw,
-        { TTL: 86400 }
-      )
-      sent++
-    } catch (err: any) {
-      if (err.statusCode === 410 || err.statusCode === 404) expired.push(s.endpoint)
-    }
-  }))
-
-  if (expired.length) {
-    await service.from('push_subscriptions').delete().in('endpoint', expired)
-  }
-  return sent
+  const r = await sendPushWithLogging({
+    service: service as any,
+    userIds,
+    type: 'meeting',
+    title: payload.title,
+    body: payload.body,
+    url: payload.url,
+    clubId: clubId ?? null,
+  })
+  return r.sent
 }
 
 // ── 메인 핸들러 ───────────────────────────────────────────────────────────
@@ -282,7 +260,7 @@ export async function GET(req: NextRequest) {
           title: titleByOffset[offset],
           body: bodyByOffset[offset],
           url: '/meetings',
-        })
+        }, pattern.club_id)
         totalSent += sent
         breakdown.push({ club: clubName, offset, sent, total: targetIds.length })
       }

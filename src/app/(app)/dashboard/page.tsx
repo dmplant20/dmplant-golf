@@ -741,14 +741,15 @@ export default function DashboardPage() {
       <div>
         <p className="section-title mb-3">{ko ? '빠른 이동' : 'QUICK ACCESS'}</p>
         <div className="grid grid-cols-2 gap-2.5">
-          {[
-            { href: '/members',      icon: Users,        label: ko ? '회원 관리'     : 'Members',       sub: `${stats.members}${ko ? '명' : ' members'}`,                      color: '#60a5fa', bg: 'rgba(59,130,246,0.08)' },
-            { href: '/finance',      icon: Wallet,       label: ko ? '재무 현황'     : 'Finance',        sub: `${sym}${stats.balance.toLocaleString()}`,                        color: '#fbbf24', bg: 'rgba(251,191,36,0.08)' },
-            { href: '/meetings',     icon: CalendarDays, label: ko ? '정기모임'      : 'Meetings',       sub: nextDateStr || (ko ? '미설정' : 'Not set'),                      color: 'var(--gold-l)', bg: 'rgba(201,168,76,0.08)' },
-            { href: '/announcement', icon: Bell,         label: ko ? '공지사항'      : 'Notices',        sub: ko ? '확인하기' : 'View all',                                    color: '#a78bfa', bg: 'rgba(167,139,250,0.08)' },
-            { href: '/tournament',   icon: Trophy,       label: ko ? '토너먼트'      : 'Tournament',     sub: ko ? '결과 보기' : 'View results',                               color: '#f97316', bg: 'rgba(249,115,22,0.08)' },
-            { href: '/scorecard',    icon: TrendingUp,   label: ko ? '내 스코어카드' : 'My Scorecard',   sub: ko ? '개인 기록' : 'Personal records',                           color: '#2dd4bf', bg: 'rgba(45,212,191,0.08)' },
-          ].map(({ href, icon: Icon, label, sub, color, bg }) => (
+          {([
+            { href: '/members',      icon: Users,        label: ko ? '회원 관리'     : 'Members',       sub: `${stats.members}${ko ? '명' : ' members'}`,                      color: '#60a5fa', bg: 'rgba(59,130,246,0.08)', show: true },
+            { href: '/finance',      icon: Wallet,       label: ko ? '재무 현황'     : 'Finance',        sub: `${sym}${stats.balance.toLocaleString()}`,                        color: '#fbbf24', bg: 'rgba(251,191,36,0.08)', show: true },
+            { href: '/meetings',     icon: CalendarDays, label: ko ? '정기모임'      : 'Meetings',       sub: nextDateStr || (ko ? '미설정' : 'Not set'),                      color: 'var(--gold-l)', bg: 'rgba(201,168,76,0.08)', show: true },
+            { href: '/announcement', icon: Bell,         label: ko ? '공지사항'      : 'Notices',        sub: ko ? '확인하기' : 'View all',                                    color: '#a78bfa', bg: 'rgba(167,139,250,0.08)', show: true },
+            { href: '/tournament',   icon: Trophy,       label: ko ? '토너먼트'      : 'Tournament',     sub: ko ? '결과 보기' : 'View results',                               color: '#f97316', bg: 'rgba(249,115,22,0.08)', show: true },
+            { href: '/scorecard',    icon: TrendingUp,   label: ko ? '내 스코어카드' : 'My Scorecard',   sub: ko ? '개인 기록' : 'Personal records',                           color: '#2dd4bf', bg: 'rgba(45,212,191,0.08)', show: true },
+            { href: '/push-admin',   icon: Bell,         label: ko ? '푸시 알림 진단': 'Push Admin',     sub: ko ? '구독·테스트·로그' : 'Subscribe/test/logs',                  color: '#f472b6', bg: 'rgba(244,114,182,0.08)', show: ['president','secretary'].includes(myRole) || isAdmin },
+          ] as const).filter((it: any) => it.show).map(({ href, icon: Icon, label, sub, color, bg }: any) => (
             <Link key={href} href={href}
               className="glass-card rounded-2xl p-4 flex items-center gap-3 transition-all active:scale-[0.97]"
               style={{ textDecoration: 'none' }}>

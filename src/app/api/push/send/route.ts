@@ -1,21 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import webpush from 'web-push'
 import { createServerClient } from '@supabase/ssr'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { isSuperAdmin } from '@/lib/superAdmin'
-
-// VAPID 설정 — 키가 있을 때만 초기화 (빌드 시 크래시 방지)
-function initVapid() {
-  const pub  = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-  const priv = process.env.VAPID_PRIVATE_KEY
-  const mail = process.env.VAPID_EMAIL ?? 'mailto:admin@example.com'
-  if (pub && priv) {
-    webpush.setVapidDetails(mail, pub, priv)
-    return true
-  }
-  return false
-}
+import { sendPushWithLogging, initVapid } from '@/lib/push-server'
 
 async function makeAnonSupabase() {
   const cookieStore = await cookies()
@@ -71,50 +59,17 @@ export async function POST(req: NextRequest) {
   const memberIds = (members ?? []).map((m: any) => m.user_id)
   if (!memberIds.length) return NextResponse.json({ sent: 0 })
 
-  // 5. service_role로 push_subscriptions 조회 (RLS bypass)
   const serviceSupa = makeServiceSupabase()
-  let subscriptions: any[] = []
-  if (serviceSupa) {
-    const { data } = await serviceSupa.from('push_subscriptions')
-      .select('endpoint, p256dh, auth').in('user_id', memberIds)
-    subscriptions = data ?? []
-  } else {
-    // SUPABASE_SERVICE_ROLE_KEY 없음
-    // Vercel 환경변수에 추가하면 전체 발송 가능해짐
-    console.warn('SUPABASE_SERVICE_ROLE_KEY not set')
-    return NextResponse.json({ error: 'SUPABASE_SERVICE_ROLE_KEY not configured', sent: 0 }, { status: 500 })
-  }
+  if (!serviceSupa) return NextResponse.json({ error: 'SUPABASE_SERVICE_ROLE_KEY not configured', sent: 0 }, { status: 500 })
 
-  if (!subscriptions.length) return NextResponse.json({ sent: 0 })
-
-  // 6. 푸시 발송
-  const payload = JSON.stringify({ title, body: body ?? '', url })
-  let sent = 0
-  const expired: string[] = []
-
-  await Promise.allSettled(
-    subscriptions.map(async (sub) => {
-      try {
-        await webpush.sendNotification(
-          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-          payload,
-          { TTL: 86400 }
-        )
-        sent++
-      } catch (err: any) {
-        if (err.statusCode === 410 || err.statusCode === 404) {
-          expired.push(sub.endpoint)
-        } else {
-          console.error('push error:', err.statusCode, err.message)
-        }
-      }
-    })
-  )
-
-  // 7. 만료된 구독 정리
-  if (expired.length && serviceSupa) {
-    await serviceSupa.from('push_subscriptions').delete().in('endpoint', expired)
-  }
-
-  return NextResponse.json({ sent, total: subscriptions.length })
+  // 5~7. 공통 헬퍼 — 로깅 + 사용자 설정 체크 + 만료 정리
+  const result = await sendPushWithLogging({
+    service: serviceSupa,
+    userIds: memberIds,
+    type: 'announcement',
+    title, body: body ?? '', url,
+    clubId: club_id,
+    sentBy: user.id,
+  })
+  return NextResponse.json({ sent: result.sent, total: result.total, failed: result.failed, skipped: result.skipped })
 }
