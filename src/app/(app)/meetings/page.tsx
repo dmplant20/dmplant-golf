@@ -1482,14 +1482,30 @@ export default function MeetingsPage() {
                         )}
                       </div>
                     </div>
+                    {canManage && (
+                      <p className="text-[10px] mb-1.5" style={{ color: '#86efac' }}>
+                        · {ko ? '이름을 탭하여 응답 수정' : 'tap a name to change response'}
+                      </p>
+                    )}
                     <div className="flex flex-wrap gap-1.5">
-                      {attending.map((a: any) => (
-                        <span key={a.user_id} className="text-xs px-2.5 py-1 rounded-full"
-                          style={{ background: 'rgba(34,197,94,0.12)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.2)' }}>
-                          {lang === 'ko' ? a.users?.full_name : (a.users?.full_name_en || a.users?.full_name)}
-                          {a.users?.name_abbr ? ` (${a.users.name_abbr})` : ''}
-                        </span>
-                      ))}
+                      {attending.map((a: any) => {
+                        const tgt = clubMembers.find((m: any) => m.user_id === a.user_id) ?? a
+                        const display = (lang === 'ko' ? a.users?.full_name : (a.users?.full_name_en || a.users?.full_name))
+                          + (a.users?.name_abbr ? ` (${a.users.name_abbr})` : '')
+                        return canManage ? (
+                          <button key={a.user_id} type="button"
+                            onClick={() => setProxyTarget(tgt)}
+                            className="text-xs px-2.5 py-1 rounded-full transition active:scale-95 hover:opacity-80"
+                            style={{ background: 'rgba(34,197,94,0.12)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.35)', cursor: 'pointer' }}>
+                            {display}
+                          </button>
+                        ) : (
+                          <span key={a.user_id} className="text-xs px-2.5 py-1 rounded-full"
+                            style={{ background: 'rgba(34,197,94,0.12)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.2)' }}>
+                            {display}
+                          </span>
+                        )
+                      })}
                     </div>
                   </div>
                 )}
@@ -1498,13 +1514,29 @@ export default function MeetingsPage() {
                     <p className="text-xs font-semibold mb-1.5 flex items-center gap-1" style={{ color: '#f87171' }}>
                       <Ban size={11} />{ko ? `불참 (${absent.length}명)` : `Absent (${absent.length})`}
                     </p>
+                    {canManage && (
+                      <p className="text-[10px] mb-1.5" style={{ color: '#fca5a5' }}>
+                        · {ko ? '이름을 탭하여 응답 수정' : 'tap a name to change response'}
+                      </p>
+                    )}
                     <div className="flex flex-wrap gap-1.5">
-                      {absent.map((a: any) => (
-                        <span key={a.user_id} className="text-xs px-2.5 py-1 rounded-full"
-                          style={{ background: 'rgba(239,68,68,0.10)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)' }}>
-                          {lang === 'ko' ? a.users?.full_name : (a.users?.full_name_en || a.users?.full_name)}
-                        </span>
-                      ))}
+                      {absent.map((a: any) => {
+                        const tgt = clubMembers.find((m: any) => m.user_id === a.user_id) ?? a
+                        const display = lang === 'ko' ? a.users?.full_name : (a.users?.full_name_en || a.users?.full_name)
+                        return canManage ? (
+                          <button key={a.user_id} type="button"
+                            onClick={() => setProxyTarget(tgt)}
+                            className="text-xs px-2.5 py-1 rounded-full transition active:scale-95 hover:opacity-80"
+                            style={{ background: 'rgba(239,68,68,0.10)', color: '#f87171', border: '1px solid rgba(239,68,68,0.35)', cursor: 'pointer' }}>
+                            {display}
+                          </button>
+                        ) : (
+                          <span key={a.user_id} className="text-xs px-2.5 py-1 rounded-full"
+                            style={{ background: 'rgba(239,68,68,0.10)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)' }}>
+                            {display}
+                          </span>
+                        )
+                      })}
                     </div>
                   </div>
                 )}
