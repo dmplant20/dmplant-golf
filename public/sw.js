@@ -1,7 +1,7 @@
 // ── 버전 관리 ─────────────────────────────────────────────────────────────
 // 배포할 때마다 이 값을 올리면 모든 설치된 앱이 강제 업데이트됨
 // scripts/bump-sw.js 가 커밋 해시로 빌드 시 자동 치환
-const APP_VERSION  = 'midnight-auto-refresh-v4'
+const APP_VERSION  = 'version-poll-v5'
 const CACHE_NAME   = `is-golf-${APP_VERSION}`
 // HTML 은 캐시하지 않음 — 정적 에셋만 캐시 (Next.js 해시 번들 = 컨텐츠 영구 불변)
 const STATIC_ASSETS = ['/manifest.json', '/icons/icon-192.png', '/icons/icon-72.png']

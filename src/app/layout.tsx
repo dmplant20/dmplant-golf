@@ -135,6 +135,63 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   window.addEventListener('focus', checkDailyRefresh);
   // 앱이 계속 열려 있을 때를 위해 — 자정 직후 자동 트리거 (5분 간격 폴링)
   setInterval(checkDailyRefresh, 5 * 60 * 1000);
+
+  // ── 3b) 빌드 버전 폴링 — 자정 안 기다리고 새 배포 즉시 반영 ─────────────
+  // /api/version 의 commit SHA 를 localStorage 와 비교 → 다르면 캐시 삭제+reload
+  // 호출 시점: 페이지 로드, visibilitychange, focus, online, 2분 간격 폴링
+  var VERSION_KEY = 'isgolf-build-version';
+  var versionChecking = false;
+  function checkBuildVersion() {
+    if (versionChecking) return;
+    versionChecking = true;
+    fetch('/api/version', { cache: 'no-store' })
+      .then(function(r){ return r.ok ? r.json() : null })
+      .then(function(data){
+        versionChecking = false;
+        if (!data || !data.version) return;
+        var stored = null;
+        try { stored = localStorage.getItem(VERSION_KEY); } catch(e){}
+        if (!stored) {
+          // 최초 — 마킹만 하고 reload 안 함
+          try { localStorage.setItem(VERSION_KEY, data.version); } catch(e){}
+          return;
+        }
+        if (stored === data.version) return;        // 동일 버전 — OK
+        // 새 버전 감지 → 캐시 완전 청소 후 reload
+        try { localStorage.setItem(VERSION_KEY, data.version); } catch(e){}
+        var jobs2 = [];
+        if ('serviceWorker' in navigator) {
+          jobs2.push(navigator.serviceWorker.getRegistrations().then(function(rs){
+            return Promise.all(rs.map(function(r){ return r.unregister(); }));
+          }));
+        }
+        if (typeof caches !== 'undefined') {
+          jobs2.push(caches.keys().then(function(ks){
+            return Promise.all(ks.map(function(k){ return caches.delete(k); }));
+          }));
+        }
+        // 사용자에게 짧게 안내 — 무성 reload 보다 친절
+        try {
+          var banner = document.createElement('div');
+          banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999999;background:linear-gradient(135deg,#c9a84c,#a07830);color:#fff;font:600 13px/1.4 system-ui;padding:10px 14px;text-align:center;box-shadow:0 2px 12px rgba(0,0,0,.3)';
+          banner.textContent = '🔄 새 버전 적용 중...';
+          document.body && document.body.appendChild(banner);
+        } catch(e){}
+        Promise.all(jobs2).catch(function(){}).then(function(){
+          setTimeout(function(){ window.location.reload(); }, 250);
+        });
+      })
+      .catch(function(){ versionChecking = false; });
+  }
+  // 첫 진입 즉시 + 다양한 트리거에서 검사
+  checkBuildVersion();
+  document.addEventListener('visibilitychange', function(){
+    if (document.visibilityState === 'visible') checkBuildVersion();
+  });
+  window.addEventListener('focus', checkBuildVersion);
+  window.addEventListener('online', checkBuildVersion);
+  // 2분 간격 — 자정 안 기다리고 신선 유지
+  setInterval(checkBuildVersion, 2 * 60 * 1000);
   window.addEventListener('load', function() {
     navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
       .then(function(reg) {
