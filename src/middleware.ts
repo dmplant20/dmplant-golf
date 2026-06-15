@@ -261,7 +261,13 @@ export function middleware(request: NextRequest) {
     })
   }
 
-  return NextResponse.next()
+  // 모든 HTML 응답에 강제 no-cache — 회원 기기가 stale HTML 잡고 있는 것 봉쇄
+  // (_next/static 같은 해시 자산은 위 matcher 에서 이미 제외됨)
+  const res = NextResponse.next()
+  res.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0')
+  res.headers.set('Pragma', 'no-cache')
+  res.headers.set('Expires', '0')
+  return res
 }
 
 export const config = {

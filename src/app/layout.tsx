@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import PwaInstallPrompt from '@/components/PwaInstallPrompt'
 import PushToastListener from '@/components/PushToastListener'
+import BuildStamp from '@/components/BuildStamp'
 import { autoMigrate } from '@/lib/db-migrate'
 
 // 앱 시작 시 DB 스키마 자동 최신화 (누락 컬럼 자동 추가)
@@ -41,6 +42,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {children}
         <PwaInstallPrompt />
         <PushToastListener />
+        <BuildStamp />
 
         <script dangerouslySetInnerHTML={{ __html: `
 (function(){
