@@ -459,118 +459,81 @@ export default function MeetingsPage() {
     })()
   }, [isRsvpOpen, canManage, meeting?.year, meeting?.month])
 
-  // ── RSVP ──────────────────────────────────────────────────────────────
-  // 응답 변경 허용: API 는 upsert(onConflict) 로 항상 갱신 가능. 잘못 누른 회원이
-  // 별도 취소 단계 없이 다시 눌러 번복할 수 있어야 함.
-  async function rsvp(status: 'attending' | 'absent') {
-    if (!meeting || !user) return
-    if (myAtt?.status === status) return  // 이미 같은 응답이면 무시 (불필요한 호출 방지)
-
-    // Optimistic update
-    setAttendances(prev => {
-      const without = prev.filter(a => a.user_id !== user.id)
-      return [...without, { user_id: user.id, status, users: user }]
-    })
-
-    const res = await fetch('/api/meetings/rsvp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ club_id: currentClubId, year: meeting.year, month: meeting.month, status })
-    })
-    const data = await res.json()
-    if (!res.ok) {
-      // Revert optimistic
-      setAttendances(prev => prev.filter(a => a.user_id !== user.id))
-      setRsvpError(ko ? '저장에 실패했습니다. 잠시 후 다시 시도해주세요.' : 'Save failed. Please try again.')
-      setTimeout(() => setRsvpError(null), 4000)
-    } else {
-      setRsvpError(null)
+  // ── RSVP — 단일 통합 함수 ─────────────────────────────────────────────
+  // 본인/대리 응답 모두 처리. newStatus=null 이면 응답 삭제(미응답으로).
+  // 권한 규칙:
+  //   - targetUserId === user.id  → 본인 응답 (누구나)
+  //   - targetUserId !== user.id  → 대리 응답 (canManage 만)
+  // API 는 upsert(onConflict) 라 같은 상태로 재호출해도 무해함.
+  async function changeAttendance(
+    targetUserId: string,
+    newStatus: 'attending' | 'absent' | null,
+  ): Promise<{ ok: boolean }> {
+    if (!meeting || !user) return { ok: false }
+    const isSelf = targetUserId === user.id
+    if (!isSelf && !canManage) {
+      setRsvpError(ko ? '권한 없음 — 회장·총무만 대리 응답 가능' : 'Forbidden — officers only')
+      setTimeout(() => setRsvpError(null), 3000)
+      return { ok: false }
     }
-    await loadRsvp(meeting.year, meeting.month)
-  }
 
-  // 회장·총무 대리 응답 — 타겟 회원의 RSVP 를 강제로 설정
-  async function proxyRsvp(targetUserId: string, status: 'attending' | 'absent') {
-    if (!meeting || !user || !canManage) {
-      console.warn('[proxy-rsvp] blocked', { hasMeeting: !!meeting, hasUser: !!user, canManage })
-      return
-    }
-    console.log('[proxy-rsvp] start', { targetUserId, status, year: meeting.year, month: meeting.month })
+    setRsvpError(null)
     setProxySaving(true)
-    // Optimistic update
+
+    // Optimistic update — 화면 즉시 반영
+    const tgtMember = clubMembers.find(m => m.user_id === targetUserId)
+    const optimisticUsers = isSelf ? user : tgtMember?.users
     setAttendances(prev => {
       const without = prev.filter(a => a.user_id !== targetUserId)
-      const tgt = clubMembers.find(m => m.user_id === targetUserId)
-      return [...without, { user_id: targetUserId, status, users: tgt?.users }]
+      if (newStatus === null) return without
+      return [...without, { user_id: targetUserId, status: newStatus, users: optimisticUsers }]
     })
-    let resBody = ''
+
+    const body: any = { club_id: currentClubId, year: meeting.year, month: meeting.month }
+    if (!isSelf) body.target_user_id = targetUserId
+    if (newStatus) body.status = newStatus
+
     let ok = false
+    let errBody = ''
     try {
       const res = await fetch('/api/meetings/rsvp', {
-        method: 'POST',
+        method: newStatus ? 'POST' : 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          club_id: currentClubId, year: meeting.year, month: meeting.month,
-          status, target_user_id: targetUserId,
-        })
+        body: JSON.stringify(body),
       })
       ok = res.ok
-      resBody = await res.text()
-      console.log('[proxy-rsvp] response', { status: res.status, body: resBody })
+      if (!ok) errBody = await res.text().catch(() => '')
     } catch (e: any) {
-      console.error('[proxy-rsvp] network error', e)
+      errBody = e?.message ?? 'network error'
     }
+
     setProxySaving(false)
     if (!ok) {
-      setRsvpError(ko ? `대리 응답 저장 실패: ${resBody}` : `Proxy RSVP failed: ${resBody}`)
-      setTimeout(() => setRsvpError(null), 6000)
+      setRsvpError((ko ? '저장 실패: ' : 'Save failed: ') + errBody.slice(0, 120))
+      setTimeout(() => setRsvpError(null), 5000)
     }
+    // 서버 진실로 재동기화 (실패 시 optimistic 롤백, 성공 시 캐시 갱신)
     await loadRsvp(meeting.year, meeting.month)
-    setProxyTarget(null)
+    return { ok }
   }
 
-  // 회장·총무 대리 응답 취소
-  async function proxyCancel(targetUserId: string) {
-    if (!meeting || !user || !canManage) return
-    setProxySaving(true)
-    setAttendances(prev => prev.filter(a => a.user_id !== targetUserId))
-    const res = await fetch('/api/meetings/rsvp', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        club_id: currentClubId, year: meeting.year, month: meeting.month,
-        target_user_id: targetUserId,
-      })
-    })
-    setProxySaving(false)
-    if (!res.ok) {
-      setRsvpError(ko ? '취소 실패' : 'Cancel failed')
-      setTimeout(() => setRsvpError(null), 4000)
-    }
-    await loadRsvp(meeting.year, meeting.month)
-    setProxyTarget(null)
+  // ── 기존 호출처 호환용 thin wrappers ─────────────────────────────────
+  async function rsvp(status: 'attending' | 'absent') {
+    if (!user) return
+    if (myAtt?.status === status) return  // 같은 상태 — no-op
+    await changeAttendance(user.id, status)
   }
-
   async function cancelRsvp() {
-    if (!meeting || !user || !myAtt) return
-
-    // Optimistic remove
-    setAttendances(prev => prev.filter(a => a.user_id !== user.id))
-
-    const res = await fetch('/api/meetings/rsvp', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ club_id: currentClubId, year: meeting.year, month: meeting.month })
-    })
-    const data = await res.json()
-    if (!res.ok) {
-      await loadRsvp(meeting.year, meeting.month)
-      setRsvpError(ko ? '취소에 실패했습니다. 잠시 후 다시 시도해주세요.' : 'Cancel failed. Please try again.')
-      setTimeout(() => setRsvpError(null), 4000)
-    } else {
-      setRsvpError(null)
-      await loadRsvp(meeting.year, meeting.month)
-    }
+    if (!user || !myAtt) return
+    await changeAttendance(user.id, null)
+  }
+  async function proxyRsvp(targetUserId: string, status: 'attending' | 'absent') {
+    const r = await changeAttendance(targetUserId, status)
+    if (r.ok) setProxyTarget(null)
+  }
+  async function proxyCancel(targetUserId: string) {
+    const r = await changeAttendance(targetUserId, null)
+    if (r.ok) setProxyTarget(null)
   }
 
   // ── Guest 추천 ────────────────────────────────────────────────────────
@@ -1482,22 +1445,26 @@ export default function MeetingsPage() {
                         )}
                       </div>
                     </div>
-                    {canManage && (
-                      <p className="text-[10px] mb-1.5" style={{ color: '#86efac' }}>
-                        · {ko ? '이름을 탭하여 응답 수정' : 'tap a name to change response'}
-                      </p>
-                    )}
+                    <p className="text-[10px] mb-1.5" style={{ color: '#86efac' }}>
+                      · {canManage
+                          ? (ko ? '이름을 탭하여 누구든 응답 수정' : 'tap any name to change')
+                          : (ko ? '본인 이름을 탭하여 응답 수정' : 'tap your own name to change')}
+                    </p>
                     <div className="flex flex-wrap gap-1.5">
                       {attending.map((a: any) => {
                         const tgt = clubMembers.find((m: any) => m.user_id === a.user_id) ?? a
                         const display = (lang === 'ko' ? a.users?.full_name : (a.users?.full_name_en || a.users?.full_name))
                           + (a.users?.name_abbr ? ` (${a.users.name_abbr})` : '')
-                        return canManage ? (
+                        const isSelf  = a.user_id === user?.id
+                        const canTap  = canManage || isSelf
+                        return canTap ? (
                           <button key={a.user_id} type="button"
                             onClick={() => setProxyTarget(tgt)}
                             className="text-xs px-2.5 py-1 rounded-full transition active:scale-95 hover:opacity-80"
-                            style={{ background: 'rgba(34,197,94,0.12)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.35)', cursor: 'pointer' }}>
-                            {display}
+                            style={{ background: 'rgba(34,197,94,0.12)', color: '#4ade80',
+                                     border: `${isSelf ? '2px' : '1px'} solid rgba(34,197,94,${isSelf ? 0.65 : 0.35})`,
+                                     cursor: 'pointer' }}>
+                            {display}{isSelf && <span className="ml-1 text-[9px] opacity-75">나</span>}
                           </button>
                         ) : (
                           <span key={a.user_id} className="text-xs px-2.5 py-1 rounded-full"
@@ -1514,21 +1481,25 @@ export default function MeetingsPage() {
                     <p className="text-xs font-semibold mb-1.5 flex items-center gap-1" style={{ color: '#f87171' }}>
                       <Ban size={11} />{ko ? `불참 (${absent.length}명)` : `Absent (${absent.length})`}
                     </p>
-                    {canManage && (
-                      <p className="text-[10px] mb-1.5" style={{ color: '#fca5a5' }}>
-                        · {ko ? '이름을 탭하여 응답 수정' : 'tap a name to change response'}
-                      </p>
-                    )}
+                    <p className="text-[10px] mb-1.5" style={{ color: '#fca5a5' }}>
+                      · {canManage
+                          ? (ko ? '이름을 탭하여 누구든 응답 수정' : 'tap any name to change')
+                          : (ko ? '본인 이름을 탭하여 응답 수정' : 'tap your own name to change')}
+                    </p>
                     <div className="flex flex-wrap gap-1.5">
                       {absent.map((a: any) => {
                         const tgt = clubMembers.find((m: any) => m.user_id === a.user_id) ?? a
                         const display = lang === 'ko' ? a.users?.full_name : (a.users?.full_name_en || a.users?.full_name)
-                        return canManage ? (
+                        const isSelf  = a.user_id === user?.id
+                        const canTap  = canManage || isSelf
+                        return canTap ? (
                           <button key={a.user_id} type="button"
                             onClick={() => setProxyTarget(tgt)}
                             className="text-xs px-2.5 py-1 rounded-full transition active:scale-95 hover:opacity-80"
-                            style={{ background: 'rgba(239,68,68,0.10)', color: '#f87171', border: '1px solid rgba(239,68,68,0.35)', cursor: 'pointer' }}>
-                            {display}
+                            style={{ background: 'rgba(239,68,68,0.10)', color: '#f87171',
+                                     border: `${isSelf ? '2px' : '1px'} solid rgba(239,68,68,${isSelf ? 0.7 : 0.35})`,
+                                     cursor: 'pointer' }}>
+                            {display}{isSelf && <span className="ml-1 text-[9px] opacity-75">나</span>}
                           </button>
                         ) : (
                           <span key={a.user_id} className="text-xs px-2.5 py-1 rounded-full"
@@ -1542,22 +1513,25 @@ export default function MeetingsPage() {
                 )}
                 {notRespon.length > 0 && (
                   <div>
-                    <p className="text-xs font-semibold mb-1.5 flex items-center gap-1" style={{ color: 'var(--text-3)' }}>
+                    <p className="text-xs font-semibold mb-1.5 flex items-center gap-1 flex-wrap" style={{ color: 'var(--text-3)' }}>
                       <HelpCircle size={11} />{ko ? `미응답 (${notRespon.length}명)` : `No response (${notRespon.length})`}
-                      {canManage && (
-                        <span className="ml-1 text-[10px]" style={{ color: '#86efac' }}>
-                          · {ko ? '탭하여 대리 응답' : 'tap to proxy-RSVP'}
-                        </span>
-                      )}
+                      <span className="text-[10px]" style={{ color: '#86efac' }}>
+                        · {canManage
+                            ? (ko ? '이름을 탭하여 대리 응답' : 'tap any name to proxy')
+                            : (ko ? '본인 이름을 탭하여 응답' : 'tap your own name to respond')}
+                      </span>
                     </p>
                     <div className="flex flex-wrap gap-1.5">
-                      {notRespon.map((m: any) => (
-                        canManage ? (
+                      {notRespon.map((m: any) => {
+                        const isSelf = m.user_id === user?.id
+                        const canTap = canManage || isSelf
+                        return canTap ? (
                           <button key={m.user_id} type="button"
                             onClick={() => setProxyTarget(m)}
                             className="text-xs px-2.5 py-1 rounded-full transition active:scale-95 hover:opacity-80"
-                            style={{ background: 'var(--surface-2)', color: 'var(--text-3)', border: '1px dashed rgba(34,197,94,0.3)' }}>
-                            {memberName(m)}
+                            style={{ background: 'var(--surface-2)', color: isSelf ? '#86efac' : 'var(--text-3)',
+                                     border: `${isSelf ? '2px solid rgba(34,197,94,0.6)' : '1px dashed rgba(34,197,94,0.3)'}` }}>
+                            {memberName(m)}{isSelf && <span className="ml-1 text-[9px] opacity-75">나</span>}
                           </button>
                         ) : (
                           <span key={m.user_id} className="text-xs px-2.5 py-1 rounded-full"
@@ -1565,7 +1539,7 @@ export default function MeetingsPage() {
                             {memberName(m)}
                           </span>
                         )
-                      ))}
+                      })}
                     </div>
                   </div>
                 )}
@@ -2759,67 +2733,79 @@ export default function MeetingsPage() {
         document.body
       )}
 
-      {/* ━━ 대리 응답 시트 (회장·총무 전용) — createPortal 로 body 직속 렌더 ━ */}
-      {proxyTarget && canManage && typeof window !== 'undefined' && createPortal((() => {
+      {/* ━━ 응답 상태 변경 시트 — 본인 / 대리 통합 ━━━━━━━━━━━━━━━━━━━━━━━ */}
+      {proxyTarget && typeof window !== 'undefined' && (() => {
+        const isSelf = proxyTarget.user_id === user?.id
+        // 권한: 본인은 본인 것만, 그 외는 canManage 필요
+        // (배지 클릭 단계에서 이미 필터되지만 방어적으로 한 번 더)
+        if (!isSelf && !canManage) return null
         const tName = memberName(proxyTarget)
-        const cur = attendances.find(a => a.user_id === proxyTarget.user_id)?.status
-        return (
+        const cur = attendances.find(a => a.user_id === proxyTarget.user_id)?.status as
+          'attending' | 'absent' | undefined
+        const curLabel = cur === 'attending' ? (ko ? '참석' : 'Attending')
+                       : cur === 'absent'    ? (ko ? '불참' : 'Absent')
+                       :                       (ko ? '미응답' : 'No response')
+
+        return createPortal(
           <div className="fixed inset-0 z-[9999] flex items-end justify-center"
             style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
             onClick={() => setProxyTarget(null)}>
             <div className="w-full max-w-md rounded-t-2xl overflow-hidden"
               style={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderBottom: 'none' }}
               onClick={e => e.stopPropagation()}>
-              <div className="px-5 pt-4 pb-3"
-                style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+              <div className="px-5 pt-4 pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
                 <p className="text-base font-bold text-white">
-                  {ko ? `${tName} 대리 응답` : `Proxy RSVP — ${tName}`}
+                  {tName} {ko ? '상태 변경' : 'Change Status'}
                 </p>
                 <p className="text-[11px] mt-1" style={{ color: '#9ca3af' }}>
-                  {ko
-                    ? `${meeting?.year}년 ${meeting?.month}월 정기모임 · 회장·총무 권한`
-                    : `${meeting?.year}-${meeting?.month} meeting · officer override`}
+                  {meeting?.year}{ko ? '년 ' : '-'}{meeting?.month}{ko ? '월 정기모임' : ' meeting'}
+                  {!isSelf && <> · <span style={{ color: '#fbbf24' }}>{ko ? '대리 응답 (회장/총무)' : 'Proxy (officer)'}</span></>}
                 </p>
-                {cur && (
-                  <p className="text-[11px] mt-1" style={{ color: '#fbbf24' }}>
-                    {ko ? '현재 응답' : 'Current'}: <span className="font-bold">
-                      {cur === 'attending' ? (ko ? '참석' : 'Attending') : (ko ? '불참' : 'Absent')}
-                    </span>
-                  </p>
-                )}
+                <p className="text-[11px] mt-1" style={{ color: '#fbbf24' }}>
+                  {ko ? '현재' : 'Current'}: <span className="font-bold">{curLabel}</span>
+                </p>
               </div>
               <div className="px-5 py-4 space-y-2"
                 style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
-                <button onClick={() => proxyRsvp(proxyTarget.user_id, 'attending')}
-                  disabled={proxySaving}
-                  className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2"
-                  style={{ background: 'rgba(34,197,94,0.18)', border: '1px solid rgba(34,197,94,0.5)', color: '#86efac' }}>
-                  <Check size={16} />{ko ? '참석으로 표시' : 'Mark Attending'}
+                {/* 참석 */}
+                <button onClick={() => changeAttendance(proxyTarget.user_id, 'attending').then(r => r.ok && setProxyTarget(null))}
+                  disabled={proxySaving || cur === 'attending'}
+                  className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-40 flex items-center justify-center gap-2 transition active:scale-[0.98]"
+                  style={cur === 'attending'
+                    ? { background: 'rgba(34,197,94,0.35)', border: '2px solid rgba(34,197,94,0.8)', color: '#bbf7d0' }
+                    : { background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.4)', color: '#86efac' }}>
+                  <Check size={16} />{ko ? '참석' : 'Attending'}{cur === 'attending' && ' ✓'}
                 </button>
-                <button onClick={() => proxyRsvp(proxyTarget.user_id, 'absent')}
-                  disabled={proxySaving}
-                  className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2"
-                  style={{ background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.5)', color: '#fca5a5' }}>
-                  <Ban size={16} />{ko ? '불참으로 표시' : 'Mark Absent'}
+                {/* 불참 */}
+                <button onClick={() => changeAttendance(proxyTarget.user_id, 'absent').then(r => r.ok && setProxyTarget(null))}
+                  disabled={proxySaving || cur === 'absent'}
+                  className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-40 flex items-center justify-center gap-2 transition active:scale-[0.98]"
+                  style={cur === 'absent'
+                    ? { background: 'rgba(239,68,68,0.35)', border: '2px solid rgba(239,68,68,0.8)', color: '#fecaca' }
+                    : { background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.4)', color: '#fca5a5' }}>
+                  <Ban size={16} />{ko ? '불참' : 'Absent'}{cur === 'absent' && ' ✓'}
                 </button>
-                {cur && (
-                  <button onClick={() => proxyCancel(proxyTarget.user_id)}
-                    disabled={proxySaving}
-                    className="w-full py-2.5 rounded-xl text-xs font-medium disabled:opacity-50"
-                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#9ca3af' }}>
-                    {ko ? '응답 취소 (미응답으로 되돌리기)' : 'Clear response'}
-                  </button>
-                )}
+                {/* 미응답 */}
+                <button onClick={() => changeAttendance(proxyTarget.user_id, null).then(r => r.ok && setProxyTarget(null))}
+                  disabled={proxySaving || !cur}
+                  className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-40 flex items-center justify-center gap-2 transition active:scale-[0.98]"
+                  style={!cur
+                    ? { background: 'rgba(148,163,184,0.25)', border: '2px solid rgba(148,163,184,0.6)', color: '#cbd5e1' }
+                    : { background: 'rgba(148,163,184,0.10)', border: '1px solid rgba(148,163,184,0.35)', color: '#94a3b8' }}>
+                  <HelpCircle size={16} />{ko ? '미응답' : 'No response'}{!cur && ' ✓'}
+                </button>
+                {/* 취소 */}
                 <button onClick={() => setProxyTarget(null)}
                   className="w-full py-2.5 rounded-xl text-xs"
                   style={{ color: '#94a3b8' }}>
-                  {ko ? '닫기' : 'Cancel'}
+                  {ko ? '취소' : 'Cancel'}
                 </button>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body,
         )
-      })(), document.body)}
+      })()}
 
       {/* ── Annual Handicap Analysis ── */}
       <BottomSheet
