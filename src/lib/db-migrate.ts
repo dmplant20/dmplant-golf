@@ -18,6 +18,21 @@ ALTER TABLE golf_courses ADD COLUMN IF NOT EXISTS phone text;
 ALTER TABLE golf_courses ADD COLUMN IF NOT EXISTS website text;
 ALTER TABLE golf_courses ADD COLUMN IF NOT EXISTS description text;
 ALTER TABLE golf_courses ADD COLUMN IF NOT EXISTS name_vn text;
+-- 누락된 핵심 컬럼 (DB 스키마와 코드 불일치 해결)
+ALTER TABLE golf_courses ADD COLUMN IF NOT EXISTS province text;
+ALTER TABLE golf_courses ADD COLUMN IF NOT EXISTS holes int DEFAULT 18;
+ALTER TABLE golf_courses ADD COLUMN IF NOT EXISTS par int DEFAULT 72;
+ALTER TABLE golf_courses ADD COLUMN IF NOT EXISTS address text;
+ALTER TABLE golf_courses ADD COLUMN IF NOT EXISTS designer text;
+ALTER TABLE golf_courses ADD COLUMN IF NOT EXISTS is_active boolean DEFAULT true;
+-- 기존 region 컬럼이 있으면 province 로 데이터 복사 (둘 다 있을 경우 province 우선)
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='golf_courses' AND column_name='region')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='golf_courses' AND column_name='province') THEN
+    UPDATE golf_courses SET province = region WHERE province IS NULL AND region IS NOT NULL;
+  END IF;
+EXCEPTION WHEN others THEN NULL;
+END $$;
 
 -- personal_round_holes 야디지 컬럼
 ALTER TABLE personal_round_holes ADD COLUMN IF NOT EXISTS yardage int
@@ -301,6 +316,96 @@ CREATE POLICY "cm_insert_member" ON chat_messages FOR INSERT
       )
     )
   );
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- 푸시 알림 인프라
+--   notification_logs              : 모든 발송 결과 로그 (성공/실패/이유)
+--   user_notification_preferences  : 회원별 카테고리 토글
+--   push_subscriptions RLS         : 본인 것만 접근
+-- ────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS notification_logs (
+  id            uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id       uuid REFERENCES users(id) ON DELETE SET NULL,
+  club_id       uuid REFERENCES clubs(id) ON DELETE SET NULL,
+  type          text NOT NULL,
+  title         text NOT NULL,
+  body          text,
+  url           text,
+  status        text NOT NULL CHECK (status IN ('success','failed','skipped')),
+  error_code    text,
+  error_message text,
+  endpoint_hint text,
+  status_code   int,
+  sent_by       uuid REFERENCES users(id) ON DELETE SET NULL,
+  created_at    timestamptz DEFAULT now() NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_notification_logs_user      ON notification_logs(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notification_logs_club_time ON notification_logs(club_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notification_logs_status    ON notification_logs(status, created_at DESC);
+
+ALTER TABLE notification_logs ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "nl_select" ON notification_logs;
+CREATE POLICY "nl_select" ON notification_logs FOR SELECT USING (
+  user_id = auth.uid()
+  OR EXISTS (
+    SELECT 1 FROM club_memberships
+    WHERE club_id = notification_logs.club_id
+      AND user_id = auth.uid()
+      AND status  = 'approved'
+      AND role IN ('president','secretary')
+  )
+);
+
+DROP POLICY IF EXISTS "nl_insert_none" ON notification_logs;
+CREATE POLICY "nl_insert_none" ON notification_logs FOR INSERT WITH CHECK (false);
+
+CREATE TABLE IF NOT EXISTS user_notification_preferences (
+  user_id        uuid REFERENCES users(id) ON DELETE CASCADE PRIMARY KEY,
+  all_enabled    boolean NOT NULL DEFAULT true,
+  announcements  boolean NOT NULL DEFAULT true,
+  meetings       boolean NOT NULL DEFAULT true,
+  finance        boolean NOT NULL DEFAULT true,
+  chat           boolean NOT NULL DEFAULT true,
+  birthday       boolean NOT NULL DEFAULT true,
+  admin_test     boolean NOT NULL DEFAULT true,
+  updated_at     timestamptz DEFAULT now() NOT NULL,
+  created_at     timestamptz DEFAULT now() NOT NULL
+);
+
+ALTER TABLE user_notification_preferences ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "unp_select" ON user_notification_preferences;
+CREATE POLICY "unp_select" ON user_notification_preferences FOR SELECT
+  USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "unp_upsert" ON user_notification_preferences;
+CREATE POLICY "unp_upsert" ON user_notification_preferences FOR INSERT
+  WITH CHECK (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "unp_update" ON user_notification_preferences;
+CREATE POLICY "unp_update" ON user_notification_preferences FOR UPDATE
+  USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+
+-- push_subscriptions RLS 강화 — 본인 endpoint 만 접근 가능
+ALTER TABLE push_subscriptions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "ps_select" ON push_subscriptions;
+CREATE POLICY "ps_select" ON push_subscriptions FOR SELECT
+  USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "ps_insert" ON push_subscriptions;
+CREATE POLICY "ps_insert" ON push_subscriptions FOR INSERT
+  WITH CHECK (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "ps_delete" ON push_subscriptions;
+CREATE POLICY "ps_delete" ON push_subscriptions FOR DELETE
+  USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "ps_update" ON push_subscriptions;
+CREATE POLICY "ps_update" ON push_subscriptions FOR UPDATE
+  USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
 `
 
 export async function autoMigrate(): Promise<void> {

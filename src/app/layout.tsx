@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import PwaInstallPrompt from '@/components/PwaInstallPrompt'
+import PushToastListener from '@/components/PushToastListener'
+import BuildStamp from '@/components/BuildStamp'
 import { autoMigrate } from '@/lib/db-migrate'
 
 // 앱 시작 시 DB 스키마 자동 최신화 (누락 컬럼 자동 추가)
@@ -39,6 +41,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="bg-gray-950 text-white antialiased min-h-screen">
         {children}
         <PwaInstallPrompt />
+        <PushToastListener />
+        <BuildStamp />
 
         <script dangerouslySetInnerHTML={{ __html: `
 (function(){
@@ -82,6 +86,114 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     }).catch(function(){});
     return;
   }
+
+  // ── 3a) 매일 자정 자동 캐시 삭제 + 강제 새로고침 ─────────────────────────
+  // 회원이 별도 액션 안 해도 매일 한 번 stale 캐시 완전 청소 후 최신 코드로 갱신
+  // 동작:
+  //   1. 로컬에 마지막 새로고침 날짜(YYYY-MM-DD) 저장
+  //   2. 앱 로드/포커스/visibility 변경 때마다 현재 날짜와 비교
+  //   3. 날짜가 바뀌었으면 (자정 지났음) → 모든 캐시 삭제 + SW 해제 + reload
+  //   4. reload 직후 새 날짜로 마킹 → 같은 날 중복 실행 방지
+  function todayKey() {
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  }
+  function checkDailyRefresh() {
+    try {
+      var key = 'isgolf-last-daily-refresh';
+      var stored = localStorage.getItem(key);
+      var today = todayKey();
+      if (stored === today) return;          // 오늘 이미 새로고침함
+      if (!stored) {
+        // 최초 설치 — 마킹만 하고 새로고침은 안 함
+        localStorage.setItem(key, today);
+        return;
+      }
+      // 다른 날짜 발견 → 자정 지났음. 캐시 삭제 후 reload.
+      localStorage.setItem(key, today);      // 먼저 마킹 — reload 후 무한루프 방지
+      // SW 해제 + 모든 캐시 삭제 → reload
+      var jobs = [];
+      if ('serviceWorker' in navigator) {
+        jobs.push(navigator.serviceWorker.getRegistrations().then(function(rs){
+          return Promise.all(rs.map(function(r){ return r.unregister(); }));
+        }));
+      }
+      if (typeof caches !== 'undefined') {
+        jobs.push(caches.keys().then(function(ks){
+          return Promise.all(ks.map(function(k){ return caches.delete(k); }));
+        }));
+      }
+      Promise.all(jobs).catch(function(){}).then(function(){
+        // 캐시 무시 reload — bfcache 우회
+        window.location.reload();
+      });
+    } catch (err) {}
+  }
+  // 페이지 로드 시 1번 + visibilitychange/focus 마다 검사
+  checkDailyRefresh();
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible') checkDailyRefresh();
+  });
+  window.addEventListener('focus', checkDailyRefresh);
+  // 앱이 계속 열려 있을 때를 위해 — 자정 직후 자동 트리거 (5분 간격 폴링)
+  setInterval(checkDailyRefresh, 5 * 60 * 1000);
+
+  // ── 3b) 빌드 버전 폴링 — 자정 안 기다리고 새 배포 즉시 반영 ─────────────
+  // /api/version 의 commit SHA 를 localStorage 와 비교 → 다르면 캐시 삭제+reload
+  // 호출 시점: 페이지 로드, visibilitychange, focus, online, 2분 간격 폴링
+  var VERSION_KEY = 'isgolf-build-version';
+  var versionChecking = false;
+  function checkBuildVersion() {
+    if (versionChecking) return;
+    versionChecking = true;
+    fetch('/api/version', { cache: 'no-store' })
+      .then(function(r){ return r.ok ? r.json() : null })
+      .then(function(data){
+        versionChecking = false;
+        if (!data || !data.version) return;
+        var stored = null;
+        try { stored = localStorage.getItem(VERSION_KEY); } catch(e){}
+        if (!stored) {
+          // 최초 — 마킹만 하고 reload 안 함
+          try { localStorage.setItem(VERSION_KEY, data.version); } catch(e){}
+          return;
+        }
+        if (stored === data.version) return;        // 동일 버전 — OK
+        // 새 버전 감지 → 캐시 완전 청소 후 reload
+        try { localStorage.setItem(VERSION_KEY, data.version); } catch(e){}
+        var jobs2 = [];
+        if ('serviceWorker' in navigator) {
+          jobs2.push(navigator.serviceWorker.getRegistrations().then(function(rs){
+            return Promise.all(rs.map(function(r){ return r.unregister(); }));
+          }));
+        }
+        if (typeof caches !== 'undefined') {
+          jobs2.push(caches.keys().then(function(ks){
+            return Promise.all(ks.map(function(k){ return caches.delete(k); }));
+          }));
+        }
+        // 사용자에게 짧게 안내 — 무성 reload 보다 친절
+        try {
+          var banner = document.createElement('div');
+          banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999999;background:linear-gradient(135deg,#c9a84c,#a07830);color:#fff;font:600 13px/1.4 system-ui;padding:10px 14px;text-align:center;box-shadow:0 2px 12px rgba(0,0,0,.3)';
+          banner.textContent = '🔄 새 버전 적용 중...';
+          document.body && document.body.appendChild(banner);
+        } catch(e){}
+        Promise.all(jobs2).catch(function(){}).then(function(){
+          setTimeout(function(){ window.location.reload(); }, 250);
+        });
+      })
+      .catch(function(){ versionChecking = false; });
+  }
+  // 첫 진입 즉시 + 다양한 트리거에서 검사
+  checkBuildVersion();
+  document.addEventListener('visibilitychange', function(){
+    if (document.visibilityState === 'visible') checkBuildVersion();
+  });
+  window.addEventListener('focus', checkBuildVersion);
+  window.addEventListener('online', checkBuildVersion);
+  // 2분 간격 — 자정 안 기다리고 신선 유지
+  setInterval(checkBuildVersion, 2 * 60 * 1000);
   window.addEventListener('load', function() {
     navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
       .then(function(reg) {
@@ -107,10 +219,40 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       if (refreshing || onInstallPage) return; refreshing = true; window.location.reload();
     });
     navigator.serviceWorker.addEventListener('message', function(e) {
-      if (e.data && e.data.type === 'SW_ACTIVATED' && !refreshing && !onInstallPage) {
+      if (!e.data) return;
+      if (e.data.type === 'SW_ACTIVATED' && !refreshing && !onInstallPage) {
         refreshing = true; window.location.reload();
+        return;
+      }
+      // 푸시 알림 클릭으로 특정 URL 이동 요청 (SW 가 navigate 실패 시 fallback)
+      if (e.data.type === 'NOTIFICATION_OPEN' && e.data.url) {
+        try {
+          var u = new URL(e.data.url, window.location.origin);
+          if (window.location.pathname !== u.pathname) {
+            window.location.href = u.toString();
+          } else {
+            // 같은 페이지면 새로고침으로 최신 데이터 반영
+            window.location.reload();
+          }
+        } catch (err) {}
       }
     });
+
+    // 앱이 포커스/표시될 때 뱃지 카운트 클리어 — 본 알림을 다 본 것으로 간주
+    function clearBadge() {
+      try {
+        if ('clearAppBadge' in navigator) { navigator.clearAppBadge(); }
+        if (navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_BADGE', closeAll: false });
+        }
+      } catch (err) {}
+    }
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'visible') clearBadge();
+    });
+    window.addEventListener('focus', clearBadge);
+    // 페이지 로드 시에도 한 번 클리어 (앱 들어왔으니 본 것)
+    clearBadge();
   });
 })();
         ` }} />

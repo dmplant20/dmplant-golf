@@ -272,11 +272,16 @@ export default function ScorecardPage() {
 
   async function loadCourses() {
     if (courses.some(c => !String(c.id).startsWith('_'))) return
-    const { data } = await createClient().from('golf_courses')
-      .select('id, name, name_vn, province, par, holes, distance_km, sub_courses')
+    // 스키마 불일치 환경에서도 안전하도록 select('*') 사용 (옵셔널 필드는 코드에서 처리)
+    const { data, error } = await createClient().from('golf_courses')
+      .select('*')
       .eq('is_active', true).order('name')
+    if (error) {
+      console.warn('golf_courses unavailable (using BUILTIN only):', error.message)
+      return
+    }
     if (data && data.length > 0) {
-      const dbNames = new Set(data.map((c: any) => c.name.toLowerCase()))
+      const dbNames = new Set(data.map((c: any) => String(c.name ?? '').toLowerCase()))
       const extras = BUILTIN_COURSES.filter(b => !dbNames.has(b.name.toLowerCase()))
       setCourses([...data, ...extras])
     }
