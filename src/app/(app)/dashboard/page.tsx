@@ -541,39 +541,56 @@ export default function DashboardPage() {
               )}
             </div>
 
-            {/* 참석 / 불참 버튼 — 한 번 응답하면 숨김 (카운터·라벨은 유지). */}
-            {/* 응답 변경이 필요하면 /meetings 페이지에서 수정. */}
-            {!myRsvp && (
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => submitRsvp('attending')}
-                  disabled={rsvpSubmitting || !rsvpOpen}
-                  className="py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 transition active:scale-[0.97]"
-                  style={
-                    !rsvpOpen
-                      ? { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-3)', cursor: 'not-allowed' }
-                      : { background: 'rgba(34,197,94,0.10)', border: '1px solid rgba(34,197,94,0.30)', color: '#86efac', cursor: 'pointer' }
-                  }
-                >
-                  <CheckCircle size={15} />
-                  {ko ? '참석' : 'Attending'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => submitRsvp('absent')}
-                  disabled={rsvpSubmitting || !rsvpOpen}
-                  className="py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 transition active:scale-[0.97]"
-                  style={
-                    !rsvpOpen
-                      ? { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-3)', cursor: 'not-allowed' }
-                      : { background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.30)', color: '#fca5a5', cursor: 'pointer' }
-                  }
-                >
-                  <XCircle size={15} />
-                  {ko ? '불참' : 'Absent'}
-                </button>
-              </div>
+            {/* 참석 / 불참 버튼 — 항상 노출. 잘못 누르면 즉시 다른 쪽 눌러서 번복 가능.
+                현재 응답한 쪽은 진하게 강조 (선택됨 상태), 안 누른 쪽은 흐리게. */}
+            <div className="grid grid-cols-2 gap-2">
+              {(() => {
+                const attendingSelected = myRsvp === 'attending'
+                const absentSelected    = myRsvp === 'absent'
+                return (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => submitRsvp('attending')}
+                      disabled={rsvpSubmitting || !rsvpOpen}
+                      className="py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 transition active:scale-[0.97]"
+                      style={
+                        !rsvpOpen
+                          ? { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-3)', cursor: 'not-allowed' }
+                          : attendingSelected
+                            ? { background: 'rgba(34,197,94,0.28)', border: '2px solid rgba(34,197,94,0.65)', color: '#bbf7d0', cursor: 'pointer', boxShadow: '0 0 0 1px rgba(34,197,94,0.4) inset' }
+                            : { background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.18)', color: 'rgba(134,239,172,0.55)', cursor: 'pointer' }
+                      }
+                    >
+                      <CheckCircle size={15} />
+                      {ko ? '참석' : 'Attending'}
+                      {attendingSelected && <span className="text-[10px] opacity-80">✓</span>}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => submitRsvp('absent')}
+                      disabled={rsvpSubmitting || !rsvpOpen}
+                      className="py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 transition active:scale-[0.97]"
+                      style={
+                        !rsvpOpen
+                          ? { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-3)', cursor: 'not-allowed' }
+                          : absentSelected
+                            ? { background: 'rgba(239,68,68,0.28)', border: '2px solid rgba(239,68,68,0.65)', color: '#fecaca', cursor: 'pointer', boxShadow: '0 0 0 1px rgba(239,68,68,0.4) inset' }
+                            : { background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.18)', color: 'rgba(252,165,165,0.55)', cursor: 'pointer' }
+                      }
+                    >
+                      <XCircle size={15} />
+                      {ko ? '불참' : 'Absent'}
+                      {absentSelected && <span className="text-[10px] opacity-80">✓</span>}
+                    </button>
+                  </>
+                )
+              })()}
+            </div>
+            {myRsvp && rsvpOpen && (
+              <p className="text-[10px] text-center" style={{ color: 'var(--text-3)' }}>
+                {ko ? '잘못 누르셨다면 다른 버튼을 다시 눌러 변경할 수 있습니다.' : 'Tap the other button to change your response.'}
+              </p>
             )}
 
             {/* 비활성 안내: D-14 이후부터 활성화 */}

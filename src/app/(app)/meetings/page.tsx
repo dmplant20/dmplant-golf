@@ -460,9 +460,11 @@ export default function MeetingsPage() {
   }, [isRsvpOpen, canManage, meeting?.year, meeting?.month])
 
   // ── RSVP ──────────────────────────────────────────────────────────────
+  // 응답 변경 허용: API 는 upsert(onConflict) 로 항상 갱신 가능. 잘못 누른 회원이
+  // 별도 취소 단계 없이 다시 눌러 번복할 수 있어야 함.
   async function rsvp(status: 'attending' | 'absent') {
     if (!meeting || !user) return
-    if (myAtt) return // Already voted — cannot change without canceling first
+    if (myAtt?.status === status) return  // 이미 같은 응답이면 무시 (불필요한 호출 방지)
 
     // Optimistic update
     setAttendances(prev => {
@@ -1382,64 +1384,69 @@ export default function MeetingsPage() {
                 </div>
               )}
 
-              {/* My response */}
-              {myAtt ? (
-                /* Already voted — show locked state + cancel button */
-                <div className="flex items-center gap-3">
-                  <div className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold ${
-                    myAtt.status === 'attending' ? 'bg-green-700/80 text-white' : 'bg-red-800/80 text-white'
-                  }`}>
-                    {myAtt.status === 'attending' ? <Check size={16} /> : <Ban size={16} />}
-                    {myAtt.status === 'attending' ? (ko ? '참석 완료' : 'Attending ✓') : (ko ? '불참 완료' : 'Absent ✓')}
-                  </div>
-                  {/* Cancel button — only for own RSVP, only when window is open */}
-                  {isRsvpOpen && (
+              {/* My response — 항상 두 버튼 노출, 현재 응답 강조. 잘못 누르면 다른 쪽 눌러서 즉시 번복. */}
+              <div>
+                <p className="text-xs mb-2 flex items-center justify-between" style={{ color: 'var(--text-3)' }}>
+                  <span>{ko ? '내 응답' : 'My response'}</span>
+                  {myAtt && isRsvpOpen && (
                     <button onClick={cancelRsvp}
-                      className="px-4 py-3 rounded-xl text-sm border transition"
-                      style={{ color: 'var(--text-3)', borderColor: 'var(--border-2)' }}
-                      title={ko ? '응답 취소' : 'Cancel response'}>
-                      <X size={15} />
+                      className="text-[10px] underline decoration-dotted"
+                      style={{ color: 'var(--text-3)' }}
+                      title={ko ? '응답 취소 (미응답 상태로 되돌리기)' : 'Cancel response'}>
+                      {ko ? '응답 삭제' : 'Clear response'}
                     </button>
                   )}
+                </p>
+                <div className="flex gap-2">
+                  {(() => {
+                    const attendingSel = myAtt?.status === 'attending'
+                    const absentSel    = myAtt?.status === 'absent'
+                    return (
+                      <>
+                        <button
+                          onClick={() => rsvp('attending')}
+                          disabled={!isRsvpOpen}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl text-sm font-semibold transition active:scale-[0.97]"
+                          style={
+                            !isRsvpOpen
+                              ? { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-3)', cursor: 'not-allowed' }
+                              : attendingSel
+                                ? { background: 'rgba(34,197,94,0.32)', border: '2px solid rgba(34,197,94,0.7)', color: '#bbf7d0', boxShadow: '0 0 0 1px rgba(34,197,94,0.4) inset' }
+                                : { background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.22)', color: 'rgba(74,222,128,0.6)' }
+                          }>
+                          <Check size={15} />{ko ? '참석' : 'Attending'}{attendingSel && <span className="text-[10px] opacity-80">✓</span>}
+                        </button>
+                        <button
+                          onClick={() => rsvp('absent')}
+                          disabled={!isRsvpOpen}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl text-sm font-semibold transition active:scale-[0.97]"
+                          style={
+                            !isRsvpOpen
+                              ? { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-3)', cursor: 'not-allowed' }
+                              : absentSel
+                                ? { background: 'rgba(239,68,68,0.32)', border: '2px solid rgba(239,68,68,0.7)', color: '#fecaca', boxShadow: '0 0 0 1px rgba(239,68,68,0.4) inset' }
+                                : { background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.22)', color: 'rgba(248,113,113,0.6)' }
+                          }>
+                          <Ban size={15} />{ko ? '불참' : 'Absent'}{absentSel && <span className="text-[10px] opacity-80">✓</span>}
+                        </button>
+                      </>
+                    )
+                  })()}
                 </div>
-              ) : (
-                /* Not voted yet — show both buttons (disabled if window not open yet) */
-                <div>
-                  <p className="text-xs mb-2" style={{ color: 'var(--text-3)' }}>{ko ? '내 응답' : 'My response'}</p>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => rsvp('attending')}
-                      disabled={!isRsvpOpen}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl text-sm font-semibold transition active:scale-[0.97]"
-                      style={
-                        !isRsvpOpen
-                          ? { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-3)', cursor: 'not-allowed' }
-                          : { background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.35)', color: '#4ade80' }
-                      }>
-                      <Check size={15} />{ko ? '참석' : 'Attending'}
-                    </button>
-                    <button
-                      onClick={() => rsvp('absent')}
-                      disabled={!isRsvpOpen}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl text-sm font-semibold transition active:scale-[0.97]"
-                      style={
-                        !isRsvpOpen
-                          ? { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-3)', cursor: 'not-allowed' }
-                          : { background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }
-                      }>
-                      <Ban size={15} />{ko ? '불참' : 'Absent'}
-                    </button>
-                  </div>
-                  {/* 비활성 안내 (D-14 이전) */}
-                  {!isRsvpOpen && daysUntil !== null && daysUntil > 14 && (
-                    <p className="text-[11px] text-center mt-2" style={{ color: 'var(--text-3)' }}>
-                      {ko
-                        ? `D-${daysUntil} · 모임 14일 전부터 응답할 수 있습니다`
-                        : `D-${daysUntil} · RSVP opens 14 days before the meeting`}
-                    </p>
-                  )}
-                </div>
-              )}
+                {myAtt && isRsvpOpen && (
+                  <p className="text-[10px] text-center mt-1.5" style={{ color: 'var(--text-3)' }}>
+                    {ko ? '잘못 누르셨다면 다른 버튼을 다시 눌러 변경할 수 있습니다.' : 'Tap the other button to change your response.'}
+                  </p>
+                )}
+                {/* 비활성 안내 (D-14 이전) */}
+                {!myAtt && !isRsvpOpen && daysUntil !== null && daysUntil > 14 && (
+                  <p className="text-[11px] text-center mt-2" style={{ color: 'var(--text-3)' }}>
+                    {ko
+                      ? `D-${daysUntil} · 모임 14일 전부터 응답할 수 있습니다`
+                      : `D-${daysUntil} · RSVP opens 14 days before the meeting`}
+                  </p>
+                )}
+              </div>
 
               {/* Attendance lists */}
               <div className="space-y-2.5">
