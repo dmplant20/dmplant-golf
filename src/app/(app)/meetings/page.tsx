@@ -688,6 +688,79 @@ export default function MeetingsPage() {
     await loadRsvp(meeting.year, meeting.month)
   }
 
+  // ── 조 편성 인라인 편집 — 시간/코스 수정, 조 추가/삭제 ─────────────────
+  // 권한: canManage && !isPastView (서버 RLS 도 동일하게 차단)
+  // 동작: surgical UPDATE/INSERT/DELETE — saveGroups 의 전체 재작성과 별개
+  const [editingGroupId, setEditingGroupId] = useState<{ id: string; field: 'tee_time' | 'course_name' } | null>(null)
+  const [editGroupValue,  setEditGroupValue]  = useState('')
+  const [groupOpSaving,   setGroupOpSaving]   = useState(false)
+  const [groupOpError,    setGroupOpError]    = useState<string | null>(null)
+
+  async function updateGroupField(groupId: string, field: 'tee_time' | 'course_name', value: string) {
+    if (!canManage || isPastView) return
+    setGroupOpSaving(true); setGroupOpError(null)
+    const supabase = createClient()
+    const v = value.trim() || null
+    const { error } = await supabase.from('meeting_groups').update({ [field]: v }).eq('id', groupId)
+    setGroupOpSaving(false)
+    if (error) {
+      setGroupOpError((ko ? '저장 실패: ' : 'Save failed: ') + error.message)
+      setTimeout(() => setGroupOpError(null), 4000)
+      return
+    }
+    setEditingGroupId(null)
+    if (meeting) await loadRsvp(meeting.year, meeting.month)
+  }
+
+  async function deleteGroup(groupId: string, groupNumber: number) {
+    if (!canManage || isPastView || !meeting) return
+    const memberCount = groups.find(g => g.id === groupId)?.meeting_group_members?.length ?? 0
+    const msg = memberCount > 0
+      ? (ko ? `${groupNumber}조를 삭제합니다. 배정된 ${memberCount}명은 자동으로 미배정 상태로 돌아갑니다. 계속할까요?` : `Delete group ${groupNumber}? ${memberCount} assigned members will return to unassigned.`)
+      : (ko ? `${groupNumber}조를 삭제할까요?` : `Delete group ${groupNumber}?`)
+    if (!confirm(msg)) return
+    setGroupOpSaving(true); setGroupOpError(null)
+    const supabase = createClient()
+    // meeting_group_members 는 ON DELETE CASCADE 로 자동 정리 (마이그레이션 확인)
+    const { error } = await supabase.from('meeting_groups').delete().eq('id', groupId)
+    setGroupOpSaving(false)
+    if (error) {
+      setGroupOpError((ko ? '삭제 실패: ' : 'Delete failed: ') + error.message)
+      setTimeout(() => setGroupOpError(null), 4000)
+      return
+    }
+    await loadRsvp(meeting.year, meeting.month)
+  }
+
+  async function addGroup() {
+    if (!canManage || isPastView || !meeting || !currentClubId) return
+    setGroupOpSaving(true); setGroupOpError(null)
+    const supabase = createClient()
+    // 다음 조 번호 = 현재 최대 + 1
+    const nextNum = (groups.reduce((m, g) => Math.max(m, g.group_number ?? 0), 0)) + 1
+    // 시간 기본값 = 마지막 조 + 7분, 코스 기본값 = 마지막 조와 동일
+    const last = groups.length > 0 ? groups[groups.length - 1] : null
+    let defaultTime: string | null = null
+    if (last?.tee_time) {
+      const [h, m] = String(last.tee_time).split(':').map(Number)
+      const mins = h * 60 + m + 7
+      defaultTime = `${String(Math.floor(mins / 60) % 24).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`
+    }
+    const { error } = await supabase.from('meeting_groups').insert({
+      club_id: currentClubId, year: meeting.year, month: meeting.month,
+      group_number: nextNum,
+      tee_time: defaultTime,
+      course_name: last?.course_name ?? null,
+    })
+    setGroupOpSaving(false)
+    if (error) {
+      setGroupOpError((ko ? '추가 실패: ' : 'Add failed: ') + error.message)
+      setTimeout(() => setGroupOpError(null), 4000)
+      return
+    }
+    await loadRsvp(meeting.year, meeting.month)
+  }
+
   // ── 골프장 응답 파서 ────────────────────────────────────────────────
   // 처리 규칙:
   //   1. 시간이 없는 줄(인사말·헤더·이름)은 자동 무시.
@@ -1654,7 +1727,19 @@ export default function MeetingsPage() {
                 </div>
               ) : (
                 <div className="space-y-2.5">
-                  {groups.map((g: any) => (
+                  {canManage && !isPastView && (
+                    <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>
+                      💡 {ko ? '시간·코스 칩을 탭하면 인라인 수정 / 우측 🗑 로 조 삭제 / 아래 ＋ 로 조 추가' : 'Tap time/course chip to edit · 🗑 to delete group · ＋ to add'}
+                    </p>
+                  )}
+                  {groupOpError && (
+                    <p className="text-[10px] px-2.5 py-1.5 rounded-lg" style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.3)', color: '#fca5a5' }}>
+                      ⚠ {groupOpError}
+                    </p>
+                  )}
+                  {groups.map((g: any) => {
+                    const editingThis = editingGroupId?.id === g.id
+                    return (
                     <div key={g.group_number}
                       className="rounded-xl p-3"
                       style={{ background: 'rgba(201,168,76,0.05)', border: '1px solid rgba(201,168,76,0.18)' }}>
@@ -1662,22 +1747,99 @@ export default function MeetingsPage() {
                         <span className="text-xs font-black rounded-lg px-2 py-0.5" style={{ color: 'var(--gold-l)', background: 'rgba(201,168,76,0.15)', border: '1px solid rgba(201,168,76,0.3)' }}>
                           {g.group_number}조
                         </span>
-                        {/* 시간 — 미설정 시 점선 — 회장·총무가 편집해서 채울 수 있다는 힌트 */}
-                        <span className="text-[11px] flex items-center gap-1 px-1.5 py-0.5 rounded"
-                          style={{ color: g.tee_time ? '#93c5fd' : '#6b7280',
-                                   background: g.tee_time ? 'rgba(96,165,250,0.10)' : 'transparent',
-                                   border: `1px ${g.tee_time ? 'solid' : 'dashed'} ${g.tee_time ? 'rgba(96,165,250,0.30)' : 'rgba(107,114,128,0.4)'}` }}>
-                          <Clock size={10} />
-                          {g.tee_time ? String(g.tee_time).slice(0, 5) : (ko ? '시간 미정' : 'No time')}
-                        </span>
-                        {/* 코스 — 미설정 시 점선 */}
-                        <span className="text-[11px] flex items-center gap-1 px-1.5 py-0.5 rounded"
-                          style={{ color: g.course_name ? '#c4b5fd' : '#6b7280',
-                                   background: g.course_name ? 'rgba(167,139,250,0.10)' : 'transparent',
-                                   border: `1px ${g.course_name ? 'solid' : 'dashed'} ${g.course_name ? 'rgba(167,139,250,0.30)' : 'rgba(107,114,128,0.4)'}` }}>
-                          <MapPin size={10} />
-                          {g.course_name || (ko ? '코스 미정' : 'No course')}
-                        </span>
+                        {/* 시간 — 회장/총무는 클릭하여 인라인 편집 */}
+                        {editingThis && editingGroupId?.field === 'tee_time' ? (
+                          <input
+                            type="time"
+                            value={editGroupValue}
+                            onChange={e => setEditGroupValue(e.target.value)}
+                            onBlur={() => updateGroupField(g.id, 'tee_time', editGroupValue)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') updateGroupField(g.id, 'tee_time', editGroupValue)
+                              else if (e.key === 'Escape') setEditingGroupId(null)
+                            }}
+                            disabled={groupOpSaving}
+                            autoFocus
+                            className="text-[11px] px-1.5 py-0.5 rounded outline-none"
+                            style={{ background: 'rgba(96,165,250,0.18)', color: '#fff', border: '1px solid rgba(96,165,250,0.6)', minWidth: 90 }}
+                          />
+                        ) : canManage && !isPastView ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingGroupId({ id: g.id, field: 'tee_time' })
+                              setEditGroupValue(g.tee_time ? String(g.tee_time).slice(0,5) : '')
+                            }}
+                            className="text-[11px] flex items-center gap-1 px-1.5 py-0.5 rounded transition active:scale-95 hover:opacity-80"
+                            style={{ color: g.tee_time ? '#93c5fd' : '#6b7280',
+                                     background: g.tee_time ? 'rgba(96,165,250,0.10)' : 'transparent',
+                                     border: `1px ${g.tee_time ? 'solid' : 'dashed'} ${g.tee_time ? 'rgba(96,165,250,0.30)' : 'rgba(107,114,128,0.4)'}`,
+                                     cursor: 'pointer' }}>
+                            <Clock size={10} />
+                            {g.tee_time ? String(g.tee_time).slice(0, 5) : (ko ? '시간 미정' : 'No time')}
+                          </button>
+                        ) : (
+                          <span className="text-[11px] flex items-center gap-1 px-1.5 py-0.5 rounded"
+                            style={{ color: g.tee_time ? '#93c5fd' : '#6b7280',
+                                     background: g.tee_time ? 'rgba(96,165,250,0.10)' : 'transparent',
+                                     border: `1px ${g.tee_time ? 'solid' : 'dashed'} ${g.tee_time ? 'rgba(96,165,250,0.30)' : 'rgba(107,114,128,0.4)'}` }}>
+                            <Clock size={10} />
+                            {g.tee_time ? String(g.tee_time).slice(0, 5) : (ko ? '시간 미정' : 'No time')}
+                          </span>
+                        )}
+                        {/* 코스 — 회장/총무는 클릭하여 인라인 편집 */}
+                        {editingThis && editingGroupId?.field === 'course_name' ? (
+                          <input
+                            type="text"
+                            value={editGroupValue}
+                            onChange={e => setEditGroupValue(e.target.value)}
+                            onBlur={() => updateGroupField(g.id, 'course_name', editGroupValue)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') updateGroupField(g.id, 'course_name', editGroupValue)
+                              else if (e.key === 'Escape') setEditingGroupId(null)
+                            }}
+                            placeholder={ko ? '예: Luna-Stella' : 'e.g. Luna-Stella'}
+                            disabled={groupOpSaving}
+                            autoFocus
+                            className="text-[11px] px-1.5 py-0.5 rounded outline-none"
+                            style={{ background: 'rgba(167,139,250,0.18)', color: '#fff', border: '1px solid rgba(167,139,250,0.6)', minWidth: 110 }}
+                          />
+                        ) : canManage && !isPastView ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingGroupId({ id: g.id, field: 'course_name' })
+                              setEditGroupValue(g.course_name ?? '')
+                            }}
+                            className="text-[11px] flex items-center gap-1 px-1.5 py-0.5 rounded transition active:scale-95 hover:opacity-80"
+                            style={{ color: g.course_name ? '#c4b5fd' : '#6b7280',
+                                     background: g.course_name ? 'rgba(167,139,250,0.10)' : 'transparent',
+                                     border: `1px ${g.course_name ? 'solid' : 'dashed'} ${g.course_name ? 'rgba(167,139,250,0.30)' : 'rgba(107,114,128,0.4)'}`,
+                                     cursor: 'pointer' }}>
+                            <MapPin size={10} />
+                            {g.course_name || (ko ? '코스 미정' : 'No course')}
+                          </button>
+                        ) : (
+                          <span className="text-[11px] flex items-center gap-1 px-1.5 py-0.5 rounded"
+                            style={{ color: g.course_name ? '#c4b5fd' : '#6b7280',
+                                     background: g.course_name ? 'rgba(167,139,250,0.10)' : 'transparent',
+                                     border: `1px ${g.course_name ? 'solid' : 'dashed'} ${g.course_name ? 'rgba(167,139,250,0.30)' : 'rgba(107,114,128,0.4)'}` }}>
+                            <MapPin size={10} />
+                            {g.course_name || (ko ? '코스 미정' : 'No course')}
+                          </span>
+                        )}
+                        {/* 조 삭제 버튼 — 회장/총무만 */}
+                        {canManage && !isPastView && (
+                          <button
+                            type="button"
+                            onClick={() => deleteGroup(g.id, g.group_number)}
+                            disabled={groupOpSaving}
+                            className="ml-auto text-[11px] flex items-center justify-center w-7 h-7 rounded transition active:scale-90 hover:opacity-80 disabled:opacity-40"
+                            style={{ background: 'rgba(239,68,68,0.10)', color: '#f87171', border: '1px solid rgba(239,68,68,0.35)' }}
+                            title={ko ? `${g.group_number}조 삭제` : `Delete group ${g.group_number}`}>
+                            <Trash2 size={11} />
+                          </button>
+                        )}
                       </div>
                       <div className="flex flex-wrap gap-1.5">
                         {(g.meeting_group_members ?? []).map((m: any, idx: number) => {
@@ -1701,7 +1863,19 @@ export default function MeetingsPage() {
                         })}
                       </div>
                     </div>
-                  ))}
+                  )})}
+                  {/* + 조 추가 버튼 — 회장/총무만 */}
+                  {canManage && !isPastView && (
+                    <button
+                      type="button"
+                      onClick={addGroup}
+                      disabled={groupOpSaving}
+                      className="w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-[0.98] disabled:opacity-50"
+                      style={{ background: 'rgba(34,197,94,0.10)', border: '1px dashed rgba(34,197,94,0.4)', color: '#86efac' }}>
+                      <Plus size={13} />
+                      {ko ? '조 추가' : 'Add group'}
+                    </button>
+                  )}
                 </div>
               )}
             </div>
