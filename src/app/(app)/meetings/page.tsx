@@ -910,10 +910,11 @@ export default function MeetingsPage() {
       pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
     })
 
+    // 컬럼 너비 — 헤더 "Luna-Stella 1조 (TIME : 07:38)" 한 셀에 들어가도록 넉넉히
     ws.columns = [
-      { width: 18 }, { width: 8 }, { width: 2 },
-      { width: 18 }, { width: 8 }, { width: 2 },
-      { width: 18 }, { width: 8 },
+      { width: 22 }, { width: 11 }, { width: 3 },
+      { width: 22 }, { width: 11 }, { width: 3 },
+      { width: 22 }, { width: 11 },
     ]
 
     const clubName = (myClubs.find(c => c.id === currentClubId)?.name) ?? ''
@@ -924,9 +925,9 @@ export default function MeetingsPage() {
     ws.mergeCells('A1:H1')
     const titleCell = ws.getCell('A1')
     titleCell.value = titleText
-    titleCell.font = { name: 'Malgun Gothic', size: 18, bold: true, color: { argb: 'FF7C2D12' } }
+    titleCell.font = { name: 'Malgun Gothic', size: 20, bold: true, color: { argb: 'FF7C2D12' } }
     titleCell.alignment = { horizontal: 'center', vertical: 'middle' }
-    ws.getRow(1).height = 30
+    ws.getRow(1).height = 38
 
     ws.mergeCells('A2:H2'); ws.getCell('A2').value = dateLine
     ws.getCell('A2').font = { name: 'Malgun Gothic', size: 11 }
@@ -951,12 +952,12 @@ export default function MeetingsPage() {
         const cell = ws.getCell(`${colName}${headerRow}`)
         const tee = g.tee_time ? String(g.tee_time).slice(0,5) : '미정'
         cell.value = `${g.course_name ?? ''} ${g.group_number}조  (TIME : ${tee})`
-        cell.font = { name: 'Malgun Gothic', size: 12, bold: true, color: { argb: 'FF000000' } }
-        cell.alignment = { horizontal: 'center', vertical: 'middle' }
+        cell.font = { name: 'Malgun Gothic', size: 13, bold: true, color: { argb: 'FF000000' } }
+        cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: false, shrinkToFit: true }
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFA9D08E' } }
-        cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }
+        cell.border = { top: { style: 'medium' }, left: { style: 'medium' }, bottom: { style: 'medium' }, right: { style: 'medium' } }
       })
-      ws.getRow(headerRow).height = 22
+      ws.getRow(headerRow).height = 28
 
       const labelRow = headerRow + 1
       blockGroups.forEach((_g: any, gi: number) => {
@@ -965,13 +966,13 @@ export default function MeetingsPage() {
         ;[colName, colHc].forEach((col, ci) => {
           const c = ws.getCell(`${col}${labelRow}`)
           c.value = ci === 0 ? '성  명' : '핸디'
-          c.font = { name: 'Malgun Gothic', size: 11, bold: true }
+          c.font = { name: 'Malgun Gothic', size: 12, bold: true }
           c.alignment = { horizontal: 'center', vertical: 'middle' }
           c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDDEBF7' } }
           c.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }
         })
       })
-      ws.getRow(labelRow).height = 20
+      ws.getRow(labelRow).height = 24
 
       const memberStart = labelRow + 1
       const slots = 4
@@ -996,26 +997,36 @@ export default function MeetingsPage() {
               hc = cm?.club_handicap != null ? Number(cm.club_handicap) : ''
             }
           }
-          ws.getCell(`${colName}${koRow}`).value = nameKo
-          ws.getCell(`${colName}${enRow}`).value = nameEn
-          ;[koRow, enRow].forEach(r => {
-            const c = ws.getCell(`${colName}${r}`)
-            c.font = { name: 'Malgun Gothic', size: 11, color: { argb: r === enRow ? 'FF555555' : 'FF000000' } }
-            c.alignment = { horizontal: 'center', vertical: 'middle' }
-            c.border = {
-              top:    { style: r === koRow ? 'thin' : 'dotted' },
-              bottom: { style: r === enRow ? 'thin' : 'dotted' },
-              left:   { style: 'thin' }, right: { style: 'thin' },
-            }
-          })
+          // 한글 셀
+          const koCell = ws.getCell(`${colName}${koRow}`)
+          koCell.value = nameKo
+          koCell.font = { name: 'Malgun Gothic', size: 13, bold: true, color: { argb: 'FF000000' } }
+          koCell.alignment = { horizontal: 'center', vertical: 'middle' }
+          koCell.border = {
+            top:    { style: 'thin' },
+            bottom: { style: 'dotted', color: { argb: 'FFCCCCCC' } },
+            left:   { style: 'thin' }, right: { style: 'thin' },
+          }
+          // 영문 셀 (italic + 회색 + 약간 작게)
+          const enCell = ws.getCell(`${colName}${enRow}`)
+          enCell.value = nameEn
+          enCell.font = { name: 'Calibri', size: 10, italic: true, color: { argb: 'FF6B6B6B' } }
+          enCell.alignment = { horizontal: 'center', vertical: 'middle' }
+          enCell.border = {
+            top:    { style: 'dotted', color: { argb: 'FFCCCCCC' } },
+            bottom: { style: 'thin' },
+            left:   { style: 'thin' }, right: { style: 'thin' },
+          }
+          // 핸디 — 두 행 병합 + 굵은 파랑
           ws.mergeCells(`${colHc}${koRow}:${colHc}${enRow}`)
           const hcCell = ws.getCell(`${colHc}${koRow}`)
           hcCell.value = hc === '' ? '' : hc
-          hcCell.font = { name: 'Malgun Gothic', size: 12, color: { argb: 'FF0070C0' } }
+          hcCell.font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FF0070C0' } }
           hcCell.alignment = { horizontal: 'center', vertical: 'middle' }
           hcCell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } }
-          ws.getRow(koRow).height = 18
-          ws.getRow(enRow).height = 18
+          // 행 높이 충분히 — 한글/영문 명확히 분리
+          ws.getRow(koRow).height = 22
+          ws.getRow(enRow).height = 20
         })
       }
 
