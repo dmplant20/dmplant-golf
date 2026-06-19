@@ -64,6 +64,7 @@ const ROLE_COLOR: Record<string, string> = {
 export default function DashboardPage() {
   const { currentClubId, user, lang, myClubs } = useAuthStore()
   const ko     = lang === 'ko'
+  const currentClubName = myClubs.find(c => c.id === currentClubId)?.name ?? ''
   const myRole = myClubs.find(c => c.id === currentClubId)?.role ?? 'member'
   const isAdmin = isSuperAdmin(user)
 
@@ -137,25 +138,30 @@ export default function DashboardPage() {
       else                           next.absent++
       return next
     })
+    let ok = false
     try {
       const res = await fetch('/api/meetings/rsvp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ club_id: currentClubId, year: nextMtg.year, month: nextMtg.month, status }),
       })
-      if (!res.ok) {
+      if (res.ok) {
+        ok = true
+      } else {
         const data = await res.json().catch(() => ({}))
         setRsvpError(data.error || (ko ? '저장 실패' : 'Save failed'))
         setMyRsvp(prev)
         load()  // 서버 진실로 재동기화
       }
     } catch {
-      setRsvpError(ko ? '네트워크 오류' : 'Network error')
+      setRsvpError(ko ? '네트워크 오류 — 다시 시도해주세요' : 'Network error — please retry')
       setMyRsvp(prev)
     } finally {
       setRsvpSubmitting(false)
-      setRsvpPopup(false)   // 응답 완료 → 팝업 영구 닫힘 (myRsvp 가 set 되어 다시 안 뜸)
-      setTimeout(() => setRsvpError(null), 3500)
+      // ⭐ 핵심 수정: 성공 시에만 popup 영구 닫음. 실패 시 popup 유지 → 다시 시도 가능
+      // (이전엔 실패에도 popup 닫혀서 사용자가 응답 성공한 줄 알고 다음 방문에 다시 떠서 무한 loop)
+      if (ok) setRsvpPopup(false)
+      setTimeout(() => setRsvpError(null), 5000)
     }
   }
 
@@ -333,7 +339,9 @@ export default function DashboardPage() {
                 <CalendarDays size={26} style={{ color: 'var(--gold-l, #c9a84c)' }} />
               </div>
               <h2 className="text-base font-bold leading-snug" style={{ color: 'var(--text)' }}>
-                {ko ? `${nextMtg.month}월 정기모임 참석 응답` : `RSVP for ${nextMtg.date.toLocaleDateString('en-US',{month:'long'})} Meeting`}
+                {ko
+                  ? <><span style={{ color: 'var(--gold-l, #c9a84c)' }}>{currentClubName}</span>{' '}{nextMtg.month}월 정기모임 참석 응답</>
+                  : <><span style={{ color: 'var(--gold-l, #c9a84c)' }}>{currentClubName}</span>{' · '}RSVP for {nextMtg.date.toLocaleDateString('en-US',{month:'long'})} Meeting</>}
               </h2>
               <p className="text-[11px] mt-1" style={{ color: 'var(--text-3)' }}>
                 {ko
