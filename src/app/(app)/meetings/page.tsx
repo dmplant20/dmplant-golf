@@ -289,7 +289,7 @@ export default function MeetingsPage() {
         .select('user_id, status, users(full_name, full_name_en, name_abbr)')
         .eq('club_id', currentClubId).eq('year', year).eq('month', month),
       supabase.from('meeting_groups')
-        .select('group_number, tee_time, course_name, meeting_group_members(user_id, guest_id, users(full_name, full_name_en, name_abbr), meeting_guests(full_name, full_name_en, handicap))')
+        .select('id, group_number, tee_time, course_name, meeting_group_members(user_id, guest_id, users(full_name, full_name_en, name_abbr), meeting_guests(full_name, full_name_en, handicap))')
         .eq('club_id', currentClubId).eq('year', year).eq('month', month).order('group_number'),
       supabase.from('round_scores')
         .select('user_id, gross_score, handicap_used, net_score, course_name, users(full_name, full_name_en, name_abbr)')
