@@ -901,60 +901,135 @@ export default function MeetingsPage() {
   }
 
   // ── export groups to CSV / Excel ─────────────────────────────────────────
-  function exportGroupsCSV() {
+  // ── 조 편성 엑셀 내보내기 — 회장님 수기 양식과 동일한 가로 3조 블록 + 색상 + 셀 크기 ─
+  async function exportGroupsCSV() {
     if (!groups.length || !meeting) return
-    const BOM = '\uFEFF'
-    const headers = ['티오프', '코스', '한글 이름', '영문 이름', '핸디', '결과', '비고']
-    const rows: string[][] = []
-    const sorted = [...groups].sort((a: any, b: any) => a.group_number - b.group_number)
-    sorted.forEach((g: any) => {
-      const tee = g.tee_time ? String(g.tee_time).slice(0, 5) : ''
-      const tDisplay = tee ? (() => {
-        const [hh, mm] = tee.split(':')
-        return `${parseInt(hh,10)}시 ${mm}분`
-      })() : `${g.group_number}조`
-      const course = g.course_name ?? ''
-      const mems = (g.meeting_group_members ?? [])
-      mems.forEach((m: any, idx: number) => {
-        let nameKo = '', nameEn = '', hc: number | null = null, isGuest = false
-        if (m.guest_id) {
-          isGuest = true
-          const gst = Array.isArray(m.meeting_guests) ? m.meeting_guests[0] : m.meeting_guests
-          nameKo = gst?.full_name ?? ''
-          nameEn = gst?.full_name_en ?? gst?.full_name ?? ''
-          hc = gst?.handicap ?? null
-        } else {
-          nameKo = m.users?.full_name ?? ''
-          nameEn = m.users?.full_name_en ?? m.users?.full_name ?? ''
-          hc = clubMembers.find(cm => cm.user_id === m.user_id)?.club_handicap ?? null
-        }
-        rows.push([
-          idx === 0 ? tDisplay : '',
-          idx === 0 ? course : '',
-          nameKo + (isGuest ? '(G)' : ''),
-          nameEn + (isGuest ? '(G)' : ''),
-          hc != null ? String(hc) : '',
-          '-',
-          '',
-        ])
-      })
-      rows.push(['', '', '', '', '', '', ''])  // 조 사이 빈 줄
+    const ExcelJS = (await import('exceljs')).default
+    const wb = new ExcelJS.Workbook()
+    const ws = wb.addWorksheet(`${meeting.month}월 조편성`, {
+      pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
     })
-    const title = `${meeting.year}년 ${meeting.month}월 모임`
-    const venue = pattern?.venue ? ` (${pattern.venue})` : ''
-    const csv = BOM
-      + `"${title}${venue}"\n\n`
-      + [headers, ...rows]
-        .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-        .join('\n')
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url  = URL.createObjectURL(blob)
-    const a    = document.createElement('a')
-    a.href     = url
-    a.download = `조편성_${meeting.year}년${meeting.month}월.csv`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
+
+    ws.columns = [
+      { width: 18 }, { width: 8 }, { width: 2 },
+      { width: 18 }, { width: 8 }, { width: 2 },
+      { width: 18 }, { width: 8 },
+    ]
+
+    const clubName = (myClubs.find(c => c.id === currentClubId)?.name) ?? ''
+    const titleText = `${clubName} ${meeting.month}월 정기모임 (Member of Good Friendship)`
+    const dateLine = `일시 : ${meeting.year}년 ${String(meeting.month).padStart(2,'0')}월${String(meeting.date.getDate()).padStart(2,'0')}일 (${['일','월','화','수','목','금','토'][meeting.date.getDay()]}요일)`
+    const venueLine = `장소 : ${pattern?.venue ?? '미정'}`
+
+    ws.mergeCells('A1:H1')
+    const titleCell = ws.getCell('A1')
+    titleCell.value = titleText
+    titleCell.font = { name: 'Malgun Gothic', size: 18, bold: true, color: { argb: 'FF7C2D12' } }
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' }
+    ws.getRow(1).height = 30
+
+    ws.mergeCells('A2:H2'); ws.getCell('A2').value = dateLine
+    ws.getCell('A2').font = { name: 'Malgun Gothic', size: 11 }
+    ws.mergeCells('A3:H3'); ws.getCell('A3').value = venueLine
+    ws.getCell('A3').font = { name: 'Malgun Gothic', size: 11 }
+    ws.mergeCells('A4:D4'); ws.getCell('A4').value = 'Near Pin :'
+    ws.mergeCells('E4:H4'); ws.getCell('E4').value = 'Longest Pin :'
+    ws.getCell('A4').font = { name: 'Malgun Gothic', size: 11 }
+    ws.getCell('E4').font = { name: 'Malgun Gothic', size: 11 }
+    ws.getRow(5).height = 6
+
+    const sortedX = [...groups].sort((a: any, b: any) => a.group_number - b.group_number)
+    let rowCursor = 6
+    for (let blockStart = 0; blockStart < sortedX.length; blockStart += 3) {
+      const blockGroups = sortedX.slice(blockStart, blockStart + 3)
+
+      const headerRow = rowCursor
+      blockGroups.forEach((g: any, gi: number) => {
+        const colName = gi === 0 ? 'A' : gi === 1 ? 'D' : 'G'
+        const colHc   = gi === 0 ? 'B' : gi === 1 ? 'E' : 'H'
+        ws.mergeCells(`${colName}${headerRow}:${colHc}${headerRow}`)
+        const cell = ws.getCell(`${colName}${headerRow}`)
+        const tee = g.tee_time ? String(g.tee_time).slice(0,5) : '미정'
+        cell.value = `${g.course_name ?? ''} ${g.group_number}조  (TIME : ${tee})`
+        cell.font = { name: 'Malgun Gothic', size: 12, bold: true, color: { argb: 'FF000000' } }
+        cell.alignment = { horizontal: 'center', vertical: 'middle' }
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFA9D08E' } }
+        cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }
+      })
+      ws.getRow(headerRow).height = 22
+
+      const labelRow = headerRow + 1
+      blockGroups.forEach((_g: any, gi: number) => {
+        const colName = gi === 0 ? 'A' : gi === 1 ? 'D' : 'G'
+        const colHc   = gi === 0 ? 'B' : gi === 1 ? 'E' : 'H'
+        ;[colName, colHc].forEach((col, ci) => {
+          const c = ws.getCell(`${col}${labelRow}`)
+          c.value = ci === 0 ? '성  명' : '핸디'
+          c.font = { name: 'Malgun Gothic', size: 11, bold: true }
+          c.alignment = { horizontal: 'center', vertical: 'middle' }
+          c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDDEBF7' } }
+          c.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }
+        })
+      })
+      ws.getRow(labelRow).height = 20
+
+      const memberStart = labelRow + 1
+      const slots = 4
+      for (let slot = 0; slot < slots; slot++) {
+        const koRow = memberStart + slot * 2
+        const enRow = koRow + 1
+        blockGroups.forEach((g: any, gi: number) => {
+          const colName = gi === 0 ? 'A' : gi === 1 ? 'D' : 'G'
+          const colHc   = gi === 0 ? 'B' : gi === 1 ? 'E' : 'H'
+          const mem = (g.meeting_group_members ?? [])[slot]
+          let nameKo = '', nameEn = '', hc: number | string = ''
+          if (mem) {
+            if (mem.guest_id) {
+              const gst = Array.isArray(mem.meeting_guests) ? mem.meeting_guests[0] : mem.meeting_guests
+              nameKo = (gst?.full_name ?? '') + '(G)'
+              nameEn = gst?.full_name_en ?? gst?.full_name ?? ''
+              hc = gst?.handicap != null ? Number(gst.handicap) : ''
+            } else {
+              nameKo = mem.users?.full_name ?? ''
+              nameEn = mem.users?.full_name_en ?? ''
+              const cm = clubMembers.find((c: any) => c.user_id === mem.user_id)
+              hc = cm?.club_handicap != null ? Number(cm.club_handicap) : ''
+            }
+          }
+          ws.getCell(`${colName}${koRow}`).value = nameKo
+          ws.getCell(`${colName}${enRow}`).value = nameEn
+          ;[koRow, enRow].forEach(r => {
+            const c = ws.getCell(`${colName}${r}`)
+            c.font = { name: 'Malgun Gothic', size: 11, color: { argb: r === enRow ? 'FF555555' : 'FF000000' } }
+            c.alignment = { horizontal: 'center', vertical: 'middle' }
+            c.border = {
+              top:    { style: r === koRow ? 'thin' : 'dotted' },
+              bottom: { style: r === enRow ? 'thin' : 'dotted' },
+              left:   { style: 'thin' }, right: { style: 'thin' },
+            }
+          })
+          ws.mergeCells(`${colHc}${koRow}:${colHc}${enRow}`)
+          const hcCell = ws.getCell(`${colHc}${koRow}`)
+          hcCell.value = hc === '' ? '' : hc
+          hcCell.font = { name: 'Malgun Gothic', size: 12, color: { argb: 'FF0070C0' } }
+          hcCell.alignment = { horizontal: 'center', vertical: 'middle' }
+          hcCell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } }
+          ws.getRow(koRow).height = 18
+          ws.getRow(enRow).height = 18
+        })
+      }
+
+      rowCursor = memberStart + slots * 2 + 1
+      ws.getRow(rowCursor - 1).height = 8
+    }
+
+    const buf = await wb.xlsx.writeBuffer()
+    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `조편성_${meeting.year}년${meeting.month}월.xlsx`
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
     URL.revokeObjectURL(url)
   }
 
