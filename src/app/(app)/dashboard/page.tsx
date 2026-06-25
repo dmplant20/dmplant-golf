@@ -109,17 +109,25 @@ export default function DashboardPage() {
   // 현재 모임의 고유 키 — 응답/임시닫기 추적용
   const currentMeetingKey = nextMtg ? `${currentClubId}-${nextMtg.year}-${nextMtg.month}` : null
 
-  // 팝업 노출 조건:
-  //   1) 다음 모임이 D-14 ~ D-0 사이 (참석 응답 창 열림)
-  //   2) 본인 RSVP 가 아직 null (응답 안 함)
+  // localStorage 키 — 응답 성공 시 영구 기록 (race condition 으로 myRsvp 가 잠시
+  // null 로 돌아와도 popup 재출현 봉인)
+  const responseSealKey = currentMeetingKey ? `isgolf-rsvp-sealed-${currentMeetingKey}` : null
+
+  // 팝업 노출 조건 (강화):
+  //   1) 다음 모임이 D-14 ~ D-0 사이
+  //   2) 본인 RSVP 가 아직 null
   //   3) 이번 세션에 X 로 닫지 않음
-  // → 응답하면 myRsvp 가 set 되어 자동으로 영구 사라짐
+  //   4) ⭐ localStorage 에 이 모임 응답 봉인 표시 없음 (성공한 응답은 client 가 영구 기억)
   useEffect(() => {
     if (!nextMtg || !rsvpOpen) { setRsvpPopup(false); return }
-    if (myRsvp !== null) { setRsvpPopup(false); return }  // 이미 응답함 — 영구 숨김
+    if (myRsvp !== null) { setRsvpPopup(false); return }
     if (popupDismissedKey === currentMeetingKey) { setRsvpPopup(false); return }
+    // localStorage 봉인 확인 — 한 번이라도 API 성공한 응답이면 다시 안 뜸
+    if (typeof window !== 'undefined' && responseSealKey) {
+      try { if (localStorage.getItem(responseSealKey)) { setRsvpPopup(false); return } } catch {}
+    }
     setRsvpPopup(true)
-  }, [nextMtg?.year, nextMtg?.month, rsvpOpen, myRsvp, popupDismissedKey, currentMeetingKey])
+  }, [nextMtg?.year, nextMtg?.month, rsvpOpen, myRsvp, popupDismissedKey, currentMeetingKey, responseSealKey])
 
   async function submitRsvp(status: 'attending' | 'absent') {
     if (!nextMtg || !user || !currentClubId || rsvpSubmitting) return
@@ -158,12 +166,35 @@ export default function DashboardPage() {
       setMyRsvp(prev)
     } finally {
       setRsvpSubmitting(false)
-      // ⭐ 핵심 수정: 성공 시에만 popup 영구 닫음. 실패 시 popup 유지 → 다시 시도 가능
-      // (이전엔 실패에도 popup 닫혀서 사용자가 응답 성공한 줄 알고 다음 방문에 다시 떠서 무한 loop)
-      if (ok) setRsvpPopup(false)
+      // ⭐ 핵심 수정: 성공 시에만 popup 영구 닫음 + localStorage 봉인
+      if (ok) {
+        setRsvpPopup(false)
+        // 봉인 — 새로고침/visibility change/load() race 어떤 경우에도 다시 안 뜨도록
+        if (typeof window !== 'undefined' && responseSealKey) {
+          try { localStorage.setItem(responseSealKey, String(Date.now())) } catch {}
+        }
+        // 명시적 load() — DB 상태로 myRsvp 재동기화 (optimistic 보다 진실)
+        load()
+      }
       setTimeout(() => setRsvpError(null), 5000)
     }
   }
+
+  // ── 봉인 정리: nextMtg 가 새로운 달로 넘어가면 옛 봉인 키들은 삭제 ──────
+  // (예: 6월 응답 완료 후 7월 모임 popup 은 정상적으로 떠야 함)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const keep = responseSealKey
+      Object.keys(localStorage).forEach(k => {
+        if (k.startsWith('isgolf-rsvp-sealed-') && k !== keep) {
+          // 30일 이상 지난 봉인 청소
+          const v = parseInt(localStorage.getItem(k) ?? '0', 10)
+          if (!v || (Date.now() - v) > 30 * 86400000) localStorage.removeItem(k)
+        }
+      })
+    } catch {}
+  }, [responseSealKey])
 
   useEffect(() => {
     if (!currentClubId || !user) return
