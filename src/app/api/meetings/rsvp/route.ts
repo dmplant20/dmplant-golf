@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
+import { isSuperAdmin } from '@/lib/superAdmin'
 
 async function getAuthUser() {
   const cookieStore = await cookies()
@@ -31,16 +32,18 @@ export async function POST(req: NextRequest) {
   if (!['attending', 'absent'].includes(status)) return NextResponse.json({ error: '잘못된 status' }, { status: 400 })
 
   const db = getDb()
+  const admin = isSuperAdmin(user)
 
-  // Verify caller membership
-  const { data: mem } = await db.from('club_memberships').select('id, role').eq('club_id', club_id).eq('user_id', user.id).eq('status', 'approved').single()
-  if (!mem) return NextResponse.json({ error: '클럽 멤버가 아닙니다' }, { status: 403 })
+  // Verify caller membership (super admin 은 클럽 비멤버여도 통과)
+  const { data: mem } = await db.from('club_memberships').select('id, role').eq('club_id', club_id).eq('user_id', user.id).eq('status', 'approved').maybeSingle()
+  if (!mem && !admin) return NextResponse.json({ error: '클럽 멤버가 아닙니다' }, { status: 403 })
 
-  // Determine effective user_id — officers can RSVP on behalf of another member
+  // Determine effective user_id — officers / super admin can RSVP on behalf
   let effectiveUserId = user.id
   if (target_user_id && target_user_id !== user.id) {
-    if (!['president', 'secretary'].includes((mem as any).role)) {
-      return NextResponse.json({ error: '대리 응답은 회장·총무만 가능합니다' }, { status: 403 })
+    const isOfficer = mem && ['president', 'secretary'].includes((mem as any).role)
+    if (!isOfficer && !admin) {
+      return NextResponse.json({ error: '대리 응답은 회장·총무·관리자만 가능합니다' }, { status: 403 })
     }
     // Verify target is an approved member of the same club
     const { data: tgt } = await db.from('club_memberships').select('id')
@@ -66,15 +69,17 @@ export async function DELETE(req: NextRequest) {
   if (!club_id || !year || !month) return NextResponse.json({ error: '필수값 누락' }, { status: 400 })
 
   const db = getDb()
+  const admin = isSuperAdmin(user)
 
-  // Verify caller membership
-  const { data: mem } = await db.from('club_memberships').select('id, role').eq('club_id', club_id).eq('user_id', user.id).eq('status', 'approved').single()
-  if (!mem) return NextResponse.json({ error: '클럽 멤버가 아닙니다' }, { status: 403 })
+  // Verify caller membership (super admin 은 클럽 비멤버여도 통과)
+  const { data: mem } = await db.from('club_memberships').select('id, role').eq('club_id', club_id).eq('user_id', user.id).eq('status', 'approved').maybeSingle()
+  if (!mem && !admin) return NextResponse.json({ error: '클럽 멤버가 아닙니다' }, { status: 403 })
 
   let effectiveUserId = user.id
   if (target_user_id && target_user_id !== user.id) {
-    if (!['president', 'secretary'].includes((mem as any).role)) {
-      return NextResponse.json({ error: '대리 응답은 회장·총무만 가능합니다' }, { status: 403 })
+    const isOfficer = mem && ['president', 'secretary'].includes((mem as any).role)
+    if (!isOfficer && !admin) {
+      return NextResponse.json({ error: '대리 응답은 회장·총무·관리자만 가능합니다' }, { status: 403 })
     }
     effectiveUserId = target_user_id
   }
