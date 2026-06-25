@@ -159,6 +159,8 @@ export default function MeetingsPage() {
   const [showAnalysis,       setShowAnalysis]       = useState(false)
   const [showAttendingModal, setShowAttendingModal] = useState(false)
   const [rsvpError,          setRsvpError]          = useState<string | null>(null)
+  // 응답 변경 성공 시 시각적 피드백 (회원/관리자 둘 다)
+  const [rsvpSuccess,        setRsvpSuccess]        = useState<string | null>(null)
   // 회장·총무가 미응답 회원의 응답을 대신 입력할 때 — 타겟 회원
   const [proxyTarget,        setProxyTarget]        = useState<any | null>(null)
   const [proxySaving,        setProxySaving]        = useState(false)
@@ -511,8 +513,18 @@ export default function MeetingsPage() {
     if (!ok) {
       setRsvpError((ko ? '저장 실패: ' : 'Save failed: ') + errBody.slice(0, 120))
       setTimeout(() => setRsvpError(null), 5000)
+    } else {
+      // 성공 시각적 피드백 — 대리 응답이 적용됐는지 회장님이 확신 못 하는 문제 해결
+      const targetName = isSelf
+        ? (ko ? '본인' : 'self')
+        : (clubMembers.find(m => m.user_id === targetUserId)?.users?.full_name ?? '회원')
+      const statusLabel = newStatus === 'attending' ? '참석'
+                        : newStatus === 'absent'    ? '불참'
+                        :                              '미응답'
+      setRsvpSuccess(ko ? `✓ ${targetName} → ${statusLabel} 적용됨` : `✓ ${targetName} → ${statusLabel}`)
+      setTimeout(() => setRsvpSuccess(null), 3000)
     }
-    // 서버 진실로 재동기화 (실패 시 optimistic 롤백, 성공 시 캐시 갱신)
+    // 서버 진실로 재동기화
     await loadRsvp(meeting.year, meeting.month)
     return { ok }
   }
@@ -1503,6 +1515,13 @@ export default function MeetingsPage() {
                 <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
                   style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.25)', color: '#f87171' }}>
                   <span>⚠</span>{rsvpError}
+                </div>
+              )}
+              {/* 인라인 성공 토스트 — 대리 응답 적용 확인 */}
+              {rsvpSuccess && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs animate-fade-in"
+                  style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.4)', color: '#86efac' }}>
+                  {rsvpSuccess}
                 </div>
               )}
 
