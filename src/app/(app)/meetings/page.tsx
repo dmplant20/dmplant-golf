@@ -1225,38 +1225,110 @@ export default function MeetingsPage() {
   async function saveScores() {
     if (!meeting || !currentClubId) return
     setSavingScores(true)
+    setRsvpError(null)
+    setRsvpSuccess(null)
     const supabase = createClient()
     const { data: { user: au } } = await supabase.auth.getUser()
-    // fetch club handicaps for all attending members
-    const { data: mems } = await supabase.from('club_memberships')
-      .select('user_id, club_handicap').eq('club_id', currentClubId)
+    if (!au) {
+      setRsvpError(ko ? '인증 필요 — 다시 로그인하세요' : 'Auth required')
+      setSavingScores(false)
+      setTimeout(() => setRsvpError(null), 4000)
+      return
+    }
+
+    // 클럽 핸디 + 벌금 룰 조회 (per_stroke / max / currency)
+    const [{ data: mems }, { data: clubRow }] = await Promise.all([
+      supabase.from('club_memberships').select('user_id, club_handicap').eq('club_id', currentClubId),
+      supabase.from('clubs').select('fine_handicap_per_stroke, fine_handicap_max, currency').eq('id', currentClubId).single(),
+    ])
     const hcMap: Record<string, number | null> = {}
     mems?.forEach(m => { hcMap[m.user_id] = m.club_handicap })
 
-    // find course par from selected venue
     const coursePar = courses.find(c => c.name === meeting.venue)?.par ?? 72
+    const perStroke = Number(clubRow?.fine_handicap_per_stroke ?? 0) || 0
+    const fineMax   = Number(clubRow?.fine_handicap_max ?? 0) || 0
 
-    for (const [userId, grossStr] of Object.entries(scoreInput)) {
-      const gross = parseInt(grossStr)
-      if (isNaN(gross) || gross <= 0) continue
-      const hc = hcMap[userId] ?? null
-      await supabase.from('round_scores').upsert({
-        club_id:      currentClubId,
-        user_id:      userId,
-        year:         meeting.year,
-        month:        meeting.month,
-        gross_score:  gross,
-        handicap_used: hc,
-        net_score:    hc != null ? gross - hc : null,
-        course_name:  meeting.venue ?? null,
-        course_par:   coursePar,
-        played_at:    meeting.date.toISOString().split('T')[0],
-        recorded_by:  au!.id,
-      }, { onConflict: 'club_id,user_id,year,month' })
+    const entries = Object.entries(scoreInput).filter(([, g]) => {
+      const n = parseInt(g); return !isNaN(n) && n > 0
+    })
+    if (entries.length === 0) {
+      setRsvpError(ko ? '입력된 스코어가 없습니다' : 'No scores entered')
+      setSavingScores(false)
+      setTimeout(() => setRsvpError(null), 4000)
+      return
     }
 
-    // if canManage, update club_handicap recommendations after year-end (12+ rounds)
+    let saved = 0
+    let failed = 0
+    const errors: string[] = []
+    // 자동 벌금 — net_score 가 par 보다 위인 만큼 per_stroke 곱하기, max 캡
+    const fineRows: any[] = []
+    const memberNames: Record<string, string> = {}
+    clubMembers.forEach(m => { memberNames[m.user_id] = m.users?.full_name ?? '' })
+
+    for (const [userId, grossStr] of entries) {
+      const gross = parseInt(grossStr)
+      const hc    = hcMap[userId] ?? null
+      const net   = hc != null ? gross - hc : null
+      const { error: upErr } = await supabase.from('round_scores').upsert({
+        club_id:       currentClubId,
+        user_id:       userId,
+        year:          meeting.year,
+        month:         meeting.month,
+        gross_score:   gross,
+        handicap_used: hc,
+        net_score:     net,
+        course_name:   meeting.venue ?? null,
+        course_par:    coursePar,
+        played_at:     meeting.date.toISOString().split('T')[0],
+        recorded_by:   au.id,
+      }, { onConflict: 'club_id,user_id,year,month' })
+      if (upErr) {
+        failed++
+        errors.push(`${memberNames[userId] ?? userId.slice(0,8)}: ${upErr.message}`)
+        continue
+      }
+      saved++
+
+      // 자동 벌금 계산 — 룰이 설정된 클럽만 (perStroke > 0)
+      if (perStroke > 0 && net != null && net > coursePar) {
+        const overPar = net - coursePar
+        let amount = overPar * perStroke
+        if (fineMax > 0 && amount > fineMax) amount = fineMax
+        fineRows.push({
+          club_id: currentClubId,
+          member_id: userId,
+          type: 'fine',
+          amount,
+          description: `${meeting.year}-${meeting.month} 월례회 핸디 초과 (over par ${overPar}타)`,
+          transaction_date: meeting.date.toISOString().split('T')[0],
+          created_by: au.id,
+        })
+      }
+    }
+
+    // 벌금 거래 일괄 등록 — 같은 (club, member, date, type=fine) 중복 방지 위해 기존 삭제 후 INSERT
+    if (fineRows.length > 0) {
+      const dateStr = meeting.date.toISOString().split('T')[0]
+      await supabase.from('finance_transactions').delete()
+        .eq('club_id', currentClubId).eq('type', 'fine').eq('transaction_date', dateStr)
+        .ilike('description', `${meeting.year}-${meeting.month} 월례회%`)
+      const { error: fineErr } = await supabase.from('finance_transactions').insert(fineRows)
+      if (fineErr) {
+        errors.push(`벌금 자동 등록 실패: ${fineErr.message}`)
+      }
+    }
+
     setSavingScores(false)
+    if (failed > 0) {
+      setRsvpError((ko ? `${failed}건 저장 실패: ` : `${failed} failed: `) + errors.slice(0,2).join(' / '))
+      setTimeout(() => setRsvpError(null), 8000)
+    }
+    if (saved > 0) {
+      const fineMsg = fineRows.length > 0 ? ` · 벌금 자동 ${fineRows.length}건 등록` : ''
+      setRsvpSuccess(ko ? `✓ 스코어 ${saved}건 저장${fineMsg}` : `✓ ${saved} scores saved${fineMsg}`)
+      setTimeout(() => setRsvpSuccess(null), 5000)
+    }
     await loadRsvp(meeting.year, meeting.month)
   }
 
