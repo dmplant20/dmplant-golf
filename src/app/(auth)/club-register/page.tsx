@@ -51,7 +51,7 @@ export default function ClubRegisterPage() {
         </div>
 
         <h2 className="text-xl font-semibold text-white mb-2">{ko ? '새 클럽 등록' : 'Register New Club'}</h2>
-        <p className="text-gray-500 text-xs mb-5">
+        <p className="text-gray-400 text-xs mb-5">
           {ko
             ? '회비 금액은 로그인 후 클럽 설정에서 회장/총무가 지정할 수 있습니다.'
             : 'Fee amounts can be set by president/secretary in Club Settings after login.'}
@@ -97,7 +97,7 @@ export default function ClubRegisterPage() {
           </button>
         </form>
 
-        <p className="mt-4 text-center text-xs text-gray-600">
+        <p className="mt-4 text-center text-xs text-gray-400">
           {ko ? '클럽을 등록하면 자동으로 회장으로 등록됩니다' : 'You will be registered as president upon club creation'}
         </p>
       </div>

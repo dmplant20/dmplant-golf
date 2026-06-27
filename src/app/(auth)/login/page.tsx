@@ -1,10 +1,31 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores/authStore'
 import { Eye, EyeOff } from 'lucide-react'
+
+// 자동 채우기 — 로컬 스토리지 키 (개인 기기 PWA 가정)
+// 비밀번호는 btoa 로 미세 난독화. 진짜 암호화는 아니지만, 회원이 같은 기기에서
+// 매번 타이핑하지 않게 하려는 목적. 공용 기기에서는 위험할 수 있음을 사용자가 인지.
+const LS_EMAIL = 'isgolf-saved-email'
+const LS_PW    = 'isgolf-saved-pw'
+
+function readSaved() {
+  if (typeof window === 'undefined') return { email: '', password: '' }
+  try {
+    const e = localStorage.getItem(LS_EMAIL) ?? ''
+    const p = localStorage.getItem(LS_PW)
+    return { email: e, password: p ? atob(p) : '' }
+  } catch { return { email: '', password: '' } }
+}
+function saveCreds(email: string, password: string) {
+  try {
+    if (email) localStorage.setItem(LS_EMAIL, email)
+    if (password) localStorage.setItem(LS_PW, btoa(password))
+  } catch {}
+}
 
 export default function LoginPage() {
   const router = useRouter()
@@ -16,16 +37,67 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const ko = lang === 'ko'
 
+  // 마운트 시 저장된 이메일·비밀번호 자동 로드
+  useEffect(() => {
+    const saved = readSaved()
+    if (saved.email) setEmail(saved.email)
+    if (saved.password) setPassword(saved.password)
+  }, [])
+
+  // 이미 로그인된 세션 있으면 대시보드로 자동 이동 (불필요한 로그인 화면 노출 방지)
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) router.replace('/dashboard')
+    })
+  }, [router])
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     setError('')
     const supabase = createClient()
+
+    // 비밀번호가 비어있으면 → 첫 로그인 시도 (관리자 사전 등록 회원만 통과)
+    if (!password) {
+      try {
+        const res = await fetch('/api/auth/first-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          setError(data.already_set
+            ? (ko ? '이미 비밀번호가 설정된 계정입니다. 비밀번호를 입력해 주세요.' : 'Password already set. Please enter your password.')
+            : (data.error ?? (ko ? '첫 로그인 실패' : 'First-login failed')))
+          setLoading(false); return
+        }
+        // 받은 hashed_token 으로 OTP 검증 → 세션 획득
+        const { error: otpErr } = await supabase.auth.verifyOtp({
+          token_hash: data.token_hash, type: 'magiclink',
+        })
+        if (otpErr) {
+          setError(ko ? '인증 실패: ' + otpErr.message : 'Verification failed: ' + otpErr.message)
+          setLoading(false); return
+        }
+        saveCreds(email, '')  // 첫 로그인은 비밀번호 없으니 이메일만 저장
+        router.push('/dashboard')
+        return
+      } catch (err: any) {
+        setError(ko ? '오류: ' + (err?.message ?? '') : 'Error: ' + (err?.message ?? ''))
+        setLoading(false); return
+      }
+    }
+
+    // 비밀번호가 있으면 → 일반 로그인
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) {
       setError(ko ? '이메일 또는 비밀번호가 올바르지 않습니다.' : 'Invalid email or password.')
       setLoading(false)
     } else {
+      // 다음 로그인부터 자동 채우기 — 같은 기기에서는 클릭 한 번으로 입장
+      saveCreds(email, password)
       router.push('/dashboard')
     }
   }
@@ -64,7 +136,7 @@ export default function LoginPage() {
             <span className="text-green-400"> GOLF</span>
           </h1>
           <p className="text-gray-400 text-sm mt-1.5">
-            {ko ? '호치민 한인 골프 클럽 관리' : 'HCMC Korean Golf Club Management'}
+            {ko ? '골프 모임 관리' : 'Golf Club Management'}
           </p>
         </div>
 
@@ -102,15 +174,14 @@ export default function LoginPage() {
                     type={showPw ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    required
                     autoComplete="current-password"
                     className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 pr-12 text-white text-sm focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500/30 transition placeholder-gray-600"
-                    placeholder="••••••••"
+                    placeholder={ko ? '처음이면 비워두세요' : 'Leave blank if first login'}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPw(v => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300 transition"
                   >
                     {showPw ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
@@ -125,19 +196,24 @@ export default function LoginPage() {
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || !email}
                 className="w-full bg-green-600 hover:bg-green-500 active:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition text-sm shadow-lg shadow-green-900/30"
               >
                 {loading
                   ? (ko ? '로그인 중...' : 'Signing in...')
                   : (ko ? '로그인' : 'Sign In')}
               </button>
+              <p className="text-[11px] text-center" style={{ color: '#86efac' }}>
+                {ko
+                  ? '✨ 처음이면 비밀번호 비워두고 로그인 → 화면에서 비밀번호 등록'
+                  : '✨ First time? Leave password blank → set password on screen'}
+              </p>
             </form>
 
             <div className="mt-4 text-right">
               <Link
                 href="/forgot-password"
-                className="text-xs text-gray-500 hover:text-green-400 transition"
+                className="text-xs text-gray-400 hover:text-green-400 transition"
               >
                 {ko ? '비밀번호를 잊으셨나요?' : 'Forgot password?'}
               </Link>
@@ -146,7 +222,7 @@ export default function LoginPage() {
 
           {/* 회원가입 링크 */}
           <div className="mt-5 text-center space-y-2">
-            <p className="text-gray-500 text-sm">
+            <p className="text-gray-400 text-sm">
               {ko ? '계정이 없으신가요?' : "Don't have an account?"}
               {' '}
               <Link href="/register" className="text-green-400 font-medium hover:text-green-300 transition">
@@ -154,17 +230,25 @@ export default function LoginPage() {
               </Link>
             </p>
             <p>
-              <Link href="/club-register" className="text-xs text-gray-600 hover:text-green-500 transition">
+              <Link href="/club-register" className="text-xs text-gray-400 hover:text-green-500 transition">
                 {ko ? '+ 새 클럽 등록' : '+ Register New Club'}
               </Link>
             </p>
+          </div>
+
+          {/* 앱 설치 안내 */}
+          <div className="mt-4 text-center">
+            <Link href="/install"
+              className="inline-flex items-center gap-1.5 text-xs text-green-700 hover:text-green-500 transition border border-green-900/60 rounded-full px-3 py-1.5">
+              📲 {ko ? '앱 설치 방법' : 'Install App'}
+            </Link>
           </div>
         </div>
       </div>
 
       {/* 하단 */}
       <div className="relative z-10 pb-6 text-center">
-        <p className="text-gray-700 text-xs">Inter Stellar GOLF v1.0.0</p>
+        <p className="text-gray-400 text-xs">Inter Stellar GOLF v1.0.0</p>
       </div>
     </div>
   )

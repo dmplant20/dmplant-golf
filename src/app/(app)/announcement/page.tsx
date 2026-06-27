@@ -1,166 +1,1594 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores/authStore'
-import { Bell, Plus, Calendar, Heart, Users, X } from 'lucide-react'
+import {
+  Bell, Plus, X, ChevronDown, ChevronUp,
+  MapPin, Phone, FileText, Lock, Trash2, Calendar,
+  Sparkles, ClipboardPaste, CheckCircle2, Cake, Image as ImageIcon, Camera,
+} from 'lucide-react'
 import { OFFICER_ROLES } from '../members/page'
+import { clearAppBadge, markSeen } from '@/lib/appBadge'
+import { sendClubPush } from '@/lib/push'
+import { isSuperAdmin } from '@/lib/superAdmin'
+import PlaceSearchInput from '@/components/ui/PlaceSearchInput'
 
-const EVENT_ICONS: Record<string, any> = { meeting: Users, celebration: Heart, condolence: Bell, other: Calendar }
-const EVENT_COLORS: Record<string, string> = { meeting: 'text-blue-400', celebration: 'text-yellow-400', condolence: 'text-gray-400', other: 'text-purple-400' }
+// ── 생일 유틸 ────────────────────────────────────────────────────────────
+interface BirthdayMember {
+  user_id: string
+  full_name: string
+  name_abbr: string | null
+  birth_date: string   // YYYY-MM-DD
+  daysUntil: number    // 0 = 오늘, 1~7 = 이번 주
+}
+
+function calcDaysUntil(birthDate: string): number {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const bday = new Date(birthDate)
+  // 올해 생일
+  let next = new Date(today.getFullYear(), bday.getMonth(), bday.getDate())
+  if (next < today) next = new Date(today.getFullYear() + 1, bday.getMonth(), bday.getDate())
+  return Math.round((next.getTime() - today.getTime()) / 86400000)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 📋 자동 분석 파서 — 청첩장 · 부고장 · 기타 경조사 텍스트를 읽고 필드 추출
+// ═══════════════════════════════════════════════════════════════════════════
+interface ParsedEvent {
+  type: string; title: string; person_name: string
+  date: string; time: string; location_name: string; contact: string
+  raw_text: string; filled: string[]   // 자동 채워진 필드 목록
+}
+
+function parseEventText(raw: string): ParsedEvent {
+  const text  = raw.trim()
+  const result: ParsedEvent = { type: '', title: '', person_name: '', date: '', time: '', location_name: '', contact: '', raw_text: text, filled: [] }
+
+  // ── 1. 유형 감지 ────────────────────────────────────────────────────────
+  if (/결혼|청첩|신랑|신부|웨딩|혼인|婚|marriage|wedding/i.test(text)) {
+    result.type = 'wedding'
+  } else if (/부고|별세|타계|영면|永眠|빈소|발인|장례|유족|상주|소천|永逝/i.test(text)) {
+    result.type = 'condolence'
+  } else if (/출산|득남|득녀|태어났|출생|아기|baby|탄생/i.test(text)) {
+    result.type = 'birth'
+  } else if (/환갑|칠순|팔순|회갑|구순|생신|수연/i.test(text)) {
+    result.type = 'birthday'
+  } else if (/승진|취임|부임|발령|임명|대표이사|이사|전무|상무|부장|과장/i.test(text)) {
+    result.type = 'promotion'
+  } else {
+    result.type = 'other'
+  }
+
+  // ── 2. 이름 추출 ─────────────────────────────────────────────────────────
+  if (result.type === 'wedding') {
+    // "신랑 홍 길 동" 또는 "신랑 홍길동" (스페이스 무시)
+    const grm = text.match(/신\s*랑\s*[:：]?\s*([가-힣][가-힣\s]{1,6})/i)
+    const brd = text.match(/신\s*부\s*[:：]?\s*([가-힣][가-힣\s]{1,6})/i)
+    const groomName = grm ? grm[1].replace(/\s+/g,'').trim() : ''
+    const brideName = brd ? brd[1].replace(/\s+/g,'').trim() : ''
+    if (groomName && brideName) {
+      result.person_name = `신랑 ${groomName} ♥ 신부 ${brideName}`
+      result.title = `${groomName} · ${brideName} 결혼식`
+      result.filled.push('person_name', 'title')
+    } else if (groomName) {
+      result.person_name = `신랑 ${groomName}`
+      result.title = `${groomName} 결혼식`
+      result.filled.push('person_name', 'title')
+    }
+  } else if (result.type === 'condolence') {
+    // "故 홍길동" or "홍길동 님이 별세"
+    const dec = text.match(/(?:故|고)\s*([가-힣]{2,5})\s*(?:님|선생|씨|회장|회원)?/)
+             ?? text.match(/([가-힣]{2,5})\s*(?:님|선생|씨|회장|회원|여사)?\s*(?:께서\s*)?(?:별세|타계|영면|소천|永逝)/)
+    if (dec) {
+      const nm = dec[1].trim()
+      result.person_name = `故 ${nm}`
+      result.title = `故 ${nm} 부고`
+      result.filled.push('person_name', 'title')
+    }
+  } else if (result.type === 'birth') {
+    const par = text.match(/([가-힣]{2,5})[,·\s]*([가-힣]{2,5})\s*(?:부부|내외)/)
+    if (par) {
+      result.person_name = `${par[1]} · ${par[2]} 부부`
+      result.title = `${par[1]} 회원 득${/딸|녀|女/.test(text) ? '녀' : '남'} 소식`
+      result.filled.push('person_name', 'title')
+    }
+  } else if (result.type === 'birthday') {
+    const nm = text.match(/([가-힣]{2,5})\s*(?:님|회장|회원|선생|씨)?\s*(?:환갑|칠순|팔순|회갑|구순)/)
+    if (nm) {
+      result.person_name = nm[1].trim()
+      result.title = `${nm[1].trim()} 회원 ${/팔순/.test(text) ? '팔순' : /칠순/.test(text) ? '칠순' : /구순/.test(text) ? '구순' : '환갑'} 잔치`
+      result.filled.push('person_name', 'title')
+    }
+  } else if (result.type === 'promotion') {
+    const nm = text.match(/([가-힣]{2,5})\s*(?:이사|부장|과장|팀장|대표|사장|전무|상무|본부장|임원)/)
+    if (nm) {
+      result.person_name = nm[1].trim()
+      result.title = `${nm[1].trim()} 회원 승진 축하`
+      result.filled.push('person_name', 'title')
+    }
+  }
+
+  // ── 3. 날짜 추출 ─────────────────────────────────────────────────────────
+  // 부고는 발인 날짜 우선
+  let dateStr = ''
+  if (result.type === 'condolence') {
+    const f1 = text.match(/발\s*인\s*[:：]?\s*(?:\d{4}년\s*)?(\d{1,2})월\s*(\d{1,2})일/)
+    if (f1) {
+      const yMatch = text.match(/(\d{4})년/)
+      const y = yMatch ? yMatch[1] : new Date().getFullYear().toString()
+      dateStr = `${y}-${f1[1].padStart(2,'0')}-${f1[2].padStart(2,'0')}`
+    }
+  }
+  if (!dateStr) {
+    // "2025년 3월 15일" or "25년 3월 15일"
+    const dm = text.match(/(\d{2,4})년\s*(\d{1,2})월\s*(\d{1,2})일/)
+    if (dm) {
+      const y = dm[1].length === 2 ? `20${dm[1]}` : dm[1]
+      dateStr = `${y}-${dm[2].padStart(2,'0')}-${dm[3].padStart(2,'0')}`
+    }
+    // "3/15", "03-15" 형태 (current year fallback)
+    if (!dateStr) {
+      const dm2 = text.match(/(\d{1,2})[\/\-](\d{1,2})/)
+      if (dm2) {
+        const y = new Date().getFullYear()
+        dateStr = `${y}-${dm2[1].padStart(2,'0')}-${dm2[2].padStart(2,'0')}`
+      }
+    }
+  }
+  if (dateStr) { result.date = dateStr; result.filled.push('date') }
+
+  // ── 4. 시간 추출 ─────────────────────────────────────────────────────────
+  const tm = text.match(/(오\s*전|오\s*후|AM|PM)?\s*(\d{1,2})\s*시\s*(?:(\d{1,2})\s*분)?/)
+          ?? text.match(/(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)?/)
+  if (tm) {
+    let hour: number, min: number
+    if (tm[0].includes(':')) {
+      hour = parseInt(tm[1]); min = parseInt(tm[2])
+      if (/pm/i.test(tm[3] ?? '') && hour < 12) hour += 12
+    } else {
+      hour = parseInt(tm[2]); min = parseInt(tm[3] ?? '0')
+      const ampm = (tm[1] ?? '').replace(/\s/g,'')
+      if (/오후|PM/i.test(ampm) && hour < 12) hour += 12
+      if (/오전|AM/i.test(ampm) && hour === 12) hour = 0
+    }
+    if (hour >= 0 && hour <= 23) {
+      result.time = `${hour.toString().padStart(2,'0')}:${min.toString().padStart(2,'0')}`
+      result.filled.push('time')
+    }
+  }
+
+  // ── 5. 장소 추출 ─────────────────────────────────────────────────────────
+  const locPatterns: RegExp[] = [
+    /빈\s*소\s*[:：]\s*(.+?)(?:\n|$)/,          // 부고 빈소
+    /발\s*인\s*장\s*소\s*[:：]\s*(.+?)(?:\n|$)/, // 부고 발인 장소
+    /예\s*식\s*장\s*[:：]?\s*(.+?)(?:\n|$)/,     // 결혼 예식장
+    /장\s*소\s*[:：]\s*(.+?)(?:\n|$)/,           // 일반 장소
+    /([가-힣a-zA-Z0-9]+웨딩[가-힣a-zA-Z0-9\s]*(?:\d+층)?(?:[가-힣a-zA-Z]+홀)?)/,  // OO웨딩홀
+    /([가-힣a-zA-Z0-9]+병원\s*장례식장[가-힣\s\d]*)/,                               // 병원 장례식장
+    /([가-힣a-zA-Z0-9]+(?:컨벤션|호텔|채플|성당|교회)[가-힣\s\d]*(?:\d+층)?)/,     // 컨벤션/호텔 등
+  ]
+  for (const p of locPatterns) {
+    const m = text.match(p)
+    if (m && m[1]?.trim()) { result.location_name = m[1].trim(); result.filled.push('location_name'); break }
+  }
+
+  // ── 6. 연락처 추출 ────────────────────────────────────────────────────────
+  // 전화번호 (첫 번째 발견)
+  const phones = text.match(/\d{3}[-.\s]?\d{3,4}[-.\s]?\d{4}/g)
+  if (phones) {
+    // 유족 연락처가 있으면 우선 (부고)
+    const yuMatch = text.match(/유\s*족.*?(\d{3}[-.\s]?\d{3,4}[-.\s]?\d{4})/)
+               ?? text.match(/문\s*의.*?(\d{3}[-.\s]?\d{3,4}[-.\s]?\d{4})/)
+               ?? text.match(/연\s*락.*?(\d{3}[-.\s]?\d{3,4}[-.\s]?\d{4})/)
+    result.contact = (yuMatch ? yuMatch[1] : phones[0]).replace(/\s/g,'')
+    result.filled.push('contact')
+  }
+
+  return result
+}
+
+// ── 경조사 유형 ──────────────────────────────────────────────────
+const EVENT_TYPES = [
+  {
+    value: 'wedding',
+    emoji: '💍',
+    ko: '결혼',
+    en: 'Wedding',
+    theme: { bg: 'rgba(244,114,182,0.12)', border: 'rgba(244,114,182,0.28)', badge: 'rgba(244,114,182,0.15)', text: '#f472b6', glow: 'rgba(244,114,182,0.08)' },
+  },
+  {
+    value: 'condolence',
+    emoji: '🕊️',
+    ko: '부고',
+    en: 'Condolence',
+    theme: { bg: 'rgba(71,85,105,0.18)', border: 'rgba(100,116,139,0.3)', badge: 'rgba(100,116,139,0.2)', text: '#94a3b8', glow: 'rgba(100,116,139,0.06)' },
+  },
+  {
+    value: 'birth',
+    emoji: '👶',
+    ko: '출산',
+    en: 'Birth',
+    theme: { bg: 'rgba(56,189,248,0.1)', border: 'rgba(56,189,248,0.25)', badge: 'rgba(56,189,248,0.14)', text: '#38bdf8', glow: 'rgba(56,189,248,0.06)' },
+  },
+  {
+    value: 'birthday',
+    emoji: '🎂',
+    ko: '환갑·칠순',
+    en: 'Birthday',
+    theme: { bg: 'rgba(251,191,36,0.1)', border: 'rgba(251,191,36,0.25)', badge: 'rgba(251,191,36,0.14)', text: '#fbbf24', glow: 'rgba(251,191,36,0.06)' },
+  },
+  {
+    value: 'promotion',
+    emoji: '🏆',
+    ko: '승진·취임',
+    en: 'Promotion',
+    theme: { bg: 'rgba(167,139,250,0.1)', border: 'rgba(167,139,250,0.25)', badge: 'rgba(167,139,250,0.14)', text: '#a78bfa', glow: 'rgba(167,139,250,0.06)' },
+  },
+  {
+    value: 'other',
+    emoji: '✨',
+    ko: '기타',
+    en: 'Other',
+    theme: { bg: 'rgba(34,197,94,0.08)', border: 'rgba(34,197,94,0.2)', badge: 'rgba(34,197,94,0.12)', text: '#22c55e', glow: 'rgba(34,197,94,0.04)' },
+  },
+]
+const getET = (v: string) => EVENT_TYPES.find(t => t.value === v) ?? EVENT_TYPES[5]
+
+// ── 공지사항 placeholder 텍스트 ──────────────────────────────────
+const NOTICE_PLACEHOLDER_KO = `결혼식 안내말씀
+
+저희 두 사람이 결혼합니다.
+항상 저희를 아껴주신 분들을 모시고...`
+
+const NOTICE_PLACEHOLDER_EN = `Enter the announcement content here...`
+
+// ── 경조사 raw_text placeholder ──────────────────────────────────
+const rawPlaceholder = (type: string, ko: boolean) => {
+  if (type === 'wedding') return ko
+    ? `카카오톡 청첩장을 여기에 붙여넣으세요.\n\n────────────────\n결혼합니다\n\n신랑 홍 길 동\n신부 김 영 희\n\n2025년 3월 15일 토요일 오전 11시\nOO 웨딩홀 2층 다이아몬드홀\n서울시 강남구 OO로 123\n\n문의 : 010-1234-5678\n────────────────`
+    : `Paste the wedding invitation text (from KakaoTalk etc.) here...`
+  if (type === 'condolence') return ko
+    ? `부고장을 여기에 붙여넣으세요.\n\n────────────────\n부  고\n\n홍길동 선생님께서 별세하셨기에\n삼가 알려드립니다.\n\n빈  소 : OO병원 장례식장 1호실\n발  인 : 2025년 3월 15일 오전 9시\n장  지 : OO공원묘지\n\n유족 : 장남 홍길순  010-0000-0000\n────────────────`
+    : `Paste the funeral notice text here...`
+  return ko ? '관련 내용이나 메시지를 붙여넣으세요' : 'Paste the related message here...'
+}
+
+interface Notice {
+  id: string; title: string; title_en?: string
+  content?: string; content_en?: string; created_at: string
+  location_name?: string | null; location_url?: string | null
+  is_meeting?: boolean
+  expires_at?: string | null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  users?: any
+}
+interface LifeEvent {
+  id: string; type: string; title: string; title_en?: string
+  description?: string; event_date: string
+  person_name?: string; location_name?: string; contact?: string; raw_text?: string
+}
 
 export default function AnnouncementPage() {
   const { currentClubId, user, lang, myClubs } = useAuthStore()
   const ko = lang === 'ko'
-  const myRole = myClubs.find((c) => c.id === currentClubId)?.role ?? 'member'
-  const canManage = OFFICER_ROLES.includes(myRole)
+  const myRole = myClubs.find(c => c.id === currentClubId)?.role ?? 'member'
+  const isAdmin = isSuperAdmin(user)
+  const isOfficer = OFFICER_ROLES.includes(myRole) || isAdmin
+  // 공지사항: 임원 이상만 작성. 경조사: 모든 회원 등록 가능 (가족 행사 공유는 회원 자율).
+  const canWrite = true
 
-  const [tab, setTab] = useState<'notice' | 'event'>('notice')
-  const [notices, setNotices] = useState<any[]>([])
-  const [events, setEvents] = useState<any[]>([])
-  const [showAdd, setShowAdd] = useState(false)
-  const [form, setForm] = useState({ title: '', titleEn: '', content: '', contentEn: '', type: 'meeting', date: '' })
+  const [tab,        setTab]        = useState<'notice' | 'event'>('notice')
+  const [notices,    setNotices]    = useState<Notice[]>([])
+  const [events,     setEvents]     = useState<LifeEvent[]>([])
+  const [loading,    setLoading]    = useState(true)
+  const [showAdd,    setShowAdd]    = useState(false)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [expandedRaw,setExpandedRaw]= useState<string | null>(null)
+  const [deleting,   setDeleting]   = useState<string | null>(null)
+  const [birthdays,  setBirthdays]  = useState<BirthdayMember[]>([])
+  // 푸시 알림 클릭 → ?notice=<id> 또는 ?event=<id> 로 이 페이지에 도착
+  // 해당 카드를 자동으로 펼치고, 스크롤하고, 노란색 링으로 강조 (4초간)
+  const [highlightId, setHighlightId] = useState<string | null>(null)
 
+  // ── 폼 상태 ─────────────────────────────────────────────────────
+  const emptyNForm = {
+    title: '', content: '',
+    location_name: '', location_address: '', location_place_id: '',
+    location_lat: null as number | null, location_lng: null as number | null,
+    // 정기모임 토글 + 관련 날짜 + 유지 기간 (날짜 없을 때)
+    is_meeting: false,
+    event_date: '',          // YYYY-MM-DD (선택)
+    retention_days: 7,       // 날짜 없으면 N일 후 자동 만료
+  }
+  const emptyEForm = { type: 'wedding', title: '', date: '', time: '', person_name: '', location_name: '', contact: '', raw_text: '' }
+  const [nForm, setNForm] = useState(emptyNForm)
+  const [eForm, setEForm] = useState(emptyEForm)
+
+  // ── 자동 분석 상태 ──────────────────────────────────────────────
+  const [pasteText,    setPasteText]    = useState('')
+  const [parsing,      setParsing]      = useState(false)
+  const [autoFilled,   setAutoFilled]   = useState<string[]>([])
+  const [parseMsg,     setParseMsg]     = useState<string | null>(null)
+  const [showAutoParse,setShowAutoParse]= useState<false | 'text' | 'url'>(false)
+  const [submitting,   setSubmitting]   = useState(false)
+  const [submitError,  setSubmitError]  = useState<string | null>(null)
+  const [imgOcrLoading,setImgOcrLoading]= useState(false)
+  const [imgOcrError,  setImgOcrError]  = useState<string | null>(null)
+  const [urlInput,     setUrlInput]     = useState('')
+  const [urlLoading,   setUrlLoading]   = useState(false)
+  const pasteRef     = useRef<HTMLTextAreaElement>(null)
+  const imgInputRef  = useRef<HTMLInputElement>(null)
+
+  function isAutoFilled(field: string) { return autoFilled.includes(field) }
+
+  function runParse(txt: string) {
+    if (!txt.trim()) return
+    setParsing(true); setParseMsg(null)
+    setTimeout(() => {
+      const r = parseEventText(txt)
+      setEForm({
+        type:          r.type          || 'wedding',
+        title:         r.title         || '',
+        date:          r.date          || '',
+        time:          r.time          || '',
+        person_name:   r.person_name   || '',
+        location_name: r.location_name || '',
+        contact:       r.contact       || '',
+        raw_text:      txt,
+      })
+      setAutoFilled(r.filled)
+      setParseMsg(
+        r.filled.length > 0
+          ? `✅ ${r.filled.length}개 항목 자동 입력 완료! 내용을 확인해주세요.`
+          : '⚠️ 항목을 찾지 못했습니다. 직접 입력해주세요.'
+      )
+      setParsing(false)
+    }, 400)
+  }
+
+  // ── 자동 입력 결과 적용 (이미지/URL OCR 공통) ──────────────────────
+  function applyAutoFillResult(data: any, sourceLabel: string) {
+    if (!data || (!data.title && !data.date && !data.person_name)) {
+      setImgOcrError(ko ? `${sourceLabel}에서 정보를 찾지 못했습니다.` : `Could not extract from ${sourceLabel}.`)
+      return false
+    }
+    const filled: string[] = []
+    const next = {
+      type:          data.type          || 'wedding',
+      title:         data.title         || '',
+      date:          data.date          || '',
+      time:          data.time          || '',
+      person_name:   data.person_name   || '',
+      location_name: data.location_name || '',
+      contact:       data.contact       || '',
+      raw_text:      eForm.raw_text,
+    }
+    if (next.title)         filled.push('title')
+    if (next.date)          filled.push('date')
+    if (next.time)          filled.push('time')
+    if (next.person_name)   filled.push('person_name')
+    if (next.location_name) filled.push('location_name')
+    if (next.contact)       filled.push('contact')
+    setEForm(next)
+    setAutoFilled(filled)
+    setParseMsg(`✅ ${sourceLabel}에서 ${filled.length}개 항목을 자동 입력했습니다.`)
+    return true
+  }
+
+  // ── 이미지 File → OCR 호출 (input/카메라/textarea-paste 공통) ─────
+  async function processImageFile(file: File) {
+    setImgOcrLoading(true); setImgOcrError(null); setParseMsg(null)
+    try {
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload  = () => resolve(reader.result as string)
+        reader.onerror = () => reject(new Error('read failed'))
+        reader.readAsDataURL(file)
+      })
+      const mediaType = (dataUrl.match(/^data:([^;]+);base64,/)?.[1] ?? 'image/jpeg') as
+        'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
+      const base64 = dataUrl.split(',')[1]
+      const res = await fetch('/api/ocr/event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: base64, mediaType, lang }),
+      })
+      const data = await res.json()
+      applyAutoFillResult(data, ko ? '이미지' : 'image')
+    } catch {
+      setImgOcrError(ko ? '이미지 분석 중 오류가 발생했습니다.' : 'Image analysis failed.')
+    } finally {
+      setImgOcrLoading(false)
+    }
+  }
+
+  function handleImageOcr(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    processImageFile(file)
+    if (imgInputRef.current) imgInputRef.current.value = ''  // allow re-upload of same file
+  }
+
+  // ── URL 분석 ───────────────────────────────────────────────────────
+  async function analyzeUrl() {
+    if (!urlInput.trim()) return
+    setUrlLoading(true); setImgOcrError(null); setParseMsg(null)
+    try {
+      const res = await fetch('/api/ocr/event-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: urlInput.trim(), lang }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setImgOcrError(data.error ?? (ko ? 'URL을 분석할 수 없습니다.' : 'Could not analyze URL.'))
+      } else {
+        applyAutoFillResult(data, 'URL')
+      }
+    } catch {
+      setImgOcrError(ko ? 'URL 요청 중 오류가 발생했습니다.' : 'URL request failed.')
+    } finally {
+      setUrlLoading(false)
+    }
+  }
+
+  // ── 클립보드에서 직접 붙여넣기 (텍스트 또는 이미지) ────────────────
+  async function pasteFromClipboard() {
+    setImgOcrError(null)
+    // 1) 이미지 클립보드 우선 시도 (Chrome/Edge 데스크톱 지원)
+    try {
+      // @ts-ignore — read는 일부 브라우저 미지원
+      if (navigator.clipboard?.read) {
+        const items: any[] = await (navigator.clipboard as any).read()
+        for (const it of items) {
+          const imgType = it.types.find((t: string) => t.startsWith('image/'))
+          if (imgType) {
+            const blob = await it.getType(imgType)
+            await processImageFile(new File([blob], 'pasted.png', { type: imgType }))
+            return
+          }
+        }
+      }
+    } catch { /* fall through to text */ }
+
+    // 2) 텍스트 클립보드
+    try {
+      const txt = await navigator.clipboard.readText()
+      if (!txt.trim()) {
+        setImgOcrError(ko ? '클립보드가 비어있습니다.' : 'Clipboard is empty.')
+        return
+      }
+      setShowAutoParse('text')
+      setPasteText(txt)
+      runParse(txt)
+    } catch {
+      setImgOcrError(ko
+        ? '클립보드 접근이 차단되었습니다. textarea를 길게 눌러 직접 붙여넣어 주세요.'
+        : 'Clipboard access blocked. Long-press the textarea to paste manually.')
+    }
+  }
+
+  // ── textarea 안에 이미지가 paste 되면 OCR로 라우팅 ─────────────────
+  function handleTextareaPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const items = e.clipboardData?.items
+    if (items) {
+      for (const item of items) {
+        if (item.type?.startsWith('image/')) {
+          const file = item.getAsFile()
+          if (file) {
+            e.preventDefault()
+            processImageFile(file)
+            return
+          }
+        }
+      }
+    }
+    // 텍스트 paste — 기본 동작 그대로 진행 + 50ms 후 자동분석
+    setTimeout(() => {
+      const val = pasteRef.current?.value ?? ''
+      if (val.trim()) runParse(val)
+    }, 50)
+  }
+
+  // ── 데이터 로드 ─────────────────────────────────────────────────
   async function load() {
     if (!currentClubId) return
+    setLoading(true)
     const supabase = createClient()
-    const [{ data: n }, { data: e }] = await Promise.all([
-      supabase.from('announcements').select('*, users(full_name, full_name_en)').eq('club_id', currentClubId).order('created_at', { ascending: false }),
-      supabase.from('events').select('*').eq('club_id', currentClubId).order('event_date', { ascending: true }),
+    const [{ data: n }, { data: e }, { data: bdMembers }] = await Promise.all([
+      supabase.from('announcements')
+        .select('id,title,title_en,content,content_en,location_name,location_url,created_at,is_meeting,expires_at,users!author_id(full_name,full_name_en)')
+        .eq('club_id', currentClubId)
+        // 만료된 공지는 숨김 (expires_at 이 NULL 이면 영구)
+        .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
+        // 1순위: 정기모임 (is_meeting=true), 2순위: 최신순
+        .order('is_meeting', { ascending: false })
+        .order('created_at', { ascending: false }),
+      supabase.from('events')
+        .select('id,type,title,title_en,description,event_date,person_name,location_name,contact,raw_text')
+        .eq('club_id', currentClubId).order('event_date', { ascending: true }),
+      // 생일 데이터: 이번 클럽 승인 멤버 중 birth_date 있는 사람
+      supabase.from('club_memberships')
+        .select('user_id, users!inner(full_name, name_abbr, birth_date)')
+        .eq('club_id', currentClubId)
+        .eq('status', 'approved')
+        .not('users.birth_date', 'is', null),
     ])
     setNotices(n ?? [])
     setEvents(e ?? [])
+
+    // 7일 이내 생일인 멤버만 필터링 + daysUntil 계산
+    const upcoming: BirthdayMember[] = []
+    for (const m of (bdMembers ?? [])) {
+      const u = Array.isArray(m.users) ? m.users[0] : m.users
+      if (!u?.birth_date) continue
+      const days = calcDaysUntil(u.birth_date)
+      if (days <= 7) {
+        upcoming.push({
+          user_id:   m.user_id,
+          full_name: u.full_name,
+          name_abbr: u.name_abbr ?? null,
+          birth_date: u.birth_date,
+          daysUntil: days,
+        })
+      }
+    }
+    // 가장 가까운 순 정렬
+    upcoming.sort((a, b) => a.daysUntil - b.daysUntil)
+    setBirthdays(upcoming)
+    setLoading(false)
   }
-
-  useEffect(() => { load() }, [currentClubId])
-
-  async function addNotice() {
-    if (!form.title) return
-    const supabase = createClient()
-    await supabase.from('announcements').insert({
-      club_id: currentClubId, title: form.title, title_en: form.titleEn,
-      content: form.content, content_en: form.contentEn, author_id: user!.id,
-    })
-    setShowAdd(false)
-    setForm({ title: '', titleEn: '', content: '', contentEn: '', type: 'meeting', date: '' })
+  useEffect(() => {
     load()
-  }
+    // 공지·경조사 페이지 방문 시 "확인됨"으로 표시 + 앱 배지 클리어
+    if (user?.id && currentClubId) {
+      markSeen(user.id, currentClubId)
+      clearAppBadge()
+    }
+  }, [currentClubId, user?.id])
 
-  async function addEvent() {
-    if (!form.title || !form.date) return
+  // ── 푸시 알림 → 딥링크 처리 ──────────────────────────────────────────
+  // /announcement?notice=<id>  또는  /announcement?event=<id>  로 진입 시
+  // 1) 해당 탭으로 전환  2) 카드 자동 펼치기  3) 스크롤 + 4초간 노란색 링
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const noticeId = params.get('notice')
+    const eventId  = params.get('event')
+    if (!noticeId && !eventId) return
+    if (noticeId) {
+      setTab('notice')
+      setExpandedId(noticeId)
+      setHighlightId(noticeId)
+    } else if (eventId) {
+      setTab('event')
+      setExpandedRaw(eventId)
+      setHighlightId(eventId)
+    }
+    // URL 정리 — 새로고침 시 다시 트리거되지 않도록
+    const url = new URL(window.location.href)
+    url.searchParams.delete('notice')
+    url.searchParams.delete('event')
+    window.history.replaceState({}, '', url.pathname + (url.search ? url.search : '') + url.hash)
+  }, [])
+
+  // 데이터가 로드된 뒤 실제 카드로 스크롤 + 4초 후 하이라이트 해제
+  useEffect(() => {
+    if (!highlightId) return
+    if (loading) return
+    const el = document.getElementById(`card-${highlightId}`)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    const t = setTimeout(() => setHighlightId(null), 4000)
+    return () => clearTimeout(t)
+  }, [highlightId, loading, notices, events, tab])
+
+  // ── 공지 등록 ────────────────────────────────────────────────────
+  async function submitNotice() {
+    if (!nForm.title.trim() || !currentClubId) return
+    setSubmitError(null)
+    setSubmitting(true)
     const supabase = createClient()
-    await supabase.from('events').insert({
-      club_id: currentClubId, type: form.type, title: form.title,
-      title_en: form.titleEn, description: form.content, event_date: form.date, created_by: user!.id,
-    })
-    setShowAdd(false)
-    setForm({ title: '', titleEn: '', content: '', contentEn: '', type: 'meeting', date: '' })
-    load()
+    const title = nForm.title.trim()
+    const content = nForm.content.trim()
+    const locationName = nForm.location_name.trim()
+    const locationUrl = locationName
+      ? (nForm.location_place_id
+          ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationName)}&query_place_id=${nForm.location_place_id}`
+          : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([locationName, nForm.location_address].filter(Boolean).join(' '))}`)
+      : null
+    // ── 만료 시각 계산 ───────────────────────────────────────────
+    // 우선순위 1) event_date 입력됨 → 그날 23:59 까지 유지
+    //          2) 그 외엔 retention_days 후 만료 (기본 7일)
+    //          3) retention_days 가 0 이하 → 영구 (expires_at = null)
+    let expiresAt: string | null = null
+    if (nForm.event_date) {
+      const d = new Date(`${nForm.event_date}T23:59:59`)
+      expiresAt = d.toISOString()
+    } else if (nForm.retention_days > 0) {
+      const d = new Date()
+      d.setDate(d.getDate() + nForm.retention_days)
+      expiresAt = d.toISOString()
+    }
+    const { data: newNotice, error: insertError } = await supabase
+      .from('announcements')
+      .insert({
+        club_id: currentClubId, title, content, author_id: user!.id,
+        location_name: locationName || null,
+        location_url: locationUrl,
+        is_meeting: nForm.is_meeting,
+        expires_at: expiresAt,
+      })
+      .select('id')
+      .single()
+    if (insertError) {
+      // Supabase error 객체는 종종 enumerable이 아니라 console에 {}로 출력됨
+      // 명시적으로 모든 필드 추출
+      const errMsg = insertError.message || insertError.details || insertError.hint || insertError.code || JSON.stringify(insertError) || '알 수 없는 오류'
+      console.error('[notice insert]', { msg: insertError.message, code: insertError.code, details: insertError.details, hint: insertError.hint, raw: insertError })
+      setSubmitError(`저장 실패: ${errMsg}`)
+      setSubmitting(false)
+      return
+    }
+    // 푸시 발송 — 실패해도 공지 등록은 성공. URL에 새 공지 id 포함 → 클릭 시 그 공지로 점프
+    const pushBody = [content.slice(0, 80), locationName ? `📍 ${locationName}` : ''].filter(Boolean).join(' · ')
+    let pushResult = { sent: 0 }
+    try {
+      pushResult = await sendClubPush({
+        club_id: currentClubId,
+        title: `📢 ${title}`,
+        body: pushBody || (ko ? '새 공지가 등록되었습니다' : 'New notice posted'),
+        url: newNotice?.id ? `/announcement?notice=${newNotice.id}` : '/announcement',
+      })
+    } catch (e) {
+      console.error('[push send]', e)
+    }
+    setSubmitting(false)
+    setShowAdd(false); setNForm(emptyNForm); load()
+    // 성공 toast (간단히 console + alert로 표시)
+    console.log(`[notice] saved. push sent to ${pushResult.sent} member(s)`)
   }
 
-  const eventTypeLabel = (t: string) => {
-    const m: Record<string, [string, string]> = { meeting: ['회의', 'Meeting'], celebration: ['경사', 'Celebration'], condolence: ['조사', 'Condolence'], other: ['기타', 'Other'] }
-    return ko ? m[t]?.[0] : m[t]?.[1]
+  // ── 경조사 등록 ──────────────────────────────────────────────────
+  async function submitEvent() {
+    if (!eForm.title.trim() || !eForm.date || !currentClubId) return
+    setSubmitError(null)
+    setSubmitting(true)
+    const supabase = createClient()
+    const eventDate = eForm.time ? `${eForm.date}T${eForm.time}:00` : eForm.date
+    const raw = pasteText.trim() || eForm.raw_text.trim() || null
+    const { data: newEvent, error: insertError } = await supabase
+      .from('events')
+      .insert({
+        club_id: currentClubId,
+        type: eForm.type,
+        title: eForm.title.trim(),
+        event_date: eventDate,
+        person_name: eForm.person_name.trim() || null,
+        location_name: eForm.location_name.trim() || null,
+        contact: eForm.contact.trim() || null,
+        raw_text: raw,
+        description: raw,
+        created_by: user!.id,
+      })
+      .select('id')
+      .single()
+    if (insertError) {
+      console.error('[event insert]', insertError)
+      setSubmitError(`저장 실패: ${insertError.message}`)
+      setSubmitting(false)
+      return
+    }
+    const eventTypeLabel = (eForm.type === 'wedding') ? '🎊 결혼'
+                         : (eForm.type === 'condolence') ? '🕊️ 부고'
+                         : (eForm.type === 'birth') ? '👶 출산'
+                         : (eForm.type === 'birthday') ? '🎂 생일'
+                         : (eForm.type === 'promotion') ? '🏆 승진'
+                         : '✨ 경조사'
+    let pushResult = { sent: 0 }
+    try {
+      pushResult = await sendClubPush({
+        club_id: currentClubId,
+        title: `${eventTypeLabel} ${eForm.title.trim()}`,
+        body: [eForm.person_name, eForm.date, eForm.location_name].filter(Boolean).join(' · '),
+        url: newEvent?.id ? `/announcement?event=${newEvent.id}` : '/announcement',
+      })
+    } catch (e) {
+      console.error('[push send]', e)
+    }
+    setSubmitting(false)
+    setShowAdd(false); setEForm(emptyEForm); setPasteText(''); setAutoFilled([]); setParseMsg(null); setShowAutoParse(false); setUrlInput(''); setImgOcrError(null); load()
+    console.log(`[event] saved. push sent to ${pushResult.sent} member(s)`)
   }
 
+  // ── 삭제 ─────────────────────────────────────────────────────────
+  async function delNotice(id: string) {
+    setDeleting(id)
+    await createClient().from('announcements').delete().eq('id', id)
+    setNotices(p => p.filter(n => n.id !== id)); setDeleting(null)
+  }
+  async function delEvent(id: string) {
+    setDeleting(id)
+    await createClient().from('events').delete().eq('id', id)
+    setEvents(p => p.filter(e => e.id !== id)); setDeleting(null)
+  }
+
+  // ── 날짜 포맷 ────────────────────────────────────────────────────
+  function fmtDate(d: string) {
+    try { return new Date(d).toLocaleDateString(ko ? 'ko-KR' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' }) }
+    catch { return d }
+  }
+  function fmtTime(d: string) {
+    try { return d.includes('T') ? new Date(d).toLocaleTimeString(ko ? 'ko-KR' : 'en-US', { hour: '2-digit', minute: '2-digit' }) : '' }
+    catch { return '' }
+  }
+
+  // ──────────────────────────────────────────────────────────────────
   return (
-    <div className="px-4 py-5">
-      <div className="flex gap-2 mb-5">
-        {(['notice', 'event'] as const).map((t) => (
+    <div className="px-4 pt-5 pb-6 space-y-4 animate-fade-in">
+
+      {/* ── 헤더 ── */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-lg font-bold text-white">{ko ? '공지 · 경조사' : 'Notices & Events'}</h1>
+          {tab === 'notice' && !isOfficer && (
+            <div className="flex items-center gap-1 mt-0.5">
+              <Lock size={10} style={{ color: '#9aae9a' }} />
+              <p className="text-xs" style={{ color: '#9aae9a' }}>
+                {ko ? '공지사항: 열람 전용 (임원 이상 작성)' : 'Notices: view only — officers can post'}
+              </p>
+            </div>
+          )}
+          {tab === 'event' && (
+            <div className="flex items-center gap-1 mt-0.5">
+              <p className="text-xs" style={{ color: '#9aae9a' }}>
+                {ko ? '경조사: 회원 누구나 등록 가능' : 'Events: any member can post'}
+              </p>
+            </div>
+          )}
+        </div>
+        {(tab === 'event' || isOfficer) && (
+          <button onClick={() => setShowAdd(true)}
+            className="flex items-center gap-1.5 text-white text-sm font-medium px-3 py-2 rounded-xl transition"
+            style={{ background: 'linear-gradient(135deg,#16a34a,#15803d)', boxShadow: '0 4px 12px rgba(22,163,74,0.3)' }}>
+            <Plus size={15} />
+            {tab === 'notice' ? (ko ? '공지 작성' : 'Write') : (ko ? '경조사 등록' : 'Add')}
+          </button>
+        )}
+      </div>
+
+      {/* ── 생일 배너 ── */}
+      {birthdays.length > 0 && (() => {
+        const todayBdays   = birthdays.filter(b => b.daysUntil === 0)
+        const upcomingBdays = birthdays.filter(b => b.daysUntil > 0)
+        return (
+          <div className="space-y-2">
+            {/* 오늘 생일 */}
+            {todayBdays.map(b => (
+              <div key={b.user_id}
+                className="rounded-2xl px-4 py-3.5 flex items-center gap-3 overflow-hidden relative"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(251,191,36,0.18), rgba(234,88,12,0.14))',
+                  border: '1px solid rgba(251,191,36,0.35)',
+                  boxShadow: '0 0 24px rgba(251,191,36,0.1)',
+                }}>
+                {/* 배경 파티클 이모지 */}
+                <span className="absolute right-4 top-1 text-2xl opacity-20 select-none">🎉</span>
+                <div className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0"
+                  style={{ background: 'rgba(251,191,36,0.22)' }}>
+                  <Cake size={20} style={{ color: '#fbbf24' }} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white font-bold text-sm leading-tight">
+                    {ko ? `🎂 오늘은 ${b.full_name} 회원님의 생일입니다!`
+                        : `🎂 Today is ${b.full_name}'s birthday!`}
+                  </p>
+                  <p className="text-xs mt-0.5" style={{ color: '#fbbf24' }}>
+                    {ko ? '따뜻한 축하 메시지를 전해드리세요 🎉' : 'Send warm birthday wishes 🎉'}
+                  </p>
+                </div>
+              </div>
+            ))}
+
+            {/* 이번 주 생일 예고 */}
+            {upcomingBdays.length > 0 && (
+              <div className="rounded-2xl px-4 py-3 flex items-center gap-3"
+                style={{
+                  background: 'rgba(251,146,60,0.08)',
+                  border: '1px solid rgba(251,146,60,0.2)',
+                }}>
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+                  style={{ background: 'rgba(251,146,60,0.15)' }}>
+                  <span className="text-sm">🎈</span>
+                </div>
+                <div className="flex-1 min-w-0 overflow-hidden">
+                  <p className="text-xs font-semibold mb-1.5" style={{ color: '#fb923c' }}>
+                    {ko ? '이번 주 생일' : 'Upcoming Birthdays'}
+                  </p>
+                  <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-none">
+                    {upcomingBdays.map(b => {
+                      const bday = new Date(b.birth_date)
+                      const label = `${String(bday.getMonth() + 1).padStart(2,'0')}/${String(bday.getDate()).padStart(2,'0')}`
+                      return (
+                        <div key={b.user_id}
+                          className="flex-shrink-0 flex flex-col items-center gap-0.5 rounded-xl px-2.5 py-1.5"
+                          style={{ background: 'rgba(251,146,60,0.12)', border: '1px solid rgba(251,146,60,0.2)' }}>
+                          <p className="text-white text-xs font-semibold whitespace-nowrap">
+                            {b.name_abbr || b.full_name}
+                          </p>
+                          <p className="text-[10px]" style={{ color: '#fb923c' }}>
+                            {label} · D-{b.daysUntil}
+                          </p>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })()}
+
+      {/* ── 탭 ── */}
+      <div className="flex gap-1.5 p-1 rounded-2xl"
+        style={{ background: 'rgba(6,13,6,0.8)', border: '1px solid rgba(34,197,94,0.1)' }}>
+        {([
+          ['notice', ko ? '📢 공지사항' : '📢 Notices'],
+          ['event',  ko ? '🎊 경조사'  : '🎊 Life Events'],
+        ] as const).map(([t, label]) => (
           <button key={t} onClick={() => setTab(t)}
-            className={`flex-1 py-2 rounded-xl text-sm font-medium transition ${tab === t ? 'bg-green-700 text-white' : 'bg-gray-900 text-gray-400'}`}>
-            {t === 'notice' ? (ko ? '공지사항' : 'Announcements') : (ko ? '경조사/회의' : 'Events')}
+            className="flex-1 py-2 rounded-xl text-sm font-medium transition"
+            style={tab === t
+              ? { background: 'linear-gradient(135deg,rgba(22,163,74,0.28),rgba(14,53,29,0.6))', color: '#22c55e', border: '1px solid rgba(34,197,94,0.22)' }
+              : { color: '#9aae9a' }}>
+            {label}
           </button>
         ))}
       </div>
 
-      {canManage && (
-        <button onClick={() => setShowAdd(true)} className="w-full flex items-center justify-center gap-2 bg-green-700/20 border border-green-800 text-green-400 py-2.5 rounded-xl text-sm mb-4 hover:bg-green-700/30 transition">
-          <Plus size={16} /> {tab === 'notice' ? (ko ? '공지 작성' : 'New Notice') : (ko ? '일정 등록' : 'Add Event')}
-        </button>
-      )}
-
-      {tab === 'notice' ? (
-        <div className="space-y-3">
-          {notices.map((n) => (
-            <div key={n.id} className="glass-card rounded-xl p-4">
-              <div className="flex items-start gap-2">
-                <Bell size={16} className="text-green-400 flex-shrink-0 mt-0.5" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-white font-medium text-sm">{lang === 'ko' ? n.title : (n.title_en || n.title)}</p>
-                  {n.content && <p className="text-gray-400 text-xs mt-1 line-clamp-2">{lang === 'ko' ? n.content : (n.content_en || n.content)}</p>}
-                  <p className="text-gray-600 text-xs mt-2">{lang === 'ko' ? n.users?.full_name : (n.users?.full_name_en || n.users?.full_name)} · {new Date(n.created_at).toLocaleDateString()}</p>
-                </div>
-              </div>
-            </div>
-          ))}
-          {notices.length === 0 && <p className="text-center text-gray-600 py-8">{ko ? '공지사항이 없습니다' : 'No announcements'}</p>}
+      {/* ── 로딩 ── */}
+      {loading ? (
+        <div className="flex justify-center py-16">
+          <div className="w-8 h-8 rounded-full border-2 border-green-600 border-t-transparent animate-spin" />
         </div>
-      ) : (
+
+      ) : tab === 'notice' ? (
+        /* ═══ 공지사항 목록 ═══════════════════════════════════════════ */
         <div className="space-y-3">
-          {events.map((e) => {
-            const Icon = EVENT_ICONS[e.type] ?? Calendar
+          {notices.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16" style={{ color: '#7a9a7a' }}>
+              <Bell size={40} className="mb-3 opacity-30" />
+              <p className="text-sm">{ko ? '공지사항이 없습니다' : 'No announcements yet'}</p>
+            </div>
+          ) : notices.map(n => {
+            const isOpen  = expandedId === n.id
+            const title   = ko ? n.title : (n.title_en || n.title)
+            const content = ko ? n.content : (n.content_en || n.content)
+            const u = Array.isArray(n.users) ? n.users[0] : n.users
+            const author  = ko ? u?.full_name : (u?.full_name_en || u?.full_name)
+            const isHighlighted = highlightId === n.id
+            const hasContent = !!content
             return (
-              <div key={e.id} className="glass-card rounded-xl p-4 flex items-center gap-3">
-                <Icon size={20} className={`${EVENT_COLORS[e.type]} flex-shrink-0`} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-white text-sm font-medium">{lang === 'ko' ? e.title : (e.title_en || e.title)}</p>
-                  <div className="flex gap-2 mt-0.5">
-                    <span className="text-xs text-green-400">{eventTypeLabel(e.type)}</span>
-                    <span className="text-xs text-gray-500">{new Date(e.event_date).toLocaleDateString()}</span>
+              <div
+                key={n.id}
+                id={`card-${n.id}`}
+                className="glass-card rounded-2xl overflow-hidden transition-all"
+                style={isHighlighted ? {
+                  boxShadow: '0 0 0 3px #fbbf24, 0 0 32px rgba(251,191,36,0.55)',
+                  outline: 'none',
+                } : undefined}
+              >
+                <div className="px-4 py-4">
+                  <div
+                    className={`flex items-start gap-3 ${hasContent ? 'cursor-pointer select-none' : ''}`}
+                    onClick={hasContent ? () => setExpandedId(isOpen ? null : n.id) : undefined}
+                    role={hasContent ? 'button' : undefined}
+                    tabIndex={hasContent ? 0 : undefined}
+                  >
+                    <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
+                      style={{ background: 'rgba(167,139,250,0.15)' }}>
+                      <Bell size={13} style={{ color: '#a78bfa' }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {n.is_meeting && (
+                          <span
+                            className="text-[10px] font-bold px-1.5 py-0.5 rounded-md flex-shrink-0"
+                            style={{ background: 'rgba(34,197,94,0.18)', color: '#86efac', border: '1px solid rgba(34,197,94,0.35)' }}
+                          >
+                            📌 {ko ? '정기모임' : 'Meeting'}
+                          </span>
+                        )}
+                        <p className="text-white font-semibold text-sm leading-snug">{title}</p>
+                      </div>
+                      <p className="text-xs mt-1" style={{ color: '#9aae9a' }}>
+                        {author && <span>{author} · </span>}
+                        {new Date(n.created_at).toLocaleDateString(ko ? 'ko-KR' : 'en-US', { month: 'short', day: 'numeric' })}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      {canWrite && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); delNotice(n.id) }}
+                          disabled={deleting === n.id}
+                          className="w-7 h-7 rounded-lg flex items-center justify-center transition disabled:opacity-40"
+                          style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171' }}>
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                      {hasContent && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setExpandedId(isOpen ? null : n.id) }}
+                          className="w-7 h-7 rounded-lg flex items-center justify-center transition"
+                          style={{ background: 'rgba(34,197,94,0.1)', color: '#22c55e' }}>
+                          {isOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  {e.description && <p className="text-gray-400 text-xs mt-1">{e.description}</p>}
+                  {isOpen && content && (
+                    <div className="mt-3 pt-3 text-sm leading-relaxed whitespace-pre-wrap"
+                      style={{ color: '#a3b8a3', borderTop: '1px solid rgba(34,197,94,0.1)' }}>
+                      {content}
+                    </div>
+                  )}
+                  {n.location_name && (
+                    <a
+                      href={n.location_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(n.location_name)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-3 flex items-center gap-2 px-3 py-2 rounded-xl text-xs transition active:scale-[0.98]"
+                      style={{ background: 'rgba(96,165,250,0.10)', border: '1px solid rgba(96,165,250,0.30)', color: '#93c5fd' }}>
+                      <MapPin size={13} />
+                      <span className="flex-1 font-medium truncate">{n.location_name}</span>
+                      <span className="text-[10px]" style={{ color: '#60a5fa' }}>{ko ? '구글맵 →' : 'Map →'}</span>
+                    </a>
+                  )}
                 </div>
               </div>
             )
           })}
-          {events.length === 0 && <p className="text-center text-gray-600 py-8">{ko ? '등록된 일정이 없습니다' : 'No events'}</p>}
+        </div>
+
+      ) : (
+        /* ═══ 경조사 목록 ════════════════════════════════════════════ */
+        <div className="space-y-4">
+          {events.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16" style={{ color: '#7a9a7a' }}>
+              <span className="text-5xl mb-3 opacity-40">🎊</span>
+              <p className="text-sm">{ko ? '등록된 경조사가 없습니다' : 'No life events yet'}</p>
+            </div>
+          ) : events.map(ev => {
+            const et      = getET(ev.type)
+            const isRawOpen = expandedRaw === ev.id
+            const title   = ko ? ev.title : (ev.title_en || ev.title)
+            const timeStr = fmtTime(ev.event_date)
+            const rawBody = ev.raw_text || ev.description
+            const isHighlighted = highlightId === ev.id
+
+            return (
+              <div
+                key={ev.id}
+                id={`card-${ev.id}`}
+                className="rounded-2xl overflow-hidden transition-all"
+                style={{
+                  background: `linear-gradient(160deg, ${et.theme.bg} 0%, rgba(6,13,6,0.97) 60%)`,
+                  border: `1px solid ${et.theme.border}`,
+                  boxShadow: isHighlighted
+                    ? `0 0 0 3px #fbbf24, 0 0 32px rgba(251,191,36,0.55)`
+                    : `0 4px 20px ${et.theme.glow}`,
+                }}>
+
+                {/* 카드 본문 */}
+                <div className="px-4 pt-4 pb-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <span className="text-3xl leading-none flex-shrink-0">{et.emoji}</span>
+                      <div className="min-w-0 flex-1">
+                        {/* 유형 배지 */}
+                        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full inline-block mb-1.5"
+                          style={{ background: et.theme.badge, color: et.theme.text }}>
+                          {ko ? et.ko : et.en}
+                        </span>
+                        {/* 당사자 이름 (굵게) */}
+                        {ev.person_name && (
+                          <p className="text-white font-bold text-base leading-tight">{ev.person_name}</p>
+                        )}
+                        {/* 제목 */}
+                        <p className={`${ev.person_name ? 'text-xs mt-0.5' : 'text-sm font-semibold'} leading-snug`}
+                          style={{ color: ev.person_name ? '#a3b8a3' : 'white' }}>
+                          {title}
+                        </p>
+                      </div>
+                    </div>
+                    {canWrite && (
+                      <button onClick={() => delEvent(ev.id)} disabled={deleting === ev.id}
+                        className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition disabled:opacity-40"
+                        style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171' }}>
+                        <Trash2 size={12} />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* 날짜 · 장소 · 연락처 */}
+                  <div className="mt-3 space-y-1.5 pl-1">
+                    <div className="flex items-center gap-2">
+                      <Calendar size={12} style={{ color: et.theme.text }} className="flex-shrink-0" />
+                      <span className="text-xs font-medium" style={{ color: '#d0e0d0' }}>
+                        {fmtDate(ev.event_date)}{timeStr ? `  ${timeStr}` : ''}
+                      </span>
+                    </div>
+                    {ev.location_name && (
+                      <div className="flex items-center gap-2">
+                        <MapPin size={12} style={{ color: et.theme.text }} className="flex-shrink-0" />
+                        <span className="text-xs" style={{ color: '#c0d0c0' }}>{ev.location_name}</span>
+                      </div>
+                    )}
+                    {ev.contact && (
+                      <div className="flex items-center gap-2">
+                        <Phone size={12} style={{ color: et.theme.text }} className="flex-shrink-0" />
+                        <span className="text-xs" style={{ color: '#c0d0c0' }}>{ev.contact}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 원문 전체보기 (청첩장·부고장 붙여넣기 내용) */}
+                {rawBody && (
+                  <div style={{ borderTop: `1px solid ${et.theme.border}` }}>
+                    <button onClick={() => setExpandedRaw(isRawOpen ? null : ev.id)}
+                      className="w-full flex items-center justify-between px-4 py-2.5 transition"
+                      style={{ background: 'rgba(0,0,0,0.25)' }}>
+                      <div className="flex items-center gap-2">
+                        <FileText size={12} style={{ color: et.theme.text }} />
+                        <span className="text-xs font-medium" style={{ color: et.theme.text }}>
+                          {ko ? '원문 전체보기' : 'View full message'}
+                        </span>
+                      </div>
+                      {isRawOpen
+                        ? <ChevronUp size={14} style={{ color: et.theme.text }} />
+                        : <ChevronDown size={14} style={{ color: et.theme.text }} />}
+                    </button>
+                    {isRawOpen && (
+                      <div className="px-4 pb-4 pt-1">
+                        <div className="rounded-xl p-4 text-xs leading-relaxed whitespace-pre-wrap"
+                          style={{
+                            background: 'rgba(0,0,0,0.35)',
+                            color: '#b8ccb8',
+                            border: '1px solid rgba(255,255,255,0.05)',
+                            fontFamily: '"Noto Sans KR", "Apple SD Gothic Neo", sans-serif',
+                            letterSpacing: '0.01em',
+                          }}>
+                          {rawBody}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
 
-      {showAdd && (
-        <div className="fixed inset-0 bg-black/70 flex items-end z-50" onClick={() => setShowAdd(false)}>
-          <div className="bg-gray-900 rounded-t-3xl p-6 w-full space-y-4 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-bold text-white">{tab === 'notice' ? (ko ? '공지 작성' : 'New Notice') : (ko ? '일정 등록' : 'Add Event')}</h3>
-              <button onClick={() => setShowAdd(false)}><X size={20} className="text-gray-400" /></button>
-            </div>
-            {tab === 'event' && (
-              <div>
-                <label className="text-sm text-gray-400 block mb-1">{ko ? '유형' : 'Type'}</label>
-                <select value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white">
-                  {['meeting', 'celebration', 'condolence', 'other'].map((t) => <option key={t} value={t}>{eventTypeLabel(t)}</option>)}
-                </select>
+      {/* ══════════════════════════════════════════════════════════
+           등록 바텀시트 모달
+      ══════════════════════════════════════════════════════════ */}
+      {showAdd && typeof document !== 'undefined' && createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            top: 0, right: 0, bottom: 0, left: 0,
+            zIndex: 99999,
+            background: '#0a140a',
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+          onClick={e => e.stopPropagation()}>
+
+            {/* 헤더 — flex-shrink-0 (고정 상단) */}
+            <div className="flex-shrink-0 px-5 pt-4 pb-3"
+              style={{
+                borderBottom: '1px solid rgba(34,197,94,0.08)',
+                paddingTop: 'calc(1rem + env(safe-area-inset-top))',
+              }}>
+              <div className="flex justify-center mb-3">
+                <div className="w-10 h-1 rounded-full" style={{ background: '#1a3a1a' }} />
               </div>
-            )}
-            <div>
-              <label className="text-sm text-gray-400 block mb-1">{ko ? '제목 (한글)' : 'Title (Korean)'}</label>
-              <input value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white" />
-            </div>
-            <div>
-              <label className="text-sm text-gray-400 block mb-1">{ko ? '제목 (영문)' : 'Title (English)'}</label>
-              <input value={form.titleEn} onChange={(e) => setForm((f) => ({ ...f, titleEn: e.target.value }))}
-                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white" />
-            </div>
-            {tab === 'event' && (
-              <div>
-                <label className="text-sm text-gray-400 block mb-1">{ko ? '날짜' : 'Date'}</label>
-                <input type="datetime-local" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white" />
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-bold text-white">
+                  {tab === 'notice' ? (ko ? '📢 공지 작성' : '📢 New Notice') : (ko ? '🎊 경조사 등록' : '🎊 Add Life Event')}
+                </h3>
+                <button onClick={() => setShowAdd(false)}
+                  className="w-8 h-8 rounded-xl flex items-center justify-center"
+                  style={{ background: 'rgba(255,255,255,0.05)', color: '#9aae9a' }}>
+                  <X size={16} />
+                </button>
               </div>
+            </div>
+
+            {/* 본문 — flex-1 + overflow-y-auto (가운데 스크롤 영역) */}
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0">
+
+            {tab === 'notice' ? (
+              /* ── 공지 폼 ──────────────────────────────────────── */
+              <>
+                <div>
+                  <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#9aae9a' }}>
+                    {ko ? '제목 *' : 'Title *'}
+                  </label>
+                  <input value={nForm.title} onChange={e => setNForm(f => ({ ...f, title: e.target.value }))}
+                    onKeyDown={e => e.key === 'Enter' && submitNotice()}
+                    placeholder={ko ? '공지 제목을 입력하세요' : 'Enter notice title'}
+                    className="input-field" autoFocus />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#9aae9a' }}>
+                    {ko ? '내용' : 'Content'}
+                  </label>
+                  <textarea rows={4} value={nForm.content}
+                    onChange={e => setNForm(f => ({ ...f, content: e.target.value }))}
+                    placeholder={ko ? NOTICE_PLACEHOLDER_KO : NOTICE_PLACEHOLDER_EN}
+                    className="input-field resize-none text-sm leading-relaxed" />
+                </div>
+                {/* 장소 (선택) — 구글 Places 검색 (베트남 호치민 기준), 회원 길찾기 가능 */}
+                <div>
+                  <label className="text-xs font-semibold mb-1.5 block flex items-center gap-1" style={{ color: '#9aae9a' }}>
+                    <MapPin size={11} />
+                    {ko ? '장소 (선택) — 검색 또는 직접 입력' : 'Location (optional) — search or type'}
+                  </label>
+                  <PlaceSearchInput
+                    value={nForm.location_name}
+                    onChange={(v) => setNForm(f => ({ ...f, location_name: v, ...(v ? {} : { location_address: '', location_place_id: '', location_lat: null, location_lng: null }) }))}
+                    onSelect={(p) => setNForm(f => ({
+                      ...f,
+                      location_name: p.name,
+                      location_address: p.address ?? '',
+                      location_place_id: p.place_id ?? '',
+                      location_lat: p.lat,
+                      location_lng: p.lng,
+                    }))}
+                    placeholder={ko ? '식당·장소 검색 (예: 호호닭갈비)' : 'Search restaurants/places'}
+                    near="Ho Chi Minh City"
+                    useFixed
+                  />
+                  {nForm.location_address && (
+                    <p className="text-[11px] mt-1 px-1" style={{ color: '#86efac' }}>
+                      📍 {nForm.location_address}
+                    </p>
+                  )}
+                  {nForm.location_name.trim() && !nForm.location_address && (
+                    <p className="text-[10px] mt-1 flex items-center gap-1" style={{ color: '#9aae9a' }}>
+                      💡 {ko ? '검색 결과에서 선택하면 정확한 주소가 저장됩니다' : 'Pick from search results for accurate address'}
+                    </p>
+                  )}
+                </div>
+
+                {/* ━━━ 정기모임 우선순위 + 자동 만료 ━━━━━━━━━━━━━━━━━━ */}
+                <div className="rounded-xl p-3" style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)' }}>
+                  {/* 정기모임 토글 */}
+                  <label className="flex items-center justify-between cursor-pointer select-none">
+                    <span className="text-sm font-semibold" style={{ color: '#86efac' }}>
+                      📌 {ko ? '정기모임 안내' : 'Pin as regular meeting'}
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={nForm.is_meeting}
+                      onChange={e => setNForm(f => ({ ...f, is_meeting: e.target.checked }))}
+                      className="w-5 h-5 accent-green-500"
+                    />
+                  </label>
+                  <p className="text-[11px] mt-1" style={{ color: '#9aae9a' }}>
+                    {ko ? '체크하면 공지 목록 맨 위에 고정됩니다' : 'Pinned to the top of the notices list'}
+                  </p>
+
+                  {/* 날짜 (선택) */}
+                  <div className="mt-3">
+                    <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#9aae9a' }}>
+                      {ko ? '관련 날짜 (선택)' : 'Related date (optional)'}
+                    </label>
+                    <input
+                      type="date"
+                      value={nForm.event_date}
+                      onChange={e => setNForm(f => ({ ...f, event_date: e.target.value }))}
+                      className="input-field"
+                    />
+                    <p className="text-[11px] mt-1" style={{ color: '#9aae9a' }}>
+                      {ko ? '날짜 입력 시 그 날까지 유지 후 자동 숨김' : 'Hidden automatically the day after'}
+                    </p>
+                  </div>
+
+                  {/* 유지 기간 — 날짜 없을 때만 활성 */}
+                  {!nForm.event_date && (
+                    <div className="mt-3">
+                      <label className="text-xs font-semibold mb-1.5 block" style={{ color: '#9aae9a' }}>
+                        {ko ? '유지 기간 (일)' : 'Retention (days)'}
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={0}
+                          max={365}
+                          value={nForm.retention_days}
+                          onChange={e => setNForm(f => ({ ...f, retention_days: Math.max(0, Number(e.target.value) || 0) }))}
+                          className="input-field flex-1"
+                          placeholder="7"
+                        />
+                        <span className="text-xs whitespace-nowrap" style={{ color: '#86efac' }}>
+                          {ko ? '일 후 자동 숨김' : 'days then hide'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] mt-1" style={{ color: '#9aae9a' }}>
+                        {ko ? '0 = 영구 보관' : '0 = keep forever'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              /* ── 경조사 폼 ────────────────────────────────────── */
+              <>
+                <input
+                  ref={imgInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleImageOcr}
+                />
+                {/* ━━━ 자동 분석 박스 (textarea 기본 노출) ━━━━━━━━━━━━ */}
+                <div className="rounded-2xl overflow-hidden"
+                  style={{ background: 'linear-gradient(135deg,rgba(139,92,246,0.1),rgba(6,13,6,0.95))', border: '1px solid rgba(139,92,246,0.25)' }}>
+                  {/* 헤더 */}
+                  <div className="flex items-center gap-2 px-4 pt-4 pb-2">
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{ background: 'rgba(139,92,246,0.2)' }}>
+                      <Sparkles size={14} style={{ color: '#a78bfa' }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-white">
+                        {ko ? '📋 자동 입력' : '📋 Auto-fill'}
+                      </p>
+                      <p className="text-[11px] truncate" style={{ color: '#7c6faa' }}>
+                        {showAutoParse === 'url'
+                          ? (ko ? '카카오톡·문자에서 받은 링크 붙여넣기' : 'Paste the link')
+                          : (ko ? '아래 박스에 텍스트·사진을 붙여넣으면 자동 분석' : 'Paste text/image — auto-analyzed')}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 보조 액션: 사진 / URL 토글 */}
+                  <div className="px-4 pt-1 pb-2 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => imgInputRef.current?.click()}
+                      disabled={imgOcrLoading}
+                      className="flex-1 py-2 rounded-lg flex items-center justify-center gap-1.5 text-xs font-medium transition disabled:opacity-50"
+                      style={{ background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', color: '#c4b5fd' }}
+                    >
+                      {imgOcrLoading ? (
+                        <>
+                          <div className="w-3 h-3 border-2 border-purple-300 border-t-transparent rounded-full animate-spin" />
+                          {ko ? '분석 중' : 'Analyzing'}
+                        </>
+                      ) : (
+                        <>
+                          <ImageIcon size={12} />
+                          {ko ? '사진 선택' : 'Pick Photo'}
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowAutoParse(showAutoParse === 'url' ? false : 'url')}
+                      className="flex-1 py-2 rounded-lg flex items-center justify-center gap-1.5 text-xs font-medium transition"
+                      style={
+                        showAutoParse === 'url'
+                          ? { background: 'rgba(139,92,246,0.4)', border: '1px solid rgba(139,92,246,0.6)', color: '#fff' }
+                          : { background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', color: '#c4b5fd' }
+                      }
+                    >
+                      <span className="text-[12px] leading-none">🌐</span>
+                      {ko ? (showAutoParse === 'url' ? 'URL 모드 끄기' : 'URL로 분석') : (showAutoParse === 'url' ? 'Cancel URL' : 'From URL')}
+                    </button>
+                  </div>
+
+                  {/* 입력 영역: textarea 기본, URL 모드일 땐 URL input */}
+                  <div className="px-4 pb-3">
+                    {imgOcrError && (
+                      <p className="text-[11px] px-3 py-1.5 rounded-lg mb-2"
+                        style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.25)', color: '#fca5a5' }}>
+                        ⚠ {imgOcrError}
+                      </p>
+                    )}
+
+                    {showAutoParse === 'url' ? (
+                      <>
+                        <input
+                          type="url"
+                          autoFocus
+                          value={urlInput}
+                          onChange={e => setUrlInput(e.target.value)}
+                          onKeyDown={e => e.key === 'Enter' && analyzeUrl()}
+                          placeholder="https://mcard.kakao.com/..."
+                          className="w-full rounded-xl px-3.5 py-3 text-sm"
+                          style={{
+                            background: 'rgba(0,0,0,0.3)',
+                            border: '1px solid rgba(139,92,246,0.25)',
+                            color: '#e9d5ff', outline: 'none',
+                          }}
+                        />
+                        <button
+                          onClick={analyzeUrl}
+                          disabled={!urlInput.trim() || urlLoading}
+                          className="w-full mt-2 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition disabled:opacity-40"
+                          style={{ background: urlInput.trim() ? 'linear-gradient(135deg,#7c3aed,#4c1d95)' : 'rgba(139,92,246,0.1)', color: '#e9d5ff' }}
+                        >
+                          {urlLoading ? (
+                            <>
+                              <div className="w-4 h-4 border-2 border-purple-300 border-t-transparent rounded-full animate-spin" />
+                              {ko ? '불러오는 중...' : 'Loading...'}
+                            </>
+                          ) : (
+                            <>🔍 {ko ? 'URL 분석하기' : 'Analyze URL'}</>
+                          )}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <div className="relative">
+                          <textarea
+                            ref={pasteRef}
+                            rows={4}
+                            value={pasteText}
+                            onChange={e => { setPasteText(e.target.value); setParseMsg(null); setAutoFilled([]) }}
+                            onPaste={handleTextareaPaste}
+                            placeholder={ko
+                              ? '여기에 텍스트나 사진을 붙여넣으세요 (길게 눌러 붙여넣기)\n\n예) 카카오톡 청첩장 캡쳐 이미지\n예) 청첩장 텍스트'
+                              : 'Paste text or image here (long-press to paste)\n\nE.g. wedding invitation screenshot\nE.g. invitation text'}
+                            className="w-full rounded-xl px-3.5 py-3 text-xs leading-relaxed resize-none"
+                            style={{
+                              background: 'rgba(0,0,0,0.3)',
+                              border: pasteText ? '1px solid rgba(139,92,246,0.4)' : '1px solid rgba(139,92,246,0.15)',
+                              color: '#d1c4e9',
+                              fontFamily: '"Noto Sans KR","Apple SD Gothic Neo",monospace',
+                              outline: 'none',
+                            }}
+                          />
+                          {pasteText && !parsing && (
+                            <button onClick={() => { setPasteText(''); setAutoFilled([]); setParseMsg(null) }}
+                              className="absolute right-2 top-2 w-5 h-5 rounded-full flex items-center justify-center"
+                              style={{ background: 'rgba(139,92,246,0.3)', color: '#a78bfa' }}>
+                              <X size={10} />
+                            </button>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => runParse(pasteText)}
+                          disabled={!pasteText.trim() || parsing}
+                          className="w-full mt-2 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition disabled:opacity-40"
+                          style={{ background: pasteText.trim() ? 'linear-gradient(135deg,#7c3aed,#4c1d95)' : 'rgba(139,92,246,0.1)', color: '#e9d5ff' }}>
+                          {parsing ? (
+                            <>
+                              <div className="w-4 h-4 border-2 border-purple-300 border-t-transparent rounded-full animate-spin" />
+                              {ko ? '분석 중...' : 'Analyzing...'}
+                            </>
+                          ) : (
+                            <>
+                              <ClipboardPaste size={15} />
+                              {ko ? '🔍 자동 분석하기' : '🔍 Auto-fill Fields'}
+                            </>
+                          )}
+                        </button>
+                      </>
+                    )}
+
+                    {parseMsg && (
+                      <div className="mt-2 px-3 py-2 rounded-xl text-xs font-medium flex items-center gap-2"
+                        style={{
+                          background: parseMsg.startsWith('✅') ? 'rgba(34,197,94,0.1)' : 'rgba(251,191,36,0.1)',
+                          border: parseMsg.startsWith('✅') ? '1px solid rgba(34,197,94,0.2)' : '1px solid rgba(251,191,36,0.2)',
+                          color: parseMsg.startsWith('✅') ? '#86efac' : '#fde68a',
+                        }}>
+                        {parseMsg}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 자동입력 안내 */}
+                {autoFilled.length > 0 && (
+                  <p className="text-[11px] flex items-center gap-1" style={{ color: '#7c6faa' }}>
+                    <CheckCircle2 size={11} />
+                    {ko ? '초록 테두리 항목이 자동으로 입력되었습니다. 수정 가능합니다.'
+                        : 'Highlighted fields were auto-filled. You can edit them.'}
+                  </p>
+                )}
+
+                {/* 유형 선택 */}
+                <div>
+                  <label className="text-xs font-semibold mb-2 block" style={{ color: '#9aae9a' }}>
+                    {ko ? '유형 선택 *' : 'Event Type *'}
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {EVENT_TYPES.map(et => (
+                      <button key={et.value} onClick={() => setEForm(f => ({ ...f, type: et.value }))}
+                        className="py-3 rounded-xl text-xs font-medium flex flex-col items-center gap-1.5 transition"
+                        style={eForm.type === et.value
+                          ? { background: et.theme.badge, border: `1.5px solid ${et.theme.border}`, color: et.theme.text }
+                          : { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', color: '#4a6a4a' }}>
+                        <span className="text-xl">{et.emoji}</span>
+                        <span>{ko ? et.ko : et.en}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 제목 */}
+                <div>
+                  <label className="text-xs font-semibold mb-1.5 block flex items-center gap-1" style={{ color: '#9aae9a' }}>
+                    {ko ? '제목 *' : 'Title *'}
+                    {isAutoFilled('title') && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: 'rgba(139,92,246,0.2)', color: '#a78bfa' }}>자동입력</span>}
+                  </label>
+                  <input value={eForm.title} onChange={e => setEForm(f => ({ ...f, title: e.target.value }))}
+                    placeholder={
+                      eForm.type === 'wedding'    ? (ko ? '예: 홍길동 · 김영희 결혼식'   : 'e.g. Gildong & Younghee Wedding') :
+                      eForm.type === 'condolence' ? (ko ? '예: 故 홍길동 선생 부고'       : 'e.g. Passing of Mr. Hong') :
+                      eForm.type === 'birth'      ? (ko ? '예: 홍길동 회원 득남 소식'     : 'e.g. New Baby Arrival') :
+                      eForm.type === 'birthday'   ? (ko ? '예: 홍길동 회원 칠순 잔치'     : 'e.g. 70th Birthday Celebration') :
+                      eForm.type === 'promotion'  ? (ko ? '예: 홍길동 이사 승진 축하'     : 'e.g. Congratulations on Promotion') :
+                      ko ? '제목을 입력하세요' : 'Enter title'
+                    }
+                    className="input-field"
+                    style={isAutoFilled('title') ? { borderColor: 'rgba(139,92,246,0.5)', boxShadow: '0 0 0 1px rgba(139,92,246,0.2)' } : {}} />
+                </div>
+
+                {/* 당사자 이름 */}
+                <div>
+                  <label className="text-xs font-semibold mb-1.5 block flex items-center gap-1" style={{ color: '#9aae9a' }}>
+                    {eForm.type === 'wedding'    ? (ko ? '신랑 · 신부 이름'  : 'Bride & Groom') :
+                     eForm.type === 'condolence' ? (ko ? '고인 성함'         : 'Deceased name') :
+                     eForm.type === 'birth'      ? (ko ? '부모 이름'         : 'Parent name(s)') :
+                     eForm.type === 'birthday'   ? (ko ? '주인공 이름'       : 'Honoree name') :
+                     eForm.type === 'promotion'  ? (ko ? '당사자 이름 · 직위' : 'Name & Title') :
+                     ko ? '당사자 이름' : 'Person name'}
+                    {isAutoFilled('person_name') && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: 'rgba(139,92,246,0.2)', color: '#a78bfa' }}>자동입력</span>}
+                  </label>
+                  <input value={eForm.person_name}
+                    onChange={e => setEForm(f => ({ ...f, person_name: e.target.value }))}
+                    placeholder={
+                      eForm.type === 'wedding'    ? (ko ? '예: 신랑 홍길동 ♥ 신부 김영희' : 'e.g. Gildong ♥ Younghee') :
+                      eForm.type === 'condolence' ? (ko ? '예: 故 홍길동 (1950 ~ 2025)'   : 'e.g. Hong Gildong (1950–2025)') :
+                      eForm.type === 'birthday'   ? (ko ? '예: 홍길동 회장 칠순'          : 'e.g. Chairman Hong — 70th') :
+                      ko ? '이름' : 'Name'
+                    }
+                    className="input-field"
+                    style={isAutoFilled('person_name') ? { borderColor: 'rgba(139,92,246,0.5)', boxShadow: '0 0 0 1px rgba(139,92,246,0.2)' } : {}} />
+                </div>
+
+                {/* 날짜 + 시간 */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold mb-1.5 block flex items-center gap-1" style={{ color: '#9aae9a' }}>
+                      {eForm.type === 'condolence' ? (ko ? '발인 날짜 *' : 'Funeral Date *') : (ko ? '날짜 *' : 'Date *')}
+                      {isAutoFilled('date') && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: 'rgba(139,92,246,0.2)', color: '#a78bfa' }}>자동</span>}
+                    </label>
+                    <input type="date" value={eForm.date}
+                      onChange={e => setEForm(f => ({ ...f, date: e.target.value }))}
+                      className="input-field"
+                      style={isAutoFilled('date') ? { borderColor: 'rgba(139,92,246,0.5)', boxShadow: '0 0 0 1px rgba(139,92,246,0.2)' } : {}} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold mb-1.5 block flex items-center gap-1" style={{ color: '#9aae9a' }}>
+                      {ko ? '시간' : 'Time'}
+                      {isAutoFilled('time') && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: 'rgba(139,92,246,0.2)', color: '#a78bfa' }}>자동</span>}
+                    </label>
+                    <input type="time" value={eForm.time}
+                      onChange={e => setEForm(f => ({ ...f, time: e.target.value }))}
+                      className="input-field"
+                      style={isAutoFilled('time') ? { borderColor: 'rgba(139,92,246,0.5)', boxShadow: '0 0 0 1px rgba(139,92,246,0.2)' } : {}} />
+                  </div>
+                </div>
+
+                {/* 장소 */}
+                <div>
+                  <label className="text-xs font-semibold mb-1.5 block flex items-center gap-1" style={{ color: '#9aae9a' }}>
+                    <MapPin size={11} className="inline" />
+                    {eForm.type === 'condolence' ? (ko ? '빈소 위치' : 'Funeral Hall') :
+                     eForm.type === 'wedding'    ? (ko ? '예식장'    : 'Venue')        :
+                     ko ? '장소' : 'Location'}
+                    {isAutoFilled('location_name') && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: 'rgba(139,92,246,0.2)', color: '#a78bfa' }}>자동입력</span>}
+                  </label>
+                  <input value={eForm.location_name}
+                    onChange={e => setEForm(f => ({ ...f, location_name: e.target.value }))}
+                    placeholder={
+                      eForm.type === 'wedding'    ? (ko ? '예: OO웨딩홀 2층 다이아몬드홀'     : 'e.g. Grand Ballroom, 2F') :
+                      eForm.type === 'condolence' ? (ko ? '예: OO병원 장례식장 1호실'          : 'e.g. St. Mary Hospital Funeral Hall') :
+                      ko ? '장소명 및 주소' : 'Venue name / address'
+                    }
+                    className="input-field"
+                    style={isAutoFilled('location_name') ? { borderColor: 'rgba(139,92,246,0.5)', boxShadow: '0 0 0 1px rgba(139,92,246,0.2)' } : {}} />
+                </div>
+
+                {/* 연락처 */}
+                <div>
+                  <label className="text-xs font-semibold mb-1.5 block flex items-center gap-1" style={{ color: '#9aae9a' }}>
+                    <Phone size={11} className="inline" />
+                    {eForm.type === 'condolence' ? (ko ? '유족 연락처' : 'Family contact') : ko ? '연락처' : 'Contact'}
+                    {isAutoFilled('contact') && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: 'rgba(139,92,246,0.2)', color: '#a78bfa' }}>자동입력</span>}
+                  </label>
+                  <input value={eForm.contact}
+                    onChange={e => setEForm(f => ({ ...f, contact: e.target.value }))}
+                    placeholder={ko ? '예: 010-1234-5678' : 'e.g. 010-1234-5678'}
+                    className="input-field"
+                    style={isAutoFilled('contact') ? { borderColor: 'rgba(139,92,246,0.5)', boxShadow: '0 0 0 1px rgba(139,92,246,0.2)' } : {}} />
+                </div>
+
+                {/* 원문 (자동분석에서 입력된 경우 자동 보관, 미입력 시에만 표시) */}
+                {!pasteText && (
+                  <div>
+                    <label className="text-xs font-semibold mb-1 block" style={{ color: '#9aae9a' }}>
+                      <FileText size={11} className="inline mr-1" />
+                      {ko ? '원문 직접 붙여넣기 (선택)' : 'Paste original text (optional)'}
+                    </label>
+                    <p className="text-xs mb-2" style={{ color: '#7a9a7a' }}>
+                      {ko ? '위 자동 분석을 이용하거나, 여기에 직접 붙여넣을 수 있습니다.' : 'Or paste the original message here directly.'}
+                    </p>
+                    <textarea rows={5} value={eForm.raw_text}
+                      onChange={e => setEForm(f => ({ ...f, raw_text: e.target.value }))}
+                      placeholder={rawPlaceholder(eForm.type, ko)}
+                      className="input-field resize-none text-xs leading-relaxed"
+                      style={{ fontFamily: '"Noto Sans KR","Apple SD Gothic Neo",monospace' }} />
+                  </div>
+                )}
+                {pasteText && (
+                  <p className="text-[11px] flex items-center gap-1" style={{ color: '#9aae9a' }}>
+                    <FileText size={11} />
+                    {ko ? '원문이 자동 분석 텍스트로 저장됩니다.' : 'Original text will be saved from the analysis input.'}
+                  </p>
+                )}
+              </>
             )}
-            <div>
-              <label className="text-sm text-gray-400 block mb-1">{ko ? '내용' : 'Content'}</label>
-              <textarea rows={3} value={form.content} onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
-                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white resize-none" />
             </div>
-            <div className="flex gap-3 pt-1">
-              <button onClick={() => setShowAdd(false)} className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300">{ko ? '취소' : 'Cancel'}</button>
-              <button onClick={tab === 'notice' ? addNotice : addEvent} className="flex-1 py-3 rounded-xl bg-green-700 text-white font-semibold">{ko ? '등록' : 'Submit'}</button>
+            {/* 푸터 — flex-shrink-0 (고정 하단, 절대 안 잘림) */}
+            <div className="flex-shrink-0 px-5 pt-3"
+              style={{
+                paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))',
+                borderTop: '1px solid rgba(34,197,94,0.25)',
+                background: '#0a140a',
+                boxShadow: '0 -8px 24px rgba(0,0,0,0.5)',
+              }}>
+              {/* 저장 에러 표시 */}
+              {submitError && (
+                <div className="mb-2 px-3 py-2 rounded-lg text-xs"
+                  style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)', color: '#fca5a5' }}>
+                  ⚠ {submitError}
+                </div>
+              )}
+              <div className="flex gap-3">
+                <button onClick={() => setShowAdd(false)} disabled={submitting}
+                  className="flex-1 py-3 rounded-xl text-sm font-medium disabled:opacity-50"
+                  style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.15)', color: '#86efac' }}>
+                  {ko ? '취소' : 'Cancel'}
+                </button>
+                {tab === 'notice' ? (
+                  <button onClick={submitNotice} disabled={!nForm.title.trim() || submitting}
+                    className="flex-1 py-3 rounded-xl text-white text-sm font-semibold btn-primary disabled:opacity-50 flex items-center justify-center gap-2">
+                    {submitting && <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
+                    {submitting ? (ko ? '등록 중...' : 'Posting...') : (ko ? '공지 등록' : 'Post Notice')}
+                  </button>
+                ) : (
+                  <button onClick={submitEvent} disabled={!eForm.title.trim() || !eForm.date || submitting}
+                    className="flex-1 py-3 rounded-xl text-white text-sm font-semibold btn-primary disabled:opacity-50 flex items-center justify-center gap-2">
+                    {submitting && <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
+                    {submitting ? (ko ? '등록 중...' : 'Registering...') : (ko ? '등록하기' : 'Register')}
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        </div>
+          </div>,
+        document.body
       )}
     </div>
   )
