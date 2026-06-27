@@ -262,6 +262,7 @@ export default function MeetingsPage() {
   const [savingScores,  setSavingScores]  = useState(false)
   const [yearlyScores,  setYearlyScores]  = useState<any[]>([])
   const [yearlyLoading, setYearlyLoading] = useState(false)
+  // 스코어 입력 자동 저장 키 — 아래 useEffect 에서 사용 (meeting 선언 이후로 옮김)
 
   // ── load ──────────────────────────────────────────────────────────────
   async function load() {
@@ -325,10 +326,25 @@ export default function MeetingsPage() {
     setAssign(a)
     setTeeTimes(tt)
     setCourseNames(cn)
-    // initialize score input from saved scores
-    const si: Record<string, string> = {}
-    sc?.forEach(s => { si[s.user_id] = String(s.gross_score) })
-    setScoreInput(si)
+    // 스코어 입력 초기화 — 우선순위:
+    //   1. localStorage 의 미저장 입력 (페이지 이동 후에도 유지)
+    //   2. DB 에 이미 저장된 스코어
+    //   3. 빈 값
+    const dbScores: Record<string, string> = {}
+    sc?.forEach(s => { dbScores[s.user_id] = String(s.gross_score) })
+    let merged: Record<string, string> = dbScores
+    if (typeof window !== 'undefined') {
+      try {
+        const key = `isgolf-score-draft-${currentClubId}-${year}-${month}`
+        const draftRaw = localStorage.getItem(key)
+        if (draftRaw) {
+          const draft = JSON.parse(draftRaw) as Record<string, string>
+          // 미저장 draft 가 있으면 DB 값 위에 덮어씀 — 회원님이 작성 중인 게 우선
+          merged = { ...dbScores, ...draft }
+        }
+      } catch {}
+    }
+    setScoreInput(merged)
   }
 
   async function loadYearlyAnalysis() {
@@ -359,6 +375,27 @@ export default function MeetingsPage() {
   }, [currentClubId])
 
   const meeting = useMemo(() => getRelevantMeeting(pattern, overrides), [pattern, overrides])
+
+  // ── 스코어 입력 draft 자동 저장 — 페이지 이동/새로고침 후에도 입력 보존 ─────
+  // 회장님 요청: "한번 입력하고 잠시 다른화면으로 다녀오면 초기화 된다"
+  const scoreDraftKey = (meeting && currentClubId)
+    ? `isgolf-score-draft-${currentClubId}-${meeting.year}-${meeting.month}`
+    : null
+  useEffect(() => {
+    if (!scoreDraftKey || typeof window === 'undefined') return
+    try {
+      // 빈 값만 있으면 저장 안 함 (localStorage 청소)
+      const nonEmpty: Record<string, string> = {}
+      for (const [k, v] of Object.entries(scoreInput)) {
+        if (v && String(v).trim()) nonEmpty[k] = v
+      }
+      if (Object.keys(nonEmpty).length === 0) {
+        localStorage.removeItem(scoreDraftKey)
+      } else {
+        localStorage.setItem(scoreDraftKey, JSON.stringify(nonEmpty))
+      }
+    } catch {}
+  }, [scoreInput, scoreDraftKey])
 
   useEffect(() => {
     if (!meeting) return
