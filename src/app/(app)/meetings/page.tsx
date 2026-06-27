@@ -264,24 +264,85 @@ export default function MeetingsPage() {
   const [yearlyLoading, setYearlyLoading] = useState(false)
   // 스코어 입력 자동 저장 키 — 아래 useEffect 에서 사용 (meeting 선언 이후로 옮김)
 
+  // 클럽 벌금 규칙 (per_stroke, max) + 통화 — 실시간 벌금 계산에 사용
+  const [clubFineRule, setClubFineRule] = useState<{ perStroke: number; max: number; currency: string }>({ perStroke: 0, max: 0, currency: 'KRW' })
+  // 핸디 인라인 편집 — 회원 id → 새 값 (저장 전까지 임시 보관)
+  const [hcEdits, setHcEdits] = useState<Record<string, string>>({})
+  // 핸디 저장 중인 회원 id (스피너 표시용)
+  const [hcSavingFor, setHcSavingFor] = useState<string | null>(null)
+
   // ── load ──────────────────────────────────────────────────────────────
   async function load() {
     if (!currentClubId) return
     setLoading(true)
     const supabase = createClient()
-    const [{ data: pat, error: patErr }, { data: ovr }, { data: mems }] = await Promise.all([
+    const [{ data: pat, error: patErr }, { data: ovr }, { data: mems }, { data: clubRow }] = await Promise.all([
       supabase.from('recurring_meetings').select('*').eq('club_id', currentClubId).maybeSingle(),
       supabase.from('meeting_overrides').select('*').eq('club_id', currentClubId),
       supabase.from('club_memberships')
         .select('user_id, club_handicap, users(full_name, full_name_en, name_abbr)')
         .eq('club_id', currentClubId).eq('status', 'approved'),
+      supabase.from('clubs')
+        .select('fine_handicap_per_stroke, fine_handicap_max, currency')
+        .eq('id', currentClubId).single(),
     ])
     if (patErr) console.error('pattern load:', patErr.message)
     setPattern(pat ?? null)
     setOverrides(ovr ?? [])
     setClubMembers(mems ?? [])
+    setClubFineRule({
+      perStroke: Number(clubRow?.fine_handicap_per_stroke ?? 0) || 0,
+      max:       Number(clubRow?.fine_handicap_max ?? 0) || 0,
+      currency:  clubRow?.currency ?? 'KRW',
+    })
     if (pat) setPForm({ week: pat.week_of_month, dow: pat.day_of_week, time: pat.start_time?.slice(0, 5) ?? '07:00', venue: pat.venue ?? '', notes: pat.notes ?? '' })
     setLoading(false)
+  }
+
+  // 핸디 인라인 저장 — 회장/총무만, blur 또는 Enter 로 트리거
+  async function saveHc(userId: string, value: string) {
+    if (!canManage || !currentClubId) return
+    const num = value.trim() === '' ? null : parseInt(value, 10)
+    if (num != null && (isNaN(num) || num < 0 || num > 54)) {
+      setRsvpError(ko ? '핸디는 0~54 사이' : 'Handicap must be 0-54')
+      setTimeout(() => setRsvpError(null), 3000)
+      return
+    }
+    setHcSavingFor(userId)
+    const supabase = createClient()
+    const { error } = await supabase.from('club_memberships')
+      .update({ club_handicap: num })
+      .eq('club_id', currentClubId).eq('user_id', userId)
+    setHcSavingFor(null)
+    if (error) {
+      setRsvpError((ko ? '핸디 저장 실패: ' : 'HC save failed: ') + error.message)
+      setTimeout(() => setRsvpError(null), 5000)
+      return
+    }
+    // 로컬 state 즉시 갱신 (load 재호출 안 해도 화면에 반영)
+    setClubMembers(prev => prev.map(m =>
+      m.user_id === userId ? { ...m, club_handicap: num } : m,
+    ))
+    // 임시 입력 정리
+    setHcEdits(prev => { const { [userId]: _, ...rest } = prev; return rest })
+  }
+
+  // 실시간 벌금 계산 — 입력 시 즉시 표시 (저장 전)
+  function calcLiveFine(grossStr: string, hc: number | null, coursePar: number): number | null {
+    if (!clubFineRule.perStroke || clubFineRule.perStroke <= 0) return null
+    const g = parseInt(grossStr)
+    if (isNaN(g) || g <= 0) return null
+    if (hc == null) return null
+    const net = g - hc
+    if (net <= coursePar) return 0
+    const over = net - coursePar
+    let amt = over * clubFineRule.perStroke
+    if (clubFineRule.max > 0 && amt > clubFineRule.max) amt = clubFineRule.max
+    return amt
+  }
+  function fmtMoney(n: number): string {
+    const sym = clubFineRule.currency === 'VND' ? '₫' : clubFineRule.currency === 'IDR' ? 'Rp' : '₩'
+    return `${sym}${n.toLocaleString()}`
   }
 
   async function loadRsvp(year: number, month: number) {
@@ -2133,22 +2194,67 @@ export default function MeetingsPage() {
                 </div>
               )}
 
-              {/* Score inputs */}
+              {/* 벌금 규칙 + 핸디 안내 */}
+              {!isPastView && (
+                <div className="text-[10px] flex items-center justify-between gap-2 px-1" style={{ color: 'var(--text-3)' }}>
+                  <span>
+                    💡 {ko ? '핸디 (HC) 칸 탭하여 회원 핸디 수정 → 스코어 입력 시 우측 벌금 자동 계산' : 'Tap HC to edit · fine auto-calculated'}
+                  </span>
+                  {clubFineRule.perStroke > 0 ? (
+                    <span style={{ color: 'var(--gold-l, #c9a84c)' }}>
+                      {fmtMoney(clubFineRule.perStroke)}/타{clubFineRule.max > 0 ? ` · 최대 ${fmtMoney(clubFineRule.max)}` : ''}
+                    </span>
+                  ) : (
+                    <span style={{ color: '#f87171' }}>⚠ 벌금 룰 미설정</span>
+                  )}
+                </div>
+              )}
+
+              {/* Score inputs — 한 행: [이름] [HC] [스코어 ±] [실시간 벌금] */}
               <div className="space-y-2">
                 {attending.map((att: any) => {
                   const name = lang === 'ko' ? att.users?.full_name : (att.users?.full_name_en || att.users?.full_name)
                   const abbr = att.users?.name_abbr
                   const canEdit = !isPastView && (canManage || att.user_id === user?.id)
                   const existing = scores.find(s => s.user_id === att.user_id)
-                  const hcInfo = clubMembers.find(m => m.user_id === att.user_id)?.club_handicap
+                  const hcInfo = clubMembers.find(m => m.user_id === att.user_id)?.club_handicap ?? null
+                  const coursePar = courses.find(c => c.name === meeting?.venue)?.par ?? 72
+                  const grossStr = scoreInput[att.user_id] ?? (existing ? String(existing.gross_score) : '')
+                  const liveFine = canEdit ? calcLiveFine(grossStr, hcInfo, coursePar) : null
+                  const savedFine = existing && hcInfo != null
+                    ? calcLiveFine(String(existing.gross_score), hcInfo, coursePar)
+                    : null
+                  const showFine = liveFine != null ? liveFine : savedFine
                   return (
-                    <div key={att.user_id} className="flex items-center gap-3 bg-gray-800/60 rounded-xl px-3 py-2.5">
+                    <div key={att.user_id} className="flex items-center gap-2 bg-gray-800/60 rounded-xl px-3 py-2.5">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-white truncate">{name}{abbr ? ` (${abbr})` : ''}</p>
-                        {hcInfo != null && <p className="text-xs text-gray-400">HC {hcInfo}</p>}
                       </div>
+
+                      {/* HC — 회장/총무는 인라인 편집, 일반은 라벨 */}
+                      {canManage && !isPastView ? (
+                        <div className="flex-shrink-0 flex items-center gap-1">
+                          <span className="text-[10px]" style={{ color: 'var(--text-3)' }}>HC</span>
+                          <input
+                            type="number" min="0" max="54"
+                            value={hcEdits[att.user_id] ?? (hcInfo != null ? String(hcInfo) : '')}
+                            onChange={e => setHcEdits(p => ({ ...p, [att.user_id]: e.target.value }))}
+                            onBlur={e => saveHc(att.user_id, e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                            disabled={hcSavingFor === att.user_id}
+                            placeholder="—"
+                            className="w-10 text-center bg-gray-700 border border-gray-600 rounded-lg py-1 text-blue-200 text-xs font-bold disabled:opacity-50"
+                          />
+                        </div>
+                      ) : (
+                        <span className="flex-shrink-0 text-[11px]" style={{ color: hcInfo != null ? '#93c5fd' : 'var(--text-3)' }}>
+                          HC {hcInfo != null ? hcInfo : '—'}
+                        </span>
+                      )}
+
+                      {/* Score 입력 */}
                       {canEdit ? (
-                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <div className="flex items-center gap-1 flex-shrink-0">
                           <button onClick={() => setScoreInput(p => ({ ...p, [att.user_id]: String(Math.max(60, parseInt(p[att.user_id]||'72') - 1)) }))}
                             className="w-7 h-7 rounded-lg bg-gray-700 text-white text-sm font-bold hover:bg-gray-600 transition">−</button>
                           <input
@@ -2166,6 +2272,19 @@ export default function MeetingsPage() {
                           {existing ? existing.gross_score : '—'}
                         </span>
                       )}
+
+                      {/* 실시간 벌금 표시 */}
+                      <div className="flex-shrink-0 text-right" style={{ minWidth: 70 }}>
+                        {showFine == null ? (
+                          <span className="text-[10px]" style={{ color: 'var(--text-3)' }}>—</span>
+                        ) : showFine === 0 ? (
+                          <span className="text-[10px]" style={{ color: '#4ade80' }}>✓ par</span>
+                        ) : (
+                          <span className="text-[11px] font-bold" style={{ color: '#f87171' }}>
+                            {fmtMoney(showFine)}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   )
                 })}
