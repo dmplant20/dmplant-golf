@@ -356,7 +356,9 @@ export default function MeetingsPage() {
         .select('id, group_number, tee_time, course_name, meeting_group_members(user_id, guest_id, users(full_name, full_name_en, name_abbr), meeting_guests(full_name, full_name_en, handicap))')
         .eq('club_id', currentClubId).eq('year', year).eq('month', month).order('group_number'),
       supabase.from('round_scores')
-        .select('user_id, gross_score, handicap_used, net_score, course_name, users(full_name, full_name_en, name_abbr)')
+        // ⚠ users:user_id 명시 — round_scores 는 user_id + recorded_by 두 FK 가 users 참조
+        // (그냥 users(...) 쓰면 'more than one relationship' 에러로 전체 쿼리 실패 → 입력한 스코어 안 보임)
+        .select('user_id, gross_score, handicap_used, net_score, course_name, users:user_id(full_name, full_name_en, name_abbr)')
         .eq('club_id', currentClubId).eq('year', year).eq('month', month),
       supabase.from('second_meetings')
         .select('*, second_meeting_attendances(user_id, status, users(full_name, full_name_en, name_abbr))')
@@ -414,7 +416,7 @@ export default function MeetingsPage() {
     const supabase = createClient()
     const { data } = await supabase
       .from('round_scores')
-      .select('user_id, gross_score, handicap_used, month, course_par, users(full_name, full_name_en, name_abbr)')
+      .select('user_id, gross_score, handicap_used, month, course_par, users:user_id(full_name, full_name_en, name_abbr)')
       .eq('club_id', currentClubId)
       .eq('year', meeting.year)
       .order('month')
@@ -2260,62 +2262,66 @@ export default function MeetingsPage() {
                     : null
                   const showFine = liveFine != null ? liveFine : savedFine
                   return (
-                    <div key={att.user_id} className="flex items-center gap-2 bg-gray-800/60 rounded-xl px-3 py-2.5">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-white truncate">{name}{abbr ? ` (${abbr})` : ''}</p>
+                    <div key={att.user_id} className="bg-gray-800/60 rounded-xl px-3 py-2.5 space-y-2">
+                      {/* 1행: 이름 (전체 너비) + 실시간 벌금 (우측) */}
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-white truncate flex-1 min-w-0">
+                          {name}{abbr ? ` (${abbr})` : ''}
+                        </p>
+                        <div className="flex-shrink-0 text-right">
+                          {showFine == null ? (
+                            <span className="text-[10px]" style={{ color: 'var(--text-3)' }}>—</span>
+                          ) : showFine === 0 ? (
+                            <span className="text-[10px] font-bold" style={{ color: '#4ade80' }}>✓ par</span>
+                          ) : (
+                            <span className="text-[11px] font-bold" style={{ color: '#f87171' }}>
+                              {fmtMoney(showFine)}
+                            </span>
+                          )}
+                        </div>
                       </div>
 
-                      {/* HC — 회장/총무는 인라인 편집, 일반은 라벨 */}
-                      {canManage && !isPastView ? (
-                        <div className="flex-shrink-0 flex items-center gap-1">
-                          <span className="text-[10px]" style={{ color: 'var(--text-3)' }}>HC</span>
-                          <input
-                            type="number" min="0" max="54"
-                            value={hcEdits[att.user_id] ?? (hcInfo != null ? String(hcInfo) : '')}
-                            onChange={e => setHcEdits(p => ({ ...p, [att.user_id]: e.target.value }))}
-                            onBlur={e => saveHc(att.user_id, e.target.value)}
-                            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-                            disabled={hcSavingFor === att.user_id}
-                            placeholder="—"
-                            className="w-10 text-center bg-gray-700 border border-gray-600 rounded-lg py-1 text-blue-200 text-xs font-bold disabled:opacity-50"
-                          />
-                        </div>
-                      ) : (
-                        <span className="flex-shrink-0 text-[11px]" style={{ color: hcInfo != null ? '#93c5fd' : 'var(--text-3)' }}>
-                          HC {hcInfo != null ? hcInfo : '—'}
-                        </span>
-                      )}
-
-                      {/* Score 입력 */}
-                      {canEdit ? (
-                        <div className="flex items-center gap-1 flex-shrink-0">
-                          <button onClick={() => setScoreInput(p => ({ ...p, [att.user_id]: String(Math.max(60, parseInt(p[att.user_id]||'72') - 1)) }))}
-                            className="w-7 h-7 rounded-lg bg-gray-700 text-white text-sm font-bold hover:bg-gray-600 transition">−</button>
-                          <input
-                            type="number" min="60" max="150"
-                            value={scoreInput[att.user_id] ?? ''}
-                            onChange={e => setScoreInput(p => ({ ...p, [att.user_id]: e.target.value }))}
-                            placeholder="—"
-                            className="w-14 text-center bg-gray-700 border border-gray-600 rounded-lg py-1.5 text-white text-sm font-bold"
-                          />
-                          <button onClick={() => setScoreInput(p => ({ ...p, [att.user_id]: String(parseInt(p[att.user_id]||'72') + 1) }))}
-                            className="w-7 h-7 rounded-lg bg-gray-700 text-white text-sm font-bold hover:bg-gray-600 transition">+</button>
-                        </div>
-                      ) : (
-                        <span className={`text-sm font-bold flex-shrink-0 ${existing ? 'text-yellow-300' : 'text-gray-400'}`}>
-                          {existing ? existing.gross_score : '—'}
-                        </span>
-                      )}
-
-                      {/* 실시간 벌금 표시 */}
-                      <div className="flex-shrink-0 text-right" style={{ minWidth: 70 }}>
-                        {showFine == null ? (
-                          <span className="text-[10px]" style={{ color: 'var(--text-3)' }}>—</span>
-                        ) : showFine === 0 ? (
-                          <span className="text-[10px]" style={{ color: '#4ade80' }}>✓ par</span>
+                      {/* 2행: HC 편집 + 스코어 ± (좌우 분리) */}
+                      <div className="flex items-center justify-between gap-2">
+                        {/* HC — 회장/총무는 인라인 편집, 일반은 라벨 */}
+                        {canManage && !isPastView ? (
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <span className="text-[10px] font-semibold" style={{ color: 'var(--text-3)' }}>HC</span>
+                            <input
+                              type="number" min="0" max="54"
+                              value={hcEdits[att.user_id] ?? (hcInfo != null ? String(hcInfo) : '')}
+                              onChange={e => setHcEdits(p => ({ ...p, [att.user_id]: e.target.value }))}
+                              onBlur={e => saveHc(att.user_id, e.target.value)}
+                              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                              disabled={hcSavingFor === att.user_id}
+                              placeholder="—"
+                              className="w-12 text-center bg-gray-700 border border-gray-600 rounded-lg py-1 text-blue-200 text-sm font-bold disabled:opacity-50"
+                            />
+                          </div>
                         ) : (
-                          <span className="text-[11px] font-bold" style={{ color: '#f87171' }}>
-                            {fmtMoney(showFine)}
+                          <span className="text-[11px]" style={{ color: hcInfo != null ? '#93c5fd' : 'var(--text-3)' }}>
+                            HC {hcInfo != null ? hcInfo : '—'}
+                          </span>
+                        )}
+
+                        {/* Score 입력 — 우측 */}
+                        {canEdit ? (
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <button onClick={() => setScoreInput(p => ({ ...p, [att.user_id]: String(Math.max(60, parseInt(p[att.user_id]||'72') - 1)) }))}
+                              className="w-8 h-8 rounded-lg bg-gray-700 text-white text-base font-bold hover:bg-gray-600 transition active:scale-95">−</button>
+                            <input
+                              type="number" min="60" max="150"
+                              value={scoreInput[att.user_id] ?? ''}
+                              onChange={e => setScoreInput(p => ({ ...p, [att.user_id]: e.target.value }))}
+                              placeholder="—"
+                              className="w-16 text-center bg-gray-700 border border-gray-600 rounded-lg py-1.5 text-white text-base font-bold"
+                            />
+                            <button onClick={() => setScoreInput(p => ({ ...p, [att.user_id]: String(parseInt(p[att.user_id]||'72') + 1) }))}
+                              className="w-8 h-8 rounded-lg bg-gray-700 text-white text-base font-bold hover:bg-gray-600 transition active:scale-95">+</button>
+                          </div>
+                        ) : (
+                          <span className={`text-base font-bold flex-shrink-0 ${existing ? 'text-yellow-300' : 'text-gray-400'}`}>
+                            {existing ? existing.gross_score : '—'}
                           </span>
                         )}
                       </div>
