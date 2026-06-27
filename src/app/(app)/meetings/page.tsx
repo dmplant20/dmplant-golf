@@ -2304,16 +2304,23 @@ export default function MeetingsPage() {
                           </span>
                         )}
 
-                        {/* Score 입력 — 우측 */}
+                        {/* Score 입력 — 우측. 저장된 스코어가 있으면 input 옆에 "저장: 91" 표시 (다중 안전망) */}
                         {canEdit ? (
                           <div className="flex items-center gap-1.5 flex-shrink-0">
+                            {existing && existing.gross_score && (
+                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                                title={ko ? '저장된 값' : 'Saved'}
+                                style={{ background: 'rgba(234,179,8,0.15)', color: '#facc15', border: '1px solid rgba(234,179,8,0.35)' }}>
+                                💾{existing.gross_score}
+                              </span>
+                            )}
                             <button onClick={() => setScoreInput(p => ({ ...p, [att.user_id]: String(Math.max(60, parseInt(p[att.user_id]||'72') - 1)) }))}
                               className="w-8 h-8 rounded-lg bg-gray-700 text-white text-base font-bold hover:bg-gray-600 transition active:scale-95">−</button>
                             <input
                               type="number" min="60" max="150"
-                              value={scoreInput[att.user_id] ?? ''}
+                              value={scoreInput[att.user_id] ?? (existing?.gross_score ? String(existing.gross_score) : '')}
                               onChange={e => setScoreInput(p => ({ ...p, [att.user_id]: e.target.value }))}
-                              placeholder="—"
+                              placeholder={existing?.gross_score ? String(existing.gross_score) : '—'}
                               className="w-16 text-center bg-gray-700 border border-gray-600 rounded-lg py-1.5 text-white text-base font-bold"
                             />
                             <button onClick={() => setScoreInput(p => ({ ...p, [att.user_id]: String(parseInt(p[att.user_id]||'72') + 1) }))}
