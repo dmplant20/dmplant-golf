@@ -356,7 +356,9 @@ export default function MeetingsPage() {
         .select('id, group_number, tee_time, course_name, meeting_group_members(user_id, guest_id, users(full_name, full_name_en, name_abbr), meeting_guests(full_name, full_name_en, handicap))')
         .eq('club_id', currentClubId).eq('year', year).eq('month', month).order('group_number'),
       supabase.from('round_scores')
-        .select('user_id, gross_score, handicap_used, net_score, course_name, users(full_name, full_name_en, name_abbr)')
+        // ⚠ users:user_id 명시 — round_scores 는 user_id + recorded_by 두 FK 가 users 참조
+        // (그냥 users(...) 쓰면 'more than one relationship' 에러로 전체 쿼리 실패 → 입력한 스코어 안 보임)
+        .select('user_id, gross_score, handicap_used, net_score, course_name, users:user_id(full_name, full_name_en, name_abbr)')
         .eq('club_id', currentClubId).eq('year', year).eq('month', month),
       supabase.from('second_meetings')
         .select('*, second_meeting_attendances(user_id, status, users(full_name, full_name_en, name_abbr))')
@@ -414,7 +416,7 @@ export default function MeetingsPage() {
     const supabase = createClient()
     const { data } = await supabase
       .from('round_scores')
-      .select('user_id, gross_score, handicap_used, month, course_par, users(full_name, full_name_en, name_abbr)')
+      .select('user_id, gross_score, handicap_used, month, course_par, users:user_id(full_name, full_name_en, name_abbr)')
       .eq('club_id', currentClubId)
       .eq('year', meeting.year)
       .order('month')
