@@ -165,6 +165,20 @@ CREATE INDEX IF NOT EXISTS idx_announcements_club_pinned_recent
 ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS expense_category text;
 ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS item_name text;
 
+-- ────────────────────────────────────────────────────────────────────────────
+-- finance_transactions: 벌금 납부 상태 추적
+--   paid=false → 미납 (잔액 계산에서 제외, '미납 벌금' 섹션에 표시)
+--   paid=true  → 회수 완료 (회비 잔액에 포함)
+--   기존 row 는 모두 paid=true (backward compat — 잔액 계산 영향 없음)
+--   fine_kind: 'handicap' | 'absence' | 'tardy' | 'other'
+-- ────────────────────────────────────────────────────────────────────────────
+ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS paid boolean DEFAULT true NOT NULL;
+ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS paid_at timestamptz;
+ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS fine_kind text;
+CREATE INDEX IF NOT EXISTS idx_finance_unpaid_fines
+  ON finance_transactions(club_id, paid)
+  WHERE type = 'fine' AND paid = false;
+
 DO $$ BEGIN
   ALTER TABLE finance_transactions DROP CONSTRAINT IF EXISTS finance_transactions_expense_category_check;
   ALTER TABLE finance_transactions ADD CONSTRAINT finance_transactions_expense_category_check

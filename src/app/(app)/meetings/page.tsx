@@ -1334,10 +1334,10 @@ export default function MeetingsPage() {
       return
     }
 
-    // 클럽 핸디 + 벌금 룰 조회 (per_stroke / max / currency)
+    // 클럽 핸디 + 벌금 룰 조회 (per_stroke / max / notes / currency)
     const [{ data: mems }, { data: clubRow }] = await Promise.all([
       supabase.from('club_memberships').select('user_id, club_handicap').eq('club_id', currentClubId),
-      supabase.from('clubs').select('fine_handicap_per_stroke, fine_handicap_max, currency').eq('id', currentClubId).single(),
+      supabase.from('clubs').select('fine_handicap_per_stroke, fine_handicap_max, fine_notes, currency').eq('id', currentClubId).single(),
     ])
     const hcMap: Record<string, number | null> = {}
     mems?.forEach(m => { hcMap[m.user_id] = m.club_handicap })
@@ -1345,6 +1345,18 @@ export default function MeetingsPage() {
     const coursePar = courses.find(c => c.name === meeting.venue)?.par ?? 72
     const perStroke = Number(clubRow?.fine_handicap_per_stroke ?? 0) || 0
     const fineMax   = Number(clubRow?.fine_handicap_max ?? 0) || 0
+
+    // fine_notes 에서 결장/지각 벌금 파싱 — "결장:500000, 지각:500000" 형식
+    function parseFineAmount(notes: string | null | undefined, label: string): number {
+      if (!notes) return 0
+      // "결장:500000" 또는 "결장 500000" 또는 "결장 : 500,000" 모두 매치
+      const re = new RegExp(label + '\\s*[:\\s]\\s*([\\d,]+)')
+      const m = notes.match(re)
+      if (!m) return 0
+      return parseInt(m[1].replace(/,/g, ''), 10) || 0
+    }
+    const absenceFineAmt = parseFineAmount(clubRow?.fine_notes, '결장')
+    const tardyFineAmt   = parseFineAmount(clubRow?.fine_notes, '지각')
 
     const entries = Object.entries(scoreInput).filter(([, g]) => {
       const n = parseInt(g); return !isNaN(n) && n > 0
@@ -1388,7 +1400,7 @@ export default function MeetingsPage() {
       }
       saved++
 
-      // 자동 벌금 계산 — 룰이 설정된 클럽만 (perStroke > 0)
+      // 자동 벌금 — 핸디 초과 (paid=false 미납으로 등록)
       if (perStroke > 0 && net != null && net > coursePar) {
         const overPar = net - coursePar
         let amount = overPar * perStroke
@@ -1401,15 +1413,37 @@ export default function MeetingsPage() {
           description: `${meeting.year}-${meeting.month} 월례회 핸디 초과 (over par ${overPar}타)`,
           transaction_date: meeting.date.toISOString().split('T')[0],
           created_by: au.id,
+          paid: false,
+          fine_kind: 'handicap',
         })
       }
     }
 
-    // 벌금 거래 일괄 등록 — 같은 (club, member, date, type=fine) 중복 방지 위해 기존 삭제 후 INSERT
+    // 자동 벌금 — 결장 (absent 명단 → fine_notes 에 결장 금액 설정된 경우)
+    if (absenceFineAmt > 0) {
+      absent.forEach((a: any) => {
+        fineRows.push({
+          club_id: currentClubId,
+          member_id: a.user_id,
+          type: 'fine',
+          amount: absenceFineAmt,
+          description: `${meeting.year}-${meeting.month} 월례회 결장`,
+          transaction_date: meeting.date.toISOString().split('T')[0],
+          created_by: au.id,
+          paid: false,
+          fine_kind: 'absence',
+        })
+      })
+    }
+
+    // 벌금 거래 일괄 등록
+    //   ⭐ 기존 미납 fine 만 DELETE 하고 paid=true (이미 납부된 것) 은 보존
+    //   재실행해도 회수 완료된 벌금이 사라지지 않음
     if (fineRows.length > 0) {
       const dateStr = meeting.date.toISOString().split('T')[0]
       await supabase.from('finance_transactions').delete()
         .eq('club_id', currentClubId).eq('type', 'fine').eq('transaction_date', dateStr)
+        .eq('paid', false)   // ⭐ 미납만 청소
         .ilike('description', `${meeting.year}-${meeting.month} 월례회%`)
       const { error: fineErr } = await supabase.from('finance_transactions').insert(fineRows)
       if (fineErr) {

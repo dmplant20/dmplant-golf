@@ -320,10 +320,30 @@ export default function FinancePage() {
   }, [currentClubId])
 
   const sym = CURRENCY_SYMBOL[currency] ?? '₩'
-  const income  = txns.filter((t) => INCOME_TYPES.includes(t.type)).reduce((s, t) => s + t.amount, 0)
+  // 잔액 계산 — 미납 벌금 (type=fine, paid=false) 은 제외
+  // (벌금이 매겨졌어도 실제로 받지 않은 돈이므로 잔액에 포함하면 안 됨)
+  const income  = txns
+    .filter((t) => INCOME_TYPES.includes(t.type))
+    .filter((t) => !(t.type === 'fine' && t.paid === false))
+    .reduce((s, t) => s + t.amount, 0)
   const expense = txns.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
-  // 잔액 = 이월금 + 수입 - 지출
   const balance = carryoverAmount + income - expense
+
+  // 미납 벌금 (이번 클럽) — 납부 확인 섹션에 표시
+  const unpaidFines = txns.filter(t => t.type === 'fine' && t.paid === false)
+    .sort((a, b) => (a.transaction_date ?? '').localeCompare(b.transaction_date ?? ''))
+
+  // 벌금 납부 확인 — paid=true + paid_at=now + transaction_date 오늘로 (이달 회비에 적립)
+  async function markFinePaid(id: string) {
+    if (!canManage) return
+    const supabase = createClient()
+    const today = new Date().toISOString().split('T')[0]
+    const { error } = await supabase.from('finance_transactions')
+      .update({ paid: true, paid_at: new Date().toISOString(), transaction_date: today })
+      .eq('id', id)
+    if (error) { alert(ko ? `납부 확인 실패: ${error.message}` : `Mark paid failed: ${error.message}`); return }
+    load()
+  }
 
   async function saveCarryover() {
     if (!currentClubId) return
@@ -1111,6 +1131,61 @@ export default function FinancePage() {
           </div>
         )}
       </div>
+
+      {/* ── 🚨 미납 벌금 — 회장·총무·감사·고문만 ─────────────────────────── */}
+      {canViewFinance && unpaidFines.length > 0 && (
+        <div className="glass-card rounded-2xl p-4 space-y-2">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <p className="text-sm font-bold flex items-center gap-1.5" style={{ color: '#f87171' }}>
+              🚨 {ko ? `미납 벌금 (${unpaidFines.length}건)` : `Unpaid fines (${unpaidFines.length})`}
+            </p>
+            <p className="text-[11px] font-bold" style={{ color: '#fca5a5' }}>
+              {ko ? '총 ' : 'Total '}{sym}{unpaidFines.reduce((s, f) => s + Number(f.amount), 0).toLocaleString()}
+            </p>
+          </div>
+          <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>
+            {ko
+              ? '💡 회원에게서 벌금을 받으면 "납부 확인" 버튼을 눌러주세요. 즉시 회비 잔액에 적립됩니다.'
+              : 'When you receive a fine, click "Mark paid" to credit it to club balance.'}
+          </p>
+          <div className="space-y-1.5">
+            {unpaidFines.map((f: any) => {
+              const memName = lang === 'ko' ? f.users?.full_name : (f.users?.full_name_en || f.users?.full_name)
+              const kindBadge = f.fine_kind === 'absence' ? '결장'
+                              : f.fine_kind === 'handicap' ? '핸디 초과'
+                              : f.fine_kind === 'tardy'    ? '지각'
+                              :                              (ko ? '기타' : 'Other')
+              return (
+                <div key={f.id} className="flex items-center gap-2 rounded-lg px-3 py-2"
+                  style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)' }}>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-sm font-bold" style={{ color: 'var(--text)' }}>{memName ?? '?'}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded"
+                        style={{ background: 'rgba(239,68,68,0.18)', color: '#fca5a5' }}>
+                        {kindBadge}
+                      </span>
+                    </div>
+                    <p className="text-[11px] truncate" style={{ color: 'var(--text-3)' }}>
+                      {f.transaction_date?.slice(5)} · {f.description}
+                    </p>
+                  </div>
+                  <span className="text-sm font-bold flex-shrink-0" style={{ color: '#f87171' }}>
+                    {sym}{Number(f.amount).toLocaleString()}
+                  </span>
+                  {canManage && (
+                    <button onClick={() => markFinePaid(f.id)}
+                      className="text-[10px] font-bold px-2.5 py-1.5 rounded-md flex-shrink-0 active:scale-95"
+                      style={{ background: 'rgba(34,197,94,0.18)', border: '1px solid rgba(34,197,94,0.5)', color: '#86efac' }}>
+                      ✓ {ko ? '납부 확인' : 'Mark paid'}
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ── 송금 정보 카드 — 평상시 접힘, 헤더 탭하면 펼침 ── */}
       {(payInfo || canManage) && (
