@@ -810,7 +810,7 @@ export default function MeetingsPage() {
   }
 
   // ── 조 편성 인라인 편집 — 시간/코스 수정, 조 추가/삭제 ─────────────────
-  // 권한: canManage && !isPastView (서버 RLS 도 동일하게 차단)
+  // 권한: canManage (서버 RLS 도 동일하게 차단)
   // 동작: surgical UPDATE/INSERT/DELETE — saveGroups 의 전체 재작성과 별개
   const [editingGroupId, setEditingGroupId] = useState<{ id: string; field: 'tee_time' | 'course_name' } | null>(null)
   const [editGroupValue,  setEditGroupValue]  = useState('')
@@ -818,7 +818,7 @@ export default function MeetingsPage() {
   const [groupOpError,    setGroupOpError]    = useState<string | null>(null)
 
   async function updateGroupField(groupId: string, field: 'tee_time' | 'course_name', value: string) {
-    if (!canManage || isPastView) return
+    if (!canManage) return
     setGroupOpSaving(true); setGroupOpError(null)
     const supabase = createClient()
     const v = value.trim() || null
@@ -834,7 +834,7 @@ export default function MeetingsPage() {
   }
 
   async function deleteGroup(groupId: string, groupNumber: number) {
-    if (!canManage || isPastView || !meeting) return
+    if (!canManage || !meeting) return
     const memberCount = groups.find(g => g.id === groupId)?.meeting_group_members?.length ?? 0
     const msg = memberCount > 0
       ? (ko ? `${groupNumber}조를 삭제합니다. 배정된 ${memberCount}명은 자동으로 미배정 상태로 돌아갑니다. 계속할까요?` : `Delete group ${groupNumber}? ${memberCount} assigned members will return to unassigned.`)
@@ -854,7 +854,7 @@ export default function MeetingsPage() {
   }
 
   async function addGroup() {
-    if (!canManage || isPastView || !meeting || !currentClubId) return
+    if (!canManage || !meeting || !currentClubId) return
     setGroupOpSaving(true); setGroupOpError(null)
     const supabase = createClient()
     // 다음 조 번호 = 현재 최대 + 1
@@ -1567,7 +1567,7 @@ export default function MeetingsPage() {
             </p>
             {isPastView ? (
               <button onClick={navReset} className="text-[10px] text-amber-400 underline decoration-dotted">
-                📁 {ko ? '지난 모임 (읽기 전용) · 현재로 돌아가기' : 'Past meeting (read-only) · Back to current'}
+                📁 {ko ? '지난 모임 기록 · 현재로 돌아가기' : 'Past meeting · Back to current'}
               </button>
             ) : (
               <p className="text-[10px]" style={{ color: 'var(--gold-l)' }}>{ko ? '현재 모임' : 'Current meeting'}</p>
@@ -1589,10 +1589,12 @@ export default function MeetingsPage() {
           <span className="text-base">📁</span>
           <div className="flex-1 min-w-0">
             <p className="text-xs font-bold" style={{ color: '#fbbf24' }}>
-              {ko ? `지난 모임 기록 (${viewY}년 ${viewM}월) — 읽기 전용` : `Past meeting (${viewY}-${viewM}) — read-only`}
+              {ko ? `지난 모임 기록 (${viewY}년 ${viewM}월)` : `Past meeting (${viewY}-${viewM})`}
             </p>
-            <p className="text-[10px]" style={{ color: 'rgba(251,191,36,0.7)' }}>
-              {ko ? '응답·조 편성·스코어 모든 편집 비활성. 기록만 열람 가능.' : 'All edits disabled. View only.'}
+            <p className="text-[10px]" style={{ color: 'rgba(251,191,36,0.75)' }}>
+              {canManage
+                ? (ko ? '회장·총무·관리자는 수정 가능. 일반 회원은 기록만 열람.' : 'Officers can edit · members view-only.')
+                : (ko ? '읽기 전용 — 기록 열람만 가능합니다.' : 'Read-only — view records.')}
             </p>
           </div>
         </div>
@@ -1874,7 +1876,7 @@ export default function MeetingsPage() {
                         const display = (lang === 'ko' ? a.users?.full_name : (a.users?.full_name_en || a.users?.full_name))
                           + (a.users?.name_abbr ? ` (${a.users.name_abbr})` : '')
                         const isSelf  = a.user_id === user?.id
-                        const canTap  = canManage || isSelf
+                        const canTap  = canManage || (!isPastView && isSelf)
                         return canTap ? (
                           <button key={a.user_id} type="button"
                             onClick={() => setProxyTarget(tgt)}
@@ -1909,7 +1911,7 @@ export default function MeetingsPage() {
                         const tgt = clubMembers.find((m: any) => m.user_id === a.user_id) ?? a
                         const display = lang === 'ko' ? a.users?.full_name : (a.users?.full_name_en || a.users?.full_name)
                         const isSelf  = a.user_id === user?.id
-                        const canTap  = canManage || isSelf
+                        const canTap  = canManage || (!isPastView && isSelf)
                         return canTap ? (
                           <button key={a.user_id} type="button"
                             onClick={() => setProxyTarget(tgt)}
@@ -1942,7 +1944,7 @@ export default function MeetingsPage() {
                     <div className="flex flex-wrap gap-1.5">
                       {notRespon.map((m: any) => {
                         const isSelf = m.user_id === user?.id
-                        const canTap = canManage || isSelf
+                        const canTap = canManage || (!isPastView && isSelf)
                         return canTap ? (
                           <button key={m.user_id} type="button"
                             onClick={() => setProxyTarget(m)}
@@ -2034,7 +2036,7 @@ export default function MeetingsPage() {
           )}
 
           {/* ── Groups ── */}
-          {(groups.length > 0 || (canManage && !isPastView && isRsvpOpen && attending.length > 0)) && (
+          {(groups.length > 0 || (canManage && isRsvpOpen && attending.length > 0)) && (
             <div className="glass-card rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-bold flex items-center gap-2" style={{ color: 'var(--text)' }}>
@@ -2049,7 +2051,7 @@ export default function MeetingsPage() {
                       <FileDown size={11} />{ko ? '엑셀' : 'Export'}
                     </button>
                   )}
-                  {canManage && !isPastView && (
+                  {canManage && (
                     <button onClick={() => {
                       setHiddenGroupNums(new Set())
                       setShowAllGroups(false)
@@ -2066,13 +2068,13 @@ export default function MeetingsPage() {
               {groups.length === 0 ? (
                 <div className="text-center py-3">
                   <p className="text-xs text-gray-400">{ko ? '아직 조 편성이 없습니다.' : 'No groups yet.'}</p>
-                  {canManage && !isPastView && (
+                  {canManage && (
                     <p className="text-[10px] text-gray-400 mt-1">{ko ? '위 "조편성" 버튼을 눌러 자동/수동으로 배정하세요.' : 'Use the "Assign" button above to set groups.'}</p>
                   )}
                 </div>
               ) : (
                 <div className="space-y-2.5">
-                  {canManage && !isPastView && (
+                  {canManage && (
                     <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>
                       💡 {ko ? '시간·코스 칩을 탭하면 인라인 수정 / 우측 🗑 로 조 삭제 / 아래 ＋ 로 조 추가' : 'Tap time/course chip to edit · 🗑 to delete group · ＋ to add'}
                     </p>
@@ -2108,7 +2110,7 @@ export default function MeetingsPage() {
                             className="text-[11px] px-1.5 py-0.5 rounded outline-none"
                             style={{ background: 'rgba(96,165,250,0.18)', color: '#fff', border: '1px solid rgba(96,165,250,0.6)', minWidth: 90 }}
                           />
-                        ) : canManage && !isPastView ? (
+                        ) : canManage ? (
                           <button
                             type="button"
                             onClick={() => {
@@ -2149,7 +2151,7 @@ export default function MeetingsPage() {
                             className="text-[11px] px-1.5 py-0.5 rounded outline-none"
                             style={{ background: 'rgba(167,139,250,0.18)', color: '#fff', border: '1px solid rgba(167,139,250,0.6)', minWidth: 110 }}
                           />
-                        ) : canManage && !isPastView ? (
+                        ) : canManage ? (
                           <button
                             type="button"
                             onClick={() => {
@@ -2174,7 +2176,7 @@ export default function MeetingsPage() {
                           </span>
                         )}
                         {/* 조 삭제 버튼 — 회장/총무만 */}
-                        {canManage && !isPastView && (
+                        {canManage && (
                           <button
                             type="button"
                             onClick={() => deleteGroup(g.id, g.group_number)}
@@ -2210,7 +2212,7 @@ export default function MeetingsPage() {
                     </div>
                   )})}
                   {/* + 조 추가 버튼 — 회장/총무만 */}
-                  {canManage && !isPastView && (
+                  {canManage && (
                     <button
                       type="button"
                       onClick={addGroup}
@@ -2285,7 +2287,8 @@ export default function MeetingsPage() {
                 {attending.map((att: any) => {
                   const name = lang === 'ko' ? att.users?.full_name : (att.users?.full_name_en || att.users?.full_name)
                   const abbr = att.users?.name_abbr
-                  const canEdit = !isPastView && (canManage || att.user_id === user?.id)
+                  // 회장/총무/admin 은 과거 모임도 수정 가능. 일반 회원은 본인 + 미래 모임만.
+                  const canEdit = canManage || (!isPastView && att.user_id === user?.id)
                   const existing = scores.find(s => s.user_id === att.user_id)
                   const hcInfo = clubMembers.find(m => m.user_id === att.user_id)?.club_handicap ?? null
                   const coursePar = courses.find(c => c.name === meeting?.venue)?.par ?? 72
@@ -2318,7 +2321,7 @@ export default function MeetingsPage() {
                       {/* 2행: HC 편집 + 스코어 ± (좌우 분리) */}
                       <div className="flex items-center justify-between gap-2">
                         {/* HC — 회장/총무는 인라인 편집, 일반은 라벨 */}
-                        {canManage && !isPastView ? (
+                        {canManage ? (
                           <div className="flex items-center gap-1.5 flex-shrink-0">
                             <span className="text-[10px] font-semibold" style={{ color: 'var(--text-3)' }}>HC</span>
                             <input
