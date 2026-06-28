@@ -224,3 +224,23 @@ create index on scores(club_id, user_id, played_at);
 create index on reservations(club_id, reserved_date);
 create index on chat_messages(room_id, created_at);
 create index on monthly_rankings(club_id, year, month);
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- 생일 알림 시스템 마이그레이션
+-- ────────────────────────────────────────────────────────────────────────────
+
+-- 1. users 테이블에 생년월일 컬럼 추가
+alter table users add column if not exists birth_date date;
+
+-- 2. 생일 알림 발송 기록 테이블 (중복 발송 방지)
+create table if not exists birthday_notifications (
+  id          uuid default uuid_generate_v4() primary key,
+  user_id     uuid references users(id) on delete cascade not null,
+  club_id     uuid references clubs(id) on delete cascade not null,
+  year        int  not null,
+  type        text not null check (type in ('advance', 'today')),
+  sent_at     timestamptz default now() not null,
+  unique(user_id, club_id, year, type)
+);
+
+create index if not exists on birthday_notifications(club_id, year);
