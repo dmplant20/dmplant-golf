@@ -338,16 +338,15 @@ export default function MeetingsPage() {
         }).eq('club_id', currentClubId).eq('user_id', userId)
           .eq('year', meeting.year).eq('month', meeting.month)
 
-        // 벌금 재계산 — 룰 설정된 클럽만, 미납만 (paid=false)
+        // 벌금 재계산 — 룰 설정된 클럽만. description prefix [미납] 으로 상태 표시.
+        // DB 의 paid/fine_kind 컬럼 누락된 환경에서도 작동 (recorded_by 만 사용)
         const coursePar = courses.find(c => c.name === meeting.venue)?.par ?? 72
         if (clubFineRule.perStroke > 0) {
           const dateStr = meeting.date.toISOString().split('T')[0]
-          // 이 회원의 기존 미납 핸디 벌금 삭제
+          // 이 회원의 기존 [미납] 핸디 벌금 삭제 (납부완료는 보존)
           await supabase.from('finance_transactions').delete()
-            .eq('club_id', currentClubId).eq('member_id', userId)
-            .eq('type', 'fine').eq('paid', false).eq('fine_kind', 'handicap')
-            .ilike('description', `${meeting.year}-${meeting.month} 월례회%`)
-          // 새 net 으로 벌금 재계산 후 미납으로 INSERT
+            .eq('club_id', currentClubId).eq('member_id', userId).eq('type', 'fine')
+            .ilike('description', `[미납] ${meeting.year}-${meeting.month} 월례회 핸디%`)
           if (newNet > coursePar) {
             const overPar = newNet - coursePar
             let amount = overPar * clubFineRule.perStroke
@@ -358,11 +357,9 @@ export default function MeetingsPage() {
               member_id: userId,
               type: 'fine',
               amount,
-              description: `${meeting.year}-${meeting.month} 월례회 핸디 초과 (over par ${overPar}타)`,
+              description: `[미납] ${meeting.year}-${meeting.month} 월례회 핸디 초과 (over par ${overPar}타)`,
               transaction_date: dateStr,
-              created_by: au?.id ?? null,
-              paid: false,
-              fine_kind: 'handicap',
+              recorded_by: au?.id ?? null,
             })
           }
         }
@@ -1470,7 +1467,8 @@ export default function MeetingsPage() {
       }
       saved++
 
-      // 자동 벌금 — 핸디 초과 (paid=false 미납으로 등록)
+      // 자동 벌금 — 핸디 초과 (description 에 [미납] prefix 로 상태 표시)
+      // DB 에 paid/fine_kind 컬럼 없는 환경에서도 작동하도록 정확한 컬럼만 사용
       if (perStroke > 0 && net != null && net > coursePar) {
         const overPar = net - coursePar
         let amount = overPar * perStroke
@@ -1480,11 +1478,9 @@ export default function MeetingsPage() {
           member_id: userId,
           type: 'fine',
           amount,
-          description: `${meeting.year}-${meeting.month} 월례회 핸디 초과 (over par ${overPar}타)`,
+          description: `[미납] ${meeting.year}-${meeting.month} 월례회 핸디 초과 (over par ${overPar}타)`,
           transaction_date: meeting.date.toISOString().split('T')[0],
-          created_by: au.id,
-          paid: false,
-          fine_kind: 'handicap',
+          recorded_by: au.id,
         })
       }
     }
@@ -1497,24 +1493,21 @@ export default function MeetingsPage() {
           member_id: a.user_id,
           type: 'fine',
           amount: absenceFineAmt,
-          description: `${meeting.year}-${meeting.month} 월례회 결장`,
+          description: `[미납] ${meeting.year}-${meeting.month} 월례회 결장`,
           transaction_date: meeting.date.toISOString().split('T')[0],
-          created_by: au.id,
-          paid: false,
-          fine_kind: 'absence',
+          recorded_by: au.id,
         })
       })
     }
 
     // 벌금 거래 일괄 등록
-    //   ⭐ 기존 미납 fine 만 DELETE 하고 paid=true (이미 납부된 것) 은 보존
+    //   ⭐ 기존 [미납] fine 만 DELETE 하고 납부완료 (description 에 [미납] 없는 것) 은 보존
     //   재실행해도 회수 완료된 벌금이 사라지지 않음
     if (fineRows.length > 0) {
       const dateStr = meeting.date.toISOString().split('T')[0]
       await supabase.from('finance_transactions').delete()
         .eq('club_id', currentClubId).eq('type', 'fine').eq('transaction_date', dateStr)
-        .eq('paid', false)   // ⭐ 미납만 청소
-        .ilike('description', `${meeting.year}-${meeting.month} 월례회%`)
+        .ilike('description', `[미납] ${meeting.year}-${meeting.month} 월례회%`)
       const { error: fineErr } = await supabase.from('finance_transactions').insert(fineRows)
       if (fineErr) {
         errors.push(`벌금 자동 등록 실패: ${fineErr.message}`)
