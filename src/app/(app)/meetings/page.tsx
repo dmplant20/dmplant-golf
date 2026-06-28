@@ -520,11 +520,16 @@ export default function MeetingsPage() {
     } catch {}
   }, [scoreInput, scoreDraftKey])
 
+  // ⚠️ navYM 우선 — 회장님이 ← 로 6월 봐도 6월 fetch
+  //    이전엔 meeting 만 사용 → focus/visibility 이벤트 시 7월로 되돌아감
   useEffect(() => {
-    if (!meeting) return
-    loadRsvp(meeting.year, meeting.month)
+    if (!currentClubId) return
+    const y = navYM?.year  ?? meeting?.year
+    const m = navYM?.month ?? meeting?.month
+    if (y == null || m == null) return
+    loadRsvp(y, m)
     function onWake() {
-      if (document.visibilityState === 'visible' && meeting) loadRsvp(meeting.year, meeting.month)
+      if (document.visibilityState === 'visible' && y != null && m != null) loadRsvp(y, m)
     }
     document.addEventListener('visibilitychange', onWake)
     window.addEventListener('focus', onWake)
@@ -534,7 +539,7 @@ export default function MeetingsPage() {
       window.removeEventListener('focus', onWake)
       window.removeEventListener('pageshow', onWake)
     }
-  }, [meeting?.year, meeting?.month, currentClubId])
+  }, [navYM?.year, navYM?.month, meeting?.year, meeting?.month, currentClubId])
 
   // ── navigation-based display meeting ──────────────────────────────────────
   // navYM null = show current/upcoming meeting; non-null = show that specific month
@@ -590,7 +595,7 @@ export default function MeetingsPage() {
 
   function navReset() {
     setNavYM(null)
-    if (meeting) loadRsvp(meeting.year, meeting.month)
+    if (meeting) loadRsvp(viewY, viewM)
   }
 
   const daysUntil   = meeting?.date ? getDaysUntil(meeting.date) : null
@@ -694,7 +699,7 @@ export default function MeetingsPage() {
       setTimeout(() => setRsvpSuccess(null), 3000)
     }
     // 서버 진실로 재동기화
-    await loadRsvp(meeting.year, meeting.month)
+    await loadRsvp(viewY, viewM)
     return { ok }
   }
 
@@ -754,7 +759,7 @@ export default function MeetingsPage() {
     if (error) { setGuestError(error.message); return }
     setShowGuestModal(false)
     setGuestForm({ full_name: '', full_name_en: '', handicap: '', notes: '' })
-    await loadRsvp(meeting.year, meeting.month)
+    await loadRsvp(viewY, viewM)
   }
 
   async function approveGuest(g: any) {
@@ -764,14 +769,14 @@ export default function MeetingsPage() {
       approved: true, approved_by: user.id, approved_at: new Date().toISOString(),
     }).eq('id', g.id)
     if (error) { alert(ko ? `승인 실패: ${error.message}` : `Failed: ${error.message}`); return }
-    if (meeting) await loadRsvp(meeting.year, meeting.month)
+    if (meeting) await loadRsvp(viewY, viewM)
   }
   async function rejectGuest(g: any) {
     if (!confirm(ko ? `'${g.full_name}' 추천을 거절(삭제) 하시겠습니까?` : `Reject guest '${g.full_name}'?`)) return
     const supabase = createClient()
     const { error } = await supabase.from('meeting_guests').delete().eq('id', g.id)
     if (error) { alert(ko ? `거절 실패: ${error.message}` : `Failed: ${error.message}`); return }
-    if (meeting) await loadRsvp(meeting.year, meeting.month)
+    if (meeting) await loadRsvp(viewY, viewM)
   }
 
   // ── auto grouping ──────────────────────────────────────────────────────
@@ -866,7 +871,7 @@ export default function MeetingsPage() {
     }
     setSaving(false)
     if (!opts.keepOpen) setShowGroupModal(false)
-    await loadRsvp(meeting.year, meeting.month)
+    await loadRsvp(viewY, viewM)
   }
 
   // ── 조 편성 인라인 편집 — 시간/코스 수정, 조 추가/삭제 ─────────────────
@@ -890,7 +895,7 @@ export default function MeetingsPage() {
       return
     }
     setEditingGroupId(null)
-    if (meeting) await loadRsvp(meeting.year, meeting.month)
+    if (meeting) await loadRsvp(viewY, viewM)
   }
 
   async function deleteGroup(groupId: string, groupNumber: number) {
@@ -910,7 +915,7 @@ export default function MeetingsPage() {
       setTimeout(() => setGroupOpError(null), 4000)
       return
     }
-    await loadRsvp(meeting.year, meeting.month)
+    await loadRsvp(viewY, viewM)
   }
 
   async function addGroup() {
@@ -939,7 +944,7 @@ export default function MeetingsPage() {
       setTimeout(() => setGroupOpError(null), 4000)
       return
     }
-    await loadRsvp(meeting.year, meeting.month)
+    await loadRsvp(viewY, viewM)
   }
 
   // ── 골프장 응답 파서 ────────────────────────────────────────────────
@@ -1290,7 +1295,7 @@ export default function MeetingsPage() {
     setSecondMeeting(data)
     setSavingSecond(false)
     setShowSecondModal(false)
-    await loadRsvp(meeting.year, meeting.month)
+    await loadRsvp(viewY, viewM)
   }
 
   async function deleteSecondMeeting() {
@@ -1310,7 +1315,7 @@ export default function MeetingsPage() {
       { club_id: currentClubId, year: meeting.year, month: meeting.month, second_meeting_id: secondMeeting.id, user_id: user.id, status, responded_at: new Date().toISOString() },
       { onConflict: 'second_meeting_id,user_id' }
     )
-    await loadRsvp(meeting.year, meeting.month)
+    await loadRsvp(viewY, viewM)
   }
 
   // ── Push 구독 토글 ──────────────────────────────────────────────────────────
