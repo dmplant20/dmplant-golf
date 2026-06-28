@@ -131,6 +131,8 @@ export async function POST(req: NextRequest) {
   const fineMax   = Number(fine_max ?? 0) || 0
   const absenceFineAmt = Number(absence_fine_amount ?? 0) || 0
 
+  // 자동 발생 벌금 — [미납] prefix 로 미수금 상태 표시 (잔고 합산 X)
+  // 회장/총무 가 finance 화면에서 "✓ 수납 확인" 누르면 prefix 제거 → 잔고 합산
   if (perStroke > 0) {
     for (const s of scores) {
       const gross = Number(s.gross_score)
@@ -145,7 +147,7 @@ export async function POST(req: NextRequest) {
         member_id:        s.user_id,
         type:             'fine',
         amount,
-        description:      `${year}-${month} 월례회 핸디 초과 (over par ${overPar}타)`,
+        description:      `[미납] ${year}-${month} 월례회 핸디 초과 (over par ${overPar}타)`,
         transaction_date: played_at,
         recorded_by:      user.id,
       })
@@ -158,15 +160,16 @@ export async function POST(req: NextRequest) {
         member_id:        uid,
         type:             'fine',
         amount:           absenceFineAmt,
-        description:      `${year}-${month} 월례회 결장`,
+        description:      `[미납] ${year}-${month} 월례회 결장`,
         transaction_date: played_at,
         recorded_by:      user.id,
       })
     }
   }
 
-  // 일괄 갱신 — 동일 날짜의 기존 월례회 fine 삭제 후 신규 INSERT
-  // (이전 [미납] prefix 까지 호환 — 정책 변경 직후 잔존분)
+  // 일괄 갱신 — 동일 날짜 기존 월례회 fine 모두 삭제 후 신규 INSERT
+  // 이미 수납 완료된 (prefix 없는) fine 도 같이 삭제 — 재계산 결과로 재INSERT 되어야 함
+  // 수납 상태는 별도 보존 안 함 (점수/멤버 명단 변경 시 재산정)
   let fineCount = 0
   if (fineRows.length > 0) {
     await db.from('finance_transactions').delete()

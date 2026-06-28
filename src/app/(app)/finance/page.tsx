@@ -320,28 +320,33 @@ export default function FinancePage() {
   }, [currentClubId])
 
   const sym = CURRENCY_SYMBOL[currency] ?? '₩'
-  // 새 정책 (회장님): 벌금은 즉시 잔고 합산. [미납] prefix 분기 제거.
-  // 모든 fine 이 income 으로 즉시 반영되어 잔고에 +.
-  function isUnpaid(_t: any): boolean { return false }
+  // 정책 (회장님): 자동 벌금은 [미납] 상태로 INSERT → 잔고 미합산
+  //   회장/총무 가 "✓ 수납 확인" → prefix 제거 → 잔고 합산
+  function isUnpaid(t: any): boolean {
+    return t.type === 'fine' && typeof t.description === 'string' && t.description.startsWith('[미납]')
+  }
   const income  = txns
     .filter((t) => INCOME_TYPES.includes(t.type))
+    .filter((t) => !isUnpaid(t))   // 미납 벌금 제외 — 수납 확인 후 합산
     .reduce((s, t) => s + t.amount, 0)
   const expense = txns.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
   const balance = carryoverAmount + income - expense
 
-  // 월별 벌금 합계 — 보고용. transaction_date 의 YYYY-MM 으로 groupBy
-  const fineByMonth: Record<string, number> = {}
+  // 월별 벌금 합계 — 보고용. 납부/미납 분리해서 표시
+  const fineByMonth: Record<string, { paid: number; unpaid: number }> = {}
   txns.filter(t => t.type === 'fine').forEach(t => {
-    const ym = (t.transaction_date ?? '').slice(0, 7) // YYYY-MM
+    const ym = (t.transaction_date ?? '').slice(0, 7)
     if (!ym) return
-    fineByMonth[ym] = (fineByMonth[ym] ?? 0) + (t.amount ?? 0)
+    if (!fineByMonth[ym]) fineByMonth[ym] = { paid: 0, unpaid: 0 }
+    if (isUnpaid(t)) fineByMonth[ym].unpaid += (t.amount ?? 0)
+    else             fineByMonth[ym].paid   += (t.amount ?? 0)
   })
   const fineMonths = Object.entries(fineByMonth)
     .sort((a, b) => a[0].localeCompare(b[0]))
 
-  // 과거 호환: 아직 [미납] prefix 남아있는 트랜잭션 — UI 에서 prefix 제거 표시
-  // (DB 마이그레이션 안 했어도 안전, 새로 INSERT 는 prefix 없이 됨)
-  const unpaidFines: any[] = []
+  // 미납 벌금 — 임원이 "✓ 수납 확인" 클릭 시 prefix 제거 + 잔고 합산
+  const unpaidFines = txns.filter(isUnpaid)
+    .sort((a, b) => (a.transaction_date ?? '').localeCompare(b.transaction_date ?? ''))
 
   // 벌금 납부 확인 — description 에서 [미납] prefix 제거 + transaction_date 오늘로
   async function markFinePaid(id: string) {
@@ -878,19 +883,20 @@ export default function FinancePage() {
             <span className="text-xs text-gray-400">{ko ? '지출' : 'Expense'}: <span className="text-red-400">{sym}{expense.toLocaleString()}</span></span>
           </div>
         </div>
-        {/* 월별 벌금 합계 — 잔고에 합산된 벌금을 월별로 보고 (회장님 요구사항) */}
+        {/* 월별 벌금 합계 — 납부 (잔고 합산) / 미납 분리 표시 */}
         {fineMonths.length > 0 && (
           <div className="pt-2 mt-2 space-y-1" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
             <div className="text-xs text-gray-500 mb-1">
-              ⚖️ {ko ? '월별 벌금 합계 (잔고 합산)' : 'Monthly fines (in balance)'}
+              ⚖️ {ko ? '월별 벌금 — 납부(잔고 합산) / 미납' : 'Monthly fines — paid / unpaid'}
             </div>
             <div className="flex flex-wrap gap-x-3 gap-y-1">
-              {fineMonths.map(([ym, amt]) => {
+              {fineMonths.map(([ym, { paid, unpaid }]) => {
                 const [, mm] = ym.split('-')
                 return (
                   <span key={ym} className="text-xs">
-                    <span className="text-gray-400">{Number(mm)}{ko ? '월' : 'M'} 벌금</span>
-                    <span className="ml-1 text-amber-300 font-semibold">{sym}{amt.toLocaleString()}</span>
+                    <span className="text-gray-400">{Number(mm)}{ko ? '월' : 'M'}</span>
+                    {paid > 0 && <span className="ml-1 text-green-300 font-semibold">{sym}{paid.toLocaleString()}</span>}
+                    {unpaid > 0 && <span className="ml-1 text-red-300 font-semibold">[미납 {sym}{unpaid.toLocaleString()}]</span>}
                   </span>
                 )
               })}

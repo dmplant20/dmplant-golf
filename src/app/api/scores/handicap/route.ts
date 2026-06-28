@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
             member_id:        target_user_id,
             type:             'fine',
             amount,
-            description:      `${year}-${month} 월례회 핸디 초과 (over par ${overPar}타)`,
+            description:      `[미납] ${year}-${month} 월례회 핸디 초과 (over par ${overPar}타)`,
             transaction_date: played_at,
             recorded_by:      user.id,
           })
