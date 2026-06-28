@@ -449,25 +449,22 @@ export default function MeetingsPage() {
     setAssign(a)
     setTeeTimes(tt)
     setCourseNames(cn)
-    // 스코어 입력 초기화 — 우선순위:
-    //   1. localStorage 의 미저장 입력 (페이지 이동 후에도 유지)
-    //   2. DB 에 이미 저장된 스코어
-    //   3. 빈 값
+    // 스코어 입력 — 우선순위:
+    //   1. 진행 중인 사용자 입력 (state) — onWake/focus 가 덮어쓰지 않게 보호
+    //   2. localStorage 의 미저장 입력 (페이지 이동 후에도 유지)
+    //   3. DB 에 이미 저장된 스코어
     const dbScores: Record<string, string> = {}
     sc?.forEach(s => { dbScores[s.user_id] = String(s.gross_score) })
-    let merged: Record<string, string> = dbScores
+    let draft: Record<string, string> = {}
     if (typeof window !== 'undefined') {
       try {
         const key = `isgolf-score-draft-${currentClubId}-${year}-${month}`
         const draftRaw = localStorage.getItem(key)
-        if (draftRaw) {
-          const draft = JSON.parse(draftRaw) as Record<string, string>
-          // 미저장 draft 가 있으면 DB 값 위에 덮어씀 — 회원님이 작성 중인 게 우선
-          merged = { ...dbScores, ...draft }
-        }
+        if (draftRaw) draft = JSON.parse(draftRaw) as Record<string, string>
       } catch {}
     }
-    setScoreInput(merged)
+    // functional update — prev (진행 중 입력) 우선, 그 다음 draft, 마지막 DB
+    setScoreInput(prev => ({ ...dbScores, ...draft, ...prev }))
   }
 
   async function loadYearlyAnalysis() {
@@ -527,7 +524,10 @@ export default function MeetingsPage() {
     const y = navYM?.year  ?? meeting?.year
     const m = navYM?.month ?? meeting?.month
     if (y == null || m == null) return
+    // 클럽/월 전환 — 진행 중 입력 깨끗이 리셋 (다른 모임 입력값 잔존 방지)
+    setScoreInput({})
     loadRsvp(y, m)
+    // onWake 시엔 setScoreInput 안 함 — loadRsvp 내부에서 prev 보존
     function onWake() {
       if (document.visibilityState === 'visible' && y != null && m != null) loadRsvp(y, m)
     }
@@ -1565,8 +1565,11 @@ export default function MeetingsPage() {
       played_at: dateStr, recorded_by: au.id,
     }, { onConflict: 'club_id,user_id,year,month' })
     if (upErr) {
+      console.error('autoSaveOne 실패', { userId, gross, mtg: { y: mtg.year, m: mtg.month }, error: upErr })
+      // silent fail 방지 — alert 로 회장님께 명확히 표시. RLS 등 차단 즉시 알림.
+      alert(ko ? `점수 저장 실패: ${upErr.message}\n(회원: ${userId.slice(0,8)}, 점수: ${gross})` : `Save failed: ${upErr.message}`)
       setRsvpError(ko ? `자동저장 실패: ${upErr.message}` : `Autosave failed: ${upErr.message}`)
-      setTimeout(() => setRsvpError(null), 4000)
+      setTimeout(() => setRsvpError(null), 8000)
       return
     }
 
