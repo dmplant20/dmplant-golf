@@ -320,21 +320,28 @@ export default function FinancePage() {
   }, [currentClubId])
 
   const sym = CURRENCY_SYMBOL[currency] ?? '₩'
-  // 잔액 계산 — 미납 벌금 (description '[미납]' prefix) 은 제외
-  // DB 에 paid 컬럼 없는 환경 호환 위해 description prefix 로 미납/납부 구분
-  function isUnpaid(t: any): boolean {
-    return t.type === 'fine' && typeof t.description === 'string' && t.description.startsWith('[미납]')
-  }
+  // 새 정책 (회장님): 벌금은 즉시 잔고 합산. [미납] prefix 분기 제거.
+  // 모든 fine 이 income 으로 즉시 반영되어 잔고에 +.
+  function isUnpaid(_t: any): boolean { return false }
   const income  = txns
     .filter((t) => INCOME_TYPES.includes(t.type))
-    .filter((t) => !isUnpaid(t))
     .reduce((s, t) => s + t.amount, 0)
   const expense = txns.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
   const balance = carryoverAmount + income - expense
 
-  // 미납 벌금 — 회장이 직접 받은 후 [✓ 납부 확인] 클릭하면 잔액 적립
-  const unpaidFines = txns.filter(isUnpaid)
-    .sort((a, b) => (a.transaction_date ?? '').localeCompare(b.transaction_date ?? ''))
+  // 월별 벌금 합계 — 보고용. transaction_date 의 YYYY-MM 으로 groupBy
+  const fineByMonth: Record<string, number> = {}
+  txns.filter(t => t.type === 'fine').forEach(t => {
+    const ym = (t.transaction_date ?? '').slice(0, 7) // YYYY-MM
+    if (!ym) return
+    fineByMonth[ym] = (fineByMonth[ym] ?? 0) + (t.amount ?? 0)
+  })
+  const fineMonths = Object.entries(fineByMonth)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+
+  // 과거 호환: 아직 [미납] prefix 남아있는 트랜잭션 — UI 에서 prefix 제거 표시
+  // (DB 마이그레이션 안 했어도 안전, 새로 INSERT 는 prefix 없이 됨)
+  const unpaidFines: any[] = []
 
   // 벌금 납부 확인 — description 에서 [미납] prefix 제거 + transaction_date 오늘로
   async function markFinePaid(id: string) {
@@ -871,6 +878,25 @@ export default function FinancePage() {
             <span className="text-xs text-gray-400">{ko ? '지출' : 'Expense'}: <span className="text-red-400">{sym}{expense.toLocaleString()}</span></span>
           </div>
         </div>
+        {/* 월별 벌금 합계 — 잔고에 합산된 벌금을 월별로 보고 (회장님 요구사항) */}
+        {fineMonths.length > 0 && (
+          <div className="pt-2 mt-2 space-y-1" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+            <div className="text-xs text-gray-500 mb-1">
+              ⚖️ {ko ? '월별 벌금 합계 (잔고 합산)' : 'Monthly fines (in balance)'}
+            </div>
+            <div className="flex flex-wrap gap-x-3 gap-y-1">
+              {fineMonths.map(([ym, amt]) => {
+                const [, mm] = ym.split('-')
+                return (
+                  <span key={ym} className="text-xs">
+                    <span className="text-gray-400">{Number(mm)}{ko ? '월' : 'M'} 벌금</span>
+                    <span className="ml-1 text-amber-300 font-semibold">{sym}{amt.toLocaleString()}</span>
+                  </span>
+                )
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ━━ 이전 이월금 카드 — 임원이 편집 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
