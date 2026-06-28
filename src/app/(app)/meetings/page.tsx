@@ -2345,16 +2345,30 @@ export default function MeetingsPage() {
                 </p>
               )}
               <div className="space-y-2">
-                {/* 회장: 참석자 + 불참자 모두 표시. 일반회원: 참석자만.
-                    불참자는 결장 벌금 ₫500,000 자동 표시 (미납, 잔액에 안 들어감) */}
+                {/* ⭐ 명확한 체인: 점수가 있는 회원은 RSVP 상태 무관하게 무조건 노출
+                    회장이 다른 회원에게 점수 저장했는데 그 회원이 참석 응답 안 했어도 보여야 함.
+                    1순위: 참석자  2순위: 불참자(회장만)  3순위: 점수 있는 회원
+                    4순위: clubMembers 전체 fallback (회장 + 데이터 없을 때) */}
                 {((): any[] => {
-                  if (!canManage) return attending
-                  // 회장/총무 view — attending + absent 모두. 데이터 없으면 clubMembers 전체
                   const ids = new Set<string>()
                   const out: any[] = []
-                  ;[...attending, ...absent].forEach(a => { if (!ids.has(a.user_id)) { ids.add(a.user_id); out.push(a) } })
-                  if (out.length === 0) {
-                    clubMembers.forEach(m => { if (!ids.has(m.user_id)) { ids.add(m.user_id); out.push(m) } })
+                  // 1. attending 회원
+                  attending.forEach((a: any) => { if (!ids.has(a.user_id)) { ids.add(a.user_id); out.push(a) } })
+                  // 2. 회장/총무: absent 도 표시
+                  if (canManage) {
+                    absent.forEach((a: any) => { if (!ids.has(a.user_id)) { ids.add(a.user_id); out.push(a) } })
+                  }
+                  // 3. ⭐ 점수가 있는 회원 — RSVP 상태 무관하게 무조건 표시 (회장님 요구사항)
+                  scores.forEach((s: any) => {
+                    if (!ids.has(s.user_id)) {
+                      ids.add(s.user_id)
+                      // status 없는 객체로 표시 — RSVP 배지에서 "미응답" 으로 나옴
+                      out.push({ user_id: s.user_id, users: s.users, status: undefined })
+                    }
+                  })
+                  // 4. fallback (회장만, 위 모든 게 0건일 때)
+                  if (out.length === 0 && canManage) {
+                    clubMembers.forEach((m: any) => { if (!ids.has(m.user_id)) { ids.add(m.user_id); out.push(m) } })
                   }
                   return out
                 })().map((att: any) => {
