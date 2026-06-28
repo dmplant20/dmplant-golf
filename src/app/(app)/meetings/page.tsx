@@ -302,7 +302,7 @@ export default function MeetingsPage() {
     setLoading(false)
   }
 
-  // 핸디 인라인 저장 — 회장/총무만, blur 또는 Enter 로 트리거
+  // 핸디 인라인 저장 — 회장/총무/개발자, API route 통해 server-side 권한 우회
   async function saveHc(userId: string, value: string) {
     if (!canManage || !currentClubId) return
     const num = value.trim() === '' ? null : parseInt(value, 10)
@@ -312,62 +312,30 @@ export default function MeetingsPage() {
       return
     }
     setHcSavingFor(userId)
-    const supabase = createClient()
 
-    // ⭐ 멀티 트리 갱신 — 회장님 요구사항:
-    // "헨디가 수정되는 시점부터 그 헨디 확정이야"
-    //   1) club_memberships.club_handicap = 새 값 (앞으로 모든 계산의 기본값)
-    //   2) 현재 보고 있는 모임에 이 회원의 round_scores 가 있으면:
-    //        handicap_used 새 값, net_score = gross - 새 값 재계산
-    //   3) 그 모임의 자동 벌금도 재계산 (paid=false 미납만)
-    const { error: hcErr } = await supabase.from('club_memberships')
-      .update({ club_handicap: num })
-      .eq('club_id', currentClubId).eq('user_id', userId)
-    if (hcErr) {
+    const mtg = displayMeeting ?? meeting
+    const coursePar = mtg ? (courses.find(c => c.name === mtg.venue)?.par ?? 72) : 72
+    const res = await fetch('/api/scores/handicap', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        club_id:         currentClubId,
+        target_user_id:  userId,
+        new_handicap:    num,
+        year:            mtg?.year,
+        month:           mtg?.month,
+        played_at:       mtg?.date.toISOString().split('T')[0],
+        course_par:      coursePar,
+        fine_per_stroke: clubFineRule.perStroke,
+        fine_max:        clubFineRule.max,
+      }),
+    })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok || !json.ok) {
       setHcSavingFor(null)
-      setRsvpError((ko ? '핸디 저장 실패: ' : 'HC save failed: ') + hcErr.message)
+      setRsvpError((ko ? '핸디 저장 실패: ' : 'HC save failed: ') + (json.error ?? '서버 오류'))
       setTimeout(() => setRsvpError(null), 5000)
       return
-    }
-
-    // 현재 viewing month 의 score 가 있으면 함께 갱신
-    // ⚠️ displayMeeting 사용 — 회장님이 보고 있는 (과거) 모임의 점수/벌금에 적용
-    const mtg = displayMeeting ?? meeting
-    if (mtg) {
-      const existing = scores.find(s => s.user_id === userId)
-      if (existing && existing.gross_score != null && num != null) {
-        const newNet = existing.gross_score - num
-        await supabase.from('round_scores').update({
-          handicap_used: num,
-          net_score: newNet,
-        }).eq('club_id', currentClubId).eq('user_id', userId)
-          .eq('year', mtg.year).eq('month', mtg.month)
-
-        // 벌금 재계산 — 룰 설정된 클럽만. 새 정책: 모든 벌금 즉시 잔고 합산 (미납 prefix 제거)
-        const coursePar = courses.find(c => c.name === mtg.venue)?.par ?? 72
-        if (clubFineRule.perStroke > 0) {
-          const dateStr = mtg.date.toISOString().split('T')[0]
-          // 이 회원의 기존 핸디 벌금 삭제 (이전 [미납] prefix 도 함께 정리)
-          await supabase.from('finance_transactions').delete()
-            .eq('club_id', currentClubId).eq('member_id', userId).eq('type', 'fine')
-            .or(`description.ilike.${mtg.year}-${mtg.month} 월례회 핸디%,description.ilike.[미납] ${mtg.year}-${mtg.month} 월례회 핸디%`)
-          if (newNet > coursePar) {
-            const overPar = newNet - coursePar
-            let amount = overPar * clubFineRule.perStroke
-            if (clubFineRule.max > 0 && amount > clubFineRule.max) amount = clubFineRule.max
-            const { data: { user: au } } = await supabase.auth.getUser()
-            await supabase.from('finance_transactions').insert({
-              club_id: currentClubId,
-              member_id: userId,
-              type: 'fine',
-              amount,
-              description: `${mtg.year}-${mtg.month} 월례회 핸디 초과 (over par ${overPar}타)`,
-              transaction_date: dateStr,
-              recorded_by: au?.id ?? null,
-            })
-          }
-        }
-      }
     }
 
     setHcSavingFor(null)
@@ -1395,28 +1363,19 @@ export default function MeetingsPage() {
     }
   }
 
-  // ── save scores ────────────────────────────────────────────────────────
+  // ── save scores — API route 통해 server-side super_admin/officer 권한 우회 ──
   async function saveScores() {
-    // ⚠️ displayMeeting 사용 — 회장님이 화살표로 보고 있는 모임에 저장
-    //    meeting 은 "오늘 기준 다가오는 모임" 이므로 과거 모임 화면에서 점수 저장 시 잘못된 월로 들어감
     const mtg = displayMeeting ?? meeting
     if (!mtg || !currentClubId) return
     setSavingScores(true)
     setRsvpError(null)
     setRsvpSuccess(null)
-    const supabase = createClient()
-    const { data: { user: au } } = await supabase.auth.getUser()
-    if (!au) {
-      setRsvpError(ko ? '인증 필요 — 다시 로그인하세요' : 'Auth required')
-      setSavingScores(false)
-      setTimeout(() => setRsvpError(null), 4000)
-      return
-    }
 
-    // 클럽 핸디 + 벌금 룰 조회 (per_stroke / max / notes / currency)
+    // 클럽 핸디 + 벌금 룰 조회 (클라이언트에서 hc/net 미리 계산해 API 에 전달)
+    const supabase = createClient()
     const [{ data: mems }, { data: clubRow }] = await Promise.all([
       supabase.from('club_memberships').select('user_id, club_handicap').eq('club_id', currentClubId),
-      supabase.from('clubs').select('fine_handicap_per_stroke, fine_handicap_max, fine_notes, currency').eq('id', currentClubId).single(),
+      supabase.from('clubs').select('fine_handicap_per_stroke, fine_handicap_max, fine_notes').eq('id', currentClubId).single(),
     ])
     const hcMap: Record<string, number | null> = {}
     mems?.forEach(m => { hcMap[m.user_id] = m.club_handicap })
@@ -1424,18 +1383,13 @@ export default function MeetingsPage() {
     const coursePar = courses.find(c => c.name === mtg.venue)?.par ?? 72
     const perStroke = Number(clubRow?.fine_handicap_per_stroke ?? 0) || 0
     const fineMax   = Number(clubRow?.fine_handicap_max ?? 0) || 0
-
-    // fine_notes 에서 결장/지각 벌금 파싱 — "결장:500000, 지각:500000" 형식
     function parseFineAmount(notes: string | null | undefined, label: string): number {
       if (!notes) return 0
-      // "결장:500000" 또는 "결장 500000" 또는 "결장 : 500,000" 모두 매치
       const re = new RegExp(label + '\\s*[:\\s]\\s*([\\d,]+)')
-      const m = notes.match(re)
-      if (!m) return 0
+      const m = notes.match(re); if (!m) return 0
       return parseInt(m[1].replace(/,/g, ''), 10) || 0
     }
     const absenceFineAmt = parseFineAmount(clubRow?.fine_notes, '결장')
-    const tardyFineAmt   = parseFineAmount(clubRow?.fine_notes, '지각')
 
     const entries = Object.entries(scoreInput).filter(([, g]) => {
       const n = parseInt(g); return !isNaN(n) && n > 0
@@ -1447,149 +1401,92 @@ export default function MeetingsPage() {
       return
     }
 
-    let saved = 0
-    let failed = 0
-    const errors: string[] = []
-    // 자동 벌금 — net_score 가 par 보다 위인 만큼 per_stroke 곱하기, max 캡
-    const fineRows: any[] = []
-    const memberNames: Record<string, string> = {}
-    clubMembers.forEach(m => { memberNames[m.user_id] = m.users?.full_name ?? '' })
+    const scoresPayload = entries.map(([userId, grossStr]) => ({
+      user_id: userId,
+      gross_score: parseInt(grossStr),
+      handicap_used: hcMap[userId] ?? null,
+    }))
 
-    for (const [userId, grossStr] of entries) {
-      const gross = parseInt(grossStr)
-      const hc    = hcMap[userId] ?? null
-      const net   = hc != null ? gross - hc : null
-      const { error: upErr } = await supabase.from('round_scores').upsert({
-        club_id:       currentClubId,
-        user_id:       userId,
-        year:          mtg.year,
-        month:         mtg.month,
-        gross_score:   gross,
-        handicap_used: hc,
-        net_score:     net,
-        course_name:   mtg.venue ?? null,
-        course_par:    coursePar,
-        played_at:     mtg.date.toISOString().split('T')[0],
-        recorded_by:   au.id,
-      }, { onConflict: 'club_id,user_id,year,month' })
-      if (upErr) {
-        failed++
-        errors.push(`${memberNames[userId] ?? userId.slice(0,8)}: ${upErr.message}`)
-        continue
-      }
-      saved++
-
-      // 자동 벌금 — 핸디 초과. 새 정책: 즉시 잔고 적립 ([미납] prefix 제거)
-      if (perStroke > 0 && net != null && net > coursePar) {
-        const overPar = net - coursePar
-        let amount = overPar * perStroke
-        if (fineMax > 0 && amount > fineMax) amount = fineMax
-        fineRows.push({
-          club_id: currentClubId,
-          member_id: userId,
-          type: 'fine',
-          amount,
-          description: `${mtg.year}-${mtg.month} 월례회 핸디 초과 (over par ${overPar}타)`,
-          transaction_date: mtg.date.toISOString().split('T')[0],
-          recorded_by: au.id,
-        })
-      }
-    }
-
-    // 자동 벌금 — 결장 (absent 명단). 새 정책: 즉시 잔고 적립
-    if (absenceFineAmt > 0) {
-      absent.forEach((a: any) => {
-        fineRows.push({
-          club_id: currentClubId,
-          member_id: a.user_id,
-          type: 'fine',
-          amount: absenceFineAmt,
-          description: `${mtg.year}-${mtg.month} 월례회 결장`,
-          transaction_date: mtg.date.toISOString().split('T')[0],
-          recorded_by: au.id,
-        })
-      })
-    }
-
-    // 벌금 거래 일괄 등록 — 재실행 시 같은 일자/같은 월례회 fine 모두 삭제 후 재삽입
-    //   (이전 [미납] prefix 포함 — 정책 변경 호환). 다른 일자의 수동 fine 은 보존.
-    if (fineRows.length > 0) {
-      const dateStr = mtg.date.toISOString().split('T')[0]
-      await supabase.from('finance_transactions').delete()
-        .eq('club_id', currentClubId).eq('type', 'fine').eq('transaction_date', dateStr)
-        .or(`description.ilike.${mtg.year}-${mtg.month} 월례회%,description.ilike.[미납] ${mtg.year}-${mtg.month} 월례회%`)
-      const { error: fineErr } = await supabase.from('finance_transactions').insert(fineRows)
-      if (fineErr) {
-        errors.push(`벌금 자동 등록 실패: ${fineErr.message}`)
-      }
-    }
-
+    const res = await fetch('/api/scores/upsert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        club_id:             currentClubId,
+        year:                mtg.year,
+        month:               mtg.month,
+        played_at:           mtg.date.toISOString().split('T')[0],
+        course_name:         mtg.venue ?? null,
+        course_par:          coursePar,
+        scores:              scoresPayload,
+        absent_user_ids:     absent.map((a: any) => a.user_id),
+        fine_per_stroke:     perStroke,
+        fine_max:            fineMax,
+        absence_fine_amount: absenceFineAmt,
+      }),
+    })
+    const json = await res.json()
     setSavingScores(false)
-    if (failed > 0) {
-      setRsvpError((ko ? `${failed}건 저장 실패: ` : `${failed} failed: `) + errors.slice(0,2).join(' / '))
+    if (!res.ok || !json.ok) {
+      const msg = json.error ?? (json.errors?.join(' / ') ?? '저장 실패')
+      setRsvpError((ko ? '저장 실패: ' : 'Save failed: ') + msg)
       setTimeout(() => setRsvpError(null), 8000)
+      return
     }
+    const saved = Number(json.saved ?? 0)
+    const fines = Number(json.fines ?? 0)
     if (saved > 0) {
-      const fineMsg = fineRows.length > 0 ? ` · 벌금 자동 ${fineRows.length}건 등록` : ''
+      const fineMsg = fines > 0 ? ` · 벌금 자동 ${fines}건 등록` : ''
       setRsvpSuccess(ko ? `✓ 스코어 ${saved}건 저장${fineMsg}` : `✓ ${saved} scores saved${fineMsg}`)
       setTimeout(() => setRsvpSuccess(null), 5000)
     }
     await loadRsvp(mtg.year, mtg.month)
   }
 
-  // ── 자동 저장 — 단일 회원 점수 즉시 upsert + 벌금 재계산 ─────────────────
-  // 점수 입력 시 debounced 호출. "스코어 저장" 버튼 안 눌러도 자동 저장.
-  // ⚠️ displayMeeting 사용 — 회장님이 보고 있는 모임 (과거/현재) 의 month 로 저장
+  // ── 자동 저장 (단일 회원) — API route 통해 server-side 권한 우회 ─────────
+  // +/-/입력 시 debounced 호출. saveScores 와 같은 API 사용 — 1건만 보내면 됨.
   async function autoSaveOne(userId: string, grossStr: string) {
     const mtg = displayMeeting ?? meeting
     if (!mtg || !currentClubId) return
     const gross = parseInt(grossStr)
     if (isNaN(gross) || gross < 60 || gross > 150) return
+
+    // 핸디 + 벌금 룰 (단일 회원만 fetch)
     const supabase = createClient()
-    const { data: { user: au } } = await supabase.auth.getUser()
-    if (!au) return
-    const [{ data: mems }, { data: clubRow }] = await Promise.all([
-      supabase.from('club_memberships').select('user_id, club_handicap').eq('club_id', currentClubId).eq('user_id', userId).maybeSingle(),
-      supabase.from('clubs').select('fine_handicap_per_stroke, fine_handicap_max, fine_notes').eq('id', currentClubId).single(),
+    const [{ data: mem }, { data: clubRow }] = await Promise.all([
+      supabase.from('club_memberships').select('club_handicap').eq('club_id', currentClubId).eq('user_id', userId).maybeSingle(),
+      supabase.from('clubs').select('fine_handicap_per_stroke, fine_handicap_max').eq('id', currentClubId).single(),
     ])
-    const hc = (mems as any)?.club_handicap ?? null
-    const net = hc != null ? gross - hc : null
+    const hc = (mem as any)?.club_handicap ?? null
     const coursePar = courses.find(c => c.name === mtg.venue)?.par ?? 72
-    const dateStr = mtg.date.toISOString().split('T')[0]
-
-    const { error: upErr } = await supabase.from('round_scores').upsert({
-      club_id: currentClubId, user_id: userId,
-      year: mtg.year, month: mtg.month,
-      gross_score: gross, handicap_used: hc, net_score: net,
-      course_name: mtg.venue ?? null, course_par: coursePar,
-      played_at: dateStr, recorded_by: au.id,
-    }, { onConflict: 'club_id,user_id,year,month' })
-    if (upErr) {
-      console.error('autoSaveOne 실패', { userId, gross, mtg: { y: mtg.year, m: mtg.month }, error: upErr })
-      // silent fail 방지 — alert 로 회장님께 명확히 표시. RLS 등 차단 즉시 알림.
-      alert(ko ? `점수 저장 실패: ${upErr.message}\n(회원: ${userId.slice(0,8)}, 점수: ${gross})` : `Save failed: ${upErr.message}`)
-      setRsvpError(ko ? `자동저장 실패: ${upErr.message}` : `Autosave failed: ${upErr.message}`)
-      setTimeout(() => setRsvpError(null), 8000)
-      return
-    }
-
-    // 벌금 즉시 재계산 — 이 회원의 기존 핸디 벌금 삭제 후 INSERT
     const perStroke = Number(clubRow?.fine_handicap_per_stroke ?? 0) || 0
     const fineMax   = Number(clubRow?.fine_handicap_max ?? 0) || 0
-    if (perStroke > 0) {
-      await supabase.from('finance_transactions').delete()
-        .eq('club_id', currentClubId).eq('member_id', userId).eq('type', 'fine')
-        .or(`description.ilike.${mtg.year}-${mtg.month} 월례회 핸디%,description.ilike.[미납] ${mtg.year}-${mtg.month} 월례회 핸디%`)
-      if (net != null && net > coursePar) {
-        const overPar = net - coursePar
-        let amount = overPar * perStroke
-        if (fineMax > 0 && amount > fineMax) amount = fineMax
-        await supabase.from('finance_transactions').insert({
-          club_id: currentClubId, member_id: userId, type: 'fine', amount,
-          description: `${mtg.year}-${mtg.month} 월례회 핸디 초과 (over par ${overPar}타)`,
-          transaction_date: dateStr, recorded_by: au.id,
-        })
-      }
+
+    const res = await fetch('/api/scores/upsert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        club_id:    currentClubId,
+        year:       mtg.year,
+        month:      mtg.month,
+        played_at:  mtg.date.toISOString().split('T')[0],
+        course_name: mtg.venue ?? null,
+        course_par: coursePar,
+        scores: [{ user_id: userId, gross_score: gross, handicap_used: hc }],
+        // 결장 벌금은 단일 입력엔 미포함 — saveScores 일괄 모드 전용
+        absent_user_ids: [],
+        fine_per_stroke: perStroke,
+        fine_max: fineMax,
+        absence_fine_amount: 0,
+      }),
+    })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok || !json.ok) {
+      const msg = json.error ?? (json.errors?.join(' / ') ?? '저장 실패')
+      console.error('autoSaveOne API 실패', { userId, gross, mtg: { y: mtg.year, m: mtg.month }, msg })
+      alert(ko ? `점수 저장 실패: ${msg}\n(회원: ${userId.slice(0,8)}, 점수: ${gross})` : `Save failed: ${msg}`)
+      setRsvpError(ko ? `자동저장 실패: ${msg}` : `Autosave failed: ${msg}`)
+      setTimeout(() => setRsvpError(null), 8000)
+      return
     }
 
     setAutoSavedFor(p => ({ ...p, [userId]: Date.now() }))
