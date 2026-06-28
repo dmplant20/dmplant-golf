@@ -260,6 +260,9 @@ export default function MeetingsPage() {
   const [scores,        setScores]        = useState<any[]>([])    // saved scores for this meeting
   const [scoreInput,    setScoreInput]    = useState<Record<string, string>>({})
   const [savingScores,  setSavingScores]  = useState(false)
+  // 자동 저장 — 입력 시 debounce 호출, 저장 완료된 회원 id 표시 (✓ 배지)
+  const [autoSavedFor,  setAutoSavedFor]  = useState<Record<string, number>>({}) // user_id → timestamp
+  const autoSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const [yearlyScores,  setYearlyScores]  = useState<any[]>([])
   const [yearlyLoading, setYearlyLoading] = useState(false)
   // 스코어 입력 자동 저장 키 — 아래 useEffect 에서 사용 (meeting 선언 이후로 옮김)
@@ -1524,6 +1527,71 @@ export default function MeetingsPage() {
     await loadRsvp(meeting.year, meeting.month)
   }
 
+  // ── 자동 저장 — 단일 회원 점수 즉시 upsert + 벌금 재계산 ─────────────────
+  // 점수 입력 시 debounced 호출. "스코어 저장" 버튼 안 눌러도 자동 저장.
+  async function autoSaveOne(userId: string, grossStr: string) {
+    if (!meeting || !currentClubId) return
+    const gross = parseInt(grossStr)
+    if (isNaN(gross) || gross < 60 || gross > 150) return
+    const supabase = createClient()
+    const { data: { user: au } } = await supabase.auth.getUser()
+    if (!au) return
+    const [{ data: mems }, { data: clubRow }] = await Promise.all([
+      supabase.from('club_memberships').select('user_id, club_handicap').eq('club_id', currentClubId).eq('user_id', userId).maybeSingle(),
+      supabase.from('clubs').select('fine_handicap_per_stroke, fine_handicap_max, fine_notes').eq('id', currentClubId).single(),
+    ])
+    const hc = (mems as any)?.club_handicap ?? null
+    const net = hc != null ? gross - hc : null
+    const coursePar = courses.find(c => c.name === meeting.venue)?.par ?? 72
+    const dateStr = meeting.date.toISOString().split('T')[0]
+
+    const { error: upErr } = await supabase.from('round_scores').upsert({
+      club_id: currentClubId, user_id: userId,
+      year: meeting.year, month: meeting.month,
+      gross_score: gross, handicap_used: hc, net_score: net,
+      course_name: meeting.venue ?? null, course_par: coursePar,
+      played_at: dateStr, recorded_by: au.id,
+    }, { onConflict: 'club_id,user_id,year,month' })
+    if (upErr) {
+      setRsvpError(ko ? `자동저장 실패: ${upErr.message}` : `Autosave failed: ${upErr.message}`)
+      setTimeout(() => setRsvpError(null), 4000)
+      return
+    }
+
+    // 벌금 즉시 재계산 — 이 회원의 기존 핸디 벌금 삭제 후 INSERT
+    const perStroke = Number(clubRow?.fine_handicap_per_stroke ?? 0) || 0
+    const fineMax   = Number(clubRow?.fine_handicap_max ?? 0) || 0
+    if (perStroke > 0) {
+      await supabase.from('finance_transactions').delete()
+        .eq('club_id', currentClubId).eq('member_id', userId).eq('type', 'fine')
+        .or(`description.ilike.${meeting.year}-${meeting.month} 월례회 핸디%,description.ilike.[미납] ${meeting.year}-${meeting.month} 월례회 핸디%`)
+      if (net != null && net > coursePar) {
+        const overPar = net - coursePar
+        let amount = overPar * perStroke
+        if (fineMax > 0 && amount > fineMax) amount = fineMax
+        await supabase.from('finance_transactions').insert({
+          club_id: currentClubId, member_id: userId, type: 'fine', amount,
+          description: `${meeting.year}-${meeting.month} 월례회 핸디 초과 (over par ${overPar}타)`,
+          transaction_date: dateStr, recorded_by: au.id,
+        })
+      }
+    }
+
+    setAutoSavedFor(p => ({ ...p, [userId]: Date.now() }))
+    setTimeout(() => setAutoSavedFor(p => { const n = { ...p }; delete n[userId]; return n }), 2000)
+    await loadRsvp(meeting.year, meeting.month)
+  }
+
+  // 입력 변경 트리거 — 500ms debounce 후 단일 회원 저장
+  function scheduleAutoSave(userId: string, grossStr: string) {
+    const t = autoSaveTimers.current[userId]
+    if (t) clearTimeout(t)
+    autoSaveTimers.current[userId] = setTimeout(() => {
+      autoSaveOne(userId, grossStr)
+      delete autoSaveTimers.current[userId]
+    }, 500)
+  }
+
   // ── handicap suggestion ────────────────────────────────────────────────
   function getHcSuggestion(avgGross: number, currentHc: number | null, par: number) {
     const avgOverPar = avgGross - par
@@ -2463,17 +2531,35 @@ export default function MeetingsPage() {
                                 💾{existing.gross_score}
                               </span>
                             )}
-                            <button onClick={() => setScoreInput(p => ({ ...p, [att.user_id]: String(Math.max(60, parseInt(p[att.user_id]||'72') - 1)) }))}
+                            <button onClick={() => {
+                              const next = String(Math.max(60, parseInt(scoreInput[att.user_id]||'72') - 1))
+                              setScoreInput(p => ({ ...p, [att.user_id]: next }))
+                              scheduleAutoSave(att.user_id, next)
+                            }}
                               className="w-8 h-8 rounded-lg bg-gray-700 text-white text-base font-bold hover:bg-gray-600 transition active:scale-95">−</button>
                             <input
                               type="number" min="60" max="150"
                               value={scoreInput[att.user_id] ?? (existing?.gross_score ? String(existing.gross_score) : '')}
-                              onChange={e => setScoreInput(p => ({ ...p, [att.user_id]: e.target.value }))}
+                              onChange={e => {
+                                const v = e.target.value
+                                setScoreInput(p => ({ ...p, [att.user_id]: v }))
+                                scheduleAutoSave(att.user_id, v)
+                              }}
                               placeholder={existing?.gross_score ? String(existing.gross_score) : '—'}
                               className="w-16 text-center bg-gray-700 border border-gray-600 rounded-lg py-1.5 text-white text-base font-bold"
                             />
-                            <button onClick={() => setScoreInput(p => ({ ...p, [att.user_id]: String(parseInt(p[att.user_id]||'72') + 1) }))}
+                            <button onClick={() => {
+                              const next = String(parseInt(scoreInput[att.user_id]||'72') + 1)
+                              setScoreInput(p => ({ ...p, [att.user_id]: next }))
+                              scheduleAutoSave(att.user_id, next)
+                            }}
                               className="w-8 h-8 rounded-lg bg-gray-700 text-white text-base font-bold hover:bg-gray-600 transition active:scale-95">+</button>
+                            {autoSavedFor[att.user_id] && (
+                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded animate-pulse"
+                                style={{ background: 'rgba(34,197,94,0.18)', color: '#86efac', border: '1px solid rgba(34,197,94,0.35)' }}>
+                                ✓
+                              </span>
+                            )}
                           </div>
                         ) : (
                           <span className={`text-base font-bold flex-shrink-0 ${existing ? 'text-yellow-300' : 'text-gray-400'}`}>
