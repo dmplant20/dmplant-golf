@@ -260,6 +260,9 @@ export default function MeetingsPage() {
   const [scores,        setScores]        = useState<any[]>([])    // saved scores for this meeting
   const [scoreInput,    setScoreInput]    = useState<Record<string, string>>({})
   const [savingScores,  setSavingScores]  = useState(false)
+  // 자동 저장 — 입력 시 debounce 호출, 저장 완료된 회원 id 표시 (✓ 배지)
+  const [autoSavedFor,  setAutoSavedFor]  = useState<Record<string, number>>({}) // user_id → timestamp
+  const autoSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const [yearlyScores,  setYearlyScores]  = useState<any[]>([])
   const [yearlyLoading, setYearlyLoading] = useState(false)
   // 스코어 입력 자동 저장 키 — 아래 useEffect 에서 사용 (meeting 선언 이후로 옮김)
@@ -328,7 +331,9 @@ export default function MeetingsPage() {
     }
 
     // 현재 viewing month 의 score 가 있으면 함께 갱신
-    if (meeting) {
+    // ⚠️ displayMeeting 사용 — 회장님이 보고 있는 (과거) 모임의 점수/벌금에 적용
+    const mtg = displayMeeting ?? meeting
+    if (mtg) {
       const existing = scores.find(s => s.user_id === userId)
       if (existing && existing.gross_score != null && num != null) {
         const newNet = existing.gross_score - num
@@ -336,16 +341,16 @@ export default function MeetingsPage() {
           handicap_used: num,
           net_score: newNet,
         }).eq('club_id', currentClubId).eq('user_id', userId)
-          .eq('year', meeting.year).eq('month', meeting.month)
+          .eq('year', mtg.year).eq('month', mtg.month)
 
         // 벌금 재계산 — 룰 설정된 클럽만. 새 정책: 모든 벌금 즉시 잔고 합산 (미납 prefix 제거)
-        const coursePar = courses.find(c => c.name === meeting.venue)?.par ?? 72
+        const coursePar = courses.find(c => c.name === mtg.venue)?.par ?? 72
         if (clubFineRule.perStroke > 0) {
-          const dateStr = meeting.date.toISOString().split('T')[0]
+          const dateStr = mtg.date.toISOString().split('T')[0]
           // 이 회원의 기존 핸디 벌금 삭제 (이전 [미납] prefix 도 함께 정리)
           await supabase.from('finance_transactions').delete()
             .eq('club_id', currentClubId).eq('member_id', userId).eq('type', 'fine')
-            .or(`description.ilike.${meeting.year}-${meeting.month} 월례회 핸디%,description.ilike.[미납] ${meeting.year}-${meeting.month} 월례회 핸디%`)
+            .or(`description.ilike.${mtg.year}-${mtg.month} 월례회 핸디%,description.ilike.[미납] ${mtg.year}-${mtg.month} 월례회 핸디%`)
           if (newNet > coursePar) {
             const overPar = newNet - coursePar
             let amount = overPar * clubFineRule.perStroke
@@ -356,7 +361,7 @@ export default function MeetingsPage() {
               member_id: userId,
               type: 'fine',
               amount,
-              description: `${meeting.year}-${meeting.month} 월례회 핸디 초과 (over par ${overPar}타)`,
+              description: `${mtg.year}-${mtg.month} 월례회 핸디 초과 (over par ${overPar}타)`,
               transaction_date: dateStr,
               recorded_by: au?.id ?? null,
             })
@@ -1387,7 +1392,10 @@ export default function MeetingsPage() {
 
   // ── save scores ────────────────────────────────────────────────────────
   async function saveScores() {
-    if (!meeting || !currentClubId) return
+    // ⚠️ displayMeeting 사용 — 회장님이 화살표로 보고 있는 모임에 저장
+    //    meeting 은 "오늘 기준 다가오는 모임" 이므로 과거 모임 화면에서 점수 저장 시 잘못된 월로 들어감
+    const mtg = displayMeeting ?? meeting
+    if (!mtg || !currentClubId) return
     setSavingScores(true)
     setRsvpError(null)
     setRsvpSuccess(null)
@@ -1408,7 +1416,7 @@ export default function MeetingsPage() {
     const hcMap: Record<string, number | null> = {}
     mems?.forEach(m => { hcMap[m.user_id] = m.club_handicap })
 
-    const coursePar = courses.find(c => c.name === meeting.venue)?.par ?? 72
+    const coursePar = courses.find(c => c.name === mtg.venue)?.par ?? 72
     const perStroke = Number(clubRow?.fine_handicap_per_stroke ?? 0) || 0
     const fineMax   = Number(clubRow?.fine_handicap_max ?? 0) || 0
 
@@ -1449,14 +1457,14 @@ export default function MeetingsPage() {
       const { error: upErr } = await supabase.from('round_scores').upsert({
         club_id:       currentClubId,
         user_id:       userId,
-        year:          meeting.year,
-        month:         meeting.month,
+        year:          mtg.year,
+        month:         mtg.month,
         gross_score:   gross,
         handicap_used: hc,
         net_score:     net,
-        course_name:   meeting.venue ?? null,
+        course_name:   mtg.venue ?? null,
         course_par:    coursePar,
-        played_at:     meeting.date.toISOString().split('T')[0],
+        played_at:     mtg.date.toISOString().split('T')[0],
         recorded_by:   au.id,
       }, { onConflict: 'club_id,user_id,year,month' })
       if (upErr) {
@@ -1476,8 +1484,8 @@ export default function MeetingsPage() {
           member_id: userId,
           type: 'fine',
           amount,
-          description: `${meeting.year}-${meeting.month} 월례회 핸디 초과 (over par ${overPar}타)`,
-          transaction_date: meeting.date.toISOString().split('T')[0],
+          description: `${mtg.year}-${mtg.month} 월례회 핸디 초과 (over par ${overPar}타)`,
+          transaction_date: mtg.date.toISOString().split('T')[0],
           recorded_by: au.id,
         })
       }
@@ -1491,8 +1499,8 @@ export default function MeetingsPage() {
           member_id: a.user_id,
           type: 'fine',
           amount: absenceFineAmt,
-          description: `${meeting.year}-${meeting.month} 월례회 결장`,
-          transaction_date: meeting.date.toISOString().split('T')[0],
+          description: `${mtg.year}-${mtg.month} 월례회 결장`,
+          transaction_date: mtg.date.toISOString().split('T')[0],
           recorded_by: au.id,
         })
       })
@@ -1501,10 +1509,10 @@ export default function MeetingsPage() {
     // 벌금 거래 일괄 등록 — 재실행 시 같은 일자/같은 월례회 fine 모두 삭제 후 재삽입
     //   (이전 [미납] prefix 포함 — 정책 변경 호환). 다른 일자의 수동 fine 은 보존.
     if (fineRows.length > 0) {
-      const dateStr = meeting.date.toISOString().split('T')[0]
+      const dateStr = mtg.date.toISOString().split('T')[0]
       await supabase.from('finance_transactions').delete()
         .eq('club_id', currentClubId).eq('type', 'fine').eq('transaction_date', dateStr)
-        .or(`description.ilike.${meeting.year}-${meeting.month} 월례회%,description.ilike.[미납] ${meeting.year}-${meeting.month} 월례회%`)
+        .or(`description.ilike.${mtg.year}-${mtg.month} 월례회%,description.ilike.[미납] ${mtg.year}-${mtg.month} 월례회%`)
       const { error: fineErr } = await supabase.from('finance_transactions').insert(fineRows)
       if (fineErr) {
         errors.push(`벌금 자동 등록 실패: ${fineErr.message}`)
@@ -1521,7 +1529,74 @@ export default function MeetingsPage() {
       setRsvpSuccess(ko ? `✓ 스코어 ${saved}건 저장${fineMsg}` : `✓ ${saved} scores saved${fineMsg}`)
       setTimeout(() => setRsvpSuccess(null), 5000)
     }
-    await loadRsvp(meeting.year, meeting.month)
+    await loadRsvp(mtg.year, mtg.month)
+  }
+
+  // ── 자동 저장 — 단일 회원 점수 즉시 upsert + 벌금 재계산 ─────────────────
+  // 점수 입력 시 debounced 호출. "스코어 저장" 버튼 안 눌러도 자동 저장.
+  // ⚠️ displayMeeting 사용 — 회장님이 보고 있는 모임 (과거/현재) 의 month 로 저장
+  async function autoSaveOne(userId: string, grossStr: string) {
+    const mtg = displayMeeting ?? meeting
+    if (!mtg || !currentClubId) return
+    const gross = parseInt(grossStr)
+    if (isNaN(gross) || gross < 60 || gross > 150) return
+    const supabase = createClient()
+    const { data: { user: au } } = await supabase.auth.getUser()
+    if (!au) return
+    const [{ data: mems }, { data: clubRow }] = await Promise.all([
+      supabase.from('club_memberships').select('user_id, club_handicap').eq('club_id', currentClubId).eq('user_id', userId).maybeSingle(),
+      supabase.from('clubs').select('fine_handicap_per_stroke, fine_handicap_max, fine_notes').eq('id', currentClubId).single(),
+    ])
+    const hc = (mems as any)?.club_handicap ?? null
+    const net = hc != null ? gross - hc : null
+    const coursePar = courses.find(c => c.name === mtg.venue)?.par ?? 72
+    const dateStr = mtg.date.toISOString().split('T')[0]
+
+    const { error: upErr } = await supabase.from('round_scores').upsert({
+      club_id: currentClubId, user_id: userId,
+      year: mtg.year, month: mtg.month,
+      gross_score: gross, handicap_used: hc, net_score: net,
+      course_name: mtg.venue ?? null, course_par: coursePar,
+      played_at: dateStr, recorded_by: au.id,
+    }, { onConflict: 'club_id,user_id,year,month' })
+    if (upErr) {
+      setRsvpError(ko ? `자동저장 실패: ${upErr.message}` : `Autosave failed: ${upErr.message}`)
+      setTimeout(() => setRsvpError(null), 4000)
+      return
+    }
+
+    // 벌금 즉시 재계산 — 이 회원의 기존 핸디 벌금 삭제 후 INSERT
+    const perStroke = Number(clubRow?.fine_handicap_per_stroke ?? 0) || 0
+    const fineMax   = Number(clubRow?.fine_handicap_max ?? 0) || 0
+    if (perStroke > 0) {
+      await supabase.from('finance_transactions').delete()
+        .eq('club_id', currentClubId).eq('member_id', userId).eq('type', 'fine')
+        .or(`description.ilike.${mtg.year}-${mtg.month} 월례회 핸디%,description.ilike.[미납] ${mtg.year}-${mtg.month} 월례회 핸디%`)
+      if (net != null && net > coursePar) {
+        const overPar = net - coursePar
+        let amount = overPar * perStroke
+        if (fineMax > 0 && amount > fineMax) amount = fineMax
+        await supabase.from('finance_transactions').insert({
+          club_id: currentClubId, member_id: userId, type: 'fine', amount,
+          description: `${mtg.year}-${mtg.month} 월례회 핸디 초과 (over par ${overPar}타)`,
+          transaction_date: dateStr, recorded_by: au.id,
+        })
+      }
+    }
+
+    setAutoSavedFor(p => ({ ...p, [userId]: Date.now() }))
+    setTimeout(() => setAutoSavedFor(p => { const n = { ...p }; delete n[userId]; return n }), 2000)
+    await loadRsvp(mtg.year, mtg.month)
+  }
+
+  // 입력 변경 트리거 — 500ms debounce 후 단일 회원 저장
+  function scheduleAutoSave(userId: string, grossStr: string) {
+    const t = autoSaveTimers.current[userId]
+    if (t) clearTimeout(t)
+    autoSaveTimers.current[userId] = setTimeout(() => {
+      autoSaveOne(userId, grossStr)
+      delete autoSaveTimers.current[userId]
+    }, 500)
   }
 
   // ── handicap suggestion ────────────────────────────────────────────────
@@ -2463,17 +2538,35 @@ export default function MeetingsPage() {
                                 💾{existing.gross_score}
                               </span>
                             )}
-                            <button onClick={() => setScoreInput(p => ({ ...p, [att.user_id]: String(Math.max(60, parseInt(p[att.user_id]||'72') - 1)) }))}
+                            <button onClick={() => {
+                              const next = String(Math.max(60, parseInt(scoreInput[att.user_id]||'72') - 1))
+                              setScoreInput(p => ({ ...p, [att.user_id]: next }))
+                              scheduleAutoSave(att.user_id, next)
+                            }}
                               className="w-8 h-8 rounded-lg bg-gray-700 text-white text-base font-bold hover:bg-gray-600 transition active:scale-95">−</button>
                             <input
                               type="number" min="60" max="150"
                               value={scoreInput[att.user_id] ?? (existing?.gross_score ? String(existing.gross_score) : '')}
-                              onChange={e => setScoreInput(p => ({ ...p, [att.user_id]: e.target.value }))}
+                              onChange={e => {
+                                const v = e.target.value
+                                setScoreInput(p => ({ ...p, [att.user_id]: v }))
+                                scheduleAutoSave(att.user_id, v)
+                              }}
                               placeholder={existing?.gross_score ? String(existing.gross_score) : '—'}
                               className="w-16 text-center bg-gray-700 border border-gray-600 rounded-lg py-1.5 text-white text-base font-bold"
                             />
-                            <button onClick={() => setScoreInput(p => ({ ...p, [att.user_id]: String(parseInt(p[att.user_id]||'72') + 1) }))}
+                            <button onClick={() => {
+                              const next = String(parseInt(scoreInput[att.user_id]||'72') + 1)
+                              setScoreInput(p => ({ ...p, [att.user_id]: next }))
+                              scheduleAutoSave(att.user_id, next)
+                            }}
                               className="w-8 h-8 rounded-lg bg-gray-700 text-white text-base font-bold hover:bg-gray-600 transition active:scale-95">+</button>
+                            {autoSavedFor[att.user_id] && (
+                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded animate-pulse"
+                                style={{ background: 'rgba(34,197,94,0.18)', color: '#86efac', border: '1px solid rgba(34,197,94,0.35)' }}>
+                                ✓
+                              </span>
+                            )}
                           </div>
                         ) : (
                           <span className={`text-base font-bold flex-shrink-0 ${existing ? 'text-yellow-300' : 'text-gray-400'}`}>
