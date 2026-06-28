@@ -310,21 +310,80 @@ export default function MeetingsPage() {
     }
     setHcSavingFor(userId)
     const supabase = createClient()
-    const { error } = await supabase.from('club_memberships')
+
+    // ⭐ 멀티 트리 갱신 — 회장님 요구사항:
+    // "헨디가 수정되는 시점부터 그 헨디 확정이야"
+    //   1) club_memberships.club_handicap = 새 값 (앞으로 모든 계산의 기본값)
+    //   2) 현재 보고 있는 모임에 이 회원의 round_scores 가 있으면:
+    //        handicap_used 새 값, net_score = gross - 새 값 재계산
+    //   3) 그 모임의 자동 벌금도 재계산 (paid=false 미납만)
+    const { error: hcErr } = await supabase.from('club_memberships')
       .update({ club_handicap: num })
       .eq('club_id', currentClubId).eq('user_id', userId)
-    setHcSavingFor(null)
-    if (error) {
-      setRsvpError((ko ? '핸디 저장 실패: ' : 'HC save failed: ') + error.message)
+    if (hcErr) {
+      setHcSavingFor(null)
+      setRsvpError((ko ? '핸디 저장 실패: ' : 'HC save failed: ') + hcErr.message)
       setTimeout(() => setRsvpError(null), 5000)
       return
     }
+
+    // 현재 viewing month 의 score 가 있으면 함께 갱신
+    if (meeting) {
+      const existing = scores.find(s => s.user_id === userId)
+      if (existing && existing.gross_score != null && num != null) {
+        const newNet = existing.gross_score - num
+        await supabase.from('round_scores').update({
+          handicap_used: num,
+          net_score: newNet,
+        }).eq('club_id', currentClubId).eq('user_id', userId)
+          .eq('year', meeting.year).eq('month', meeting.month)
+
+        // 벌금 재계산 — 룰 설정된 클럽만, 미납만 (paid=false)
+        const coursePar = courses.find(c => c.name === meeting.venue)?.par ?? 72
+        if (clubFineRule.perStroke > 0) {
+          const dateStr = meeting.date.toISOString().split('T')[0]
+          // 이 회원의 기존 미납 핸디 벌금 삭제
+          await supabase.from('finance_transactions').delete()
+            .eq('club_id', currentClubId).eq('member_id', userId)
+            .eq('type', 'fine').eq('paid', false).eq('fine_kind', 'handicap')
+            .ilike('description', `${meeting.year}-${meeting.month} 월례회%`)
+          // 새 net 으로 벌금 재계산 후 미납으로 INSERT
+          if (newNet > coursePar) {
+            const overPar = newNet - coursePar
+            let amount = overPar * clubFineRule.perStroke
+            if (clubFineRule.max > 0 && amount > clubFineRule.max) amount = clubFineRule.max
+            const { data: { user: au } } = await supabase.auth.getUser()
+            await supabase.from('finance_transactions').insert({
+              club_id: currentClubId,
+              member_id: userId,
+              type: 'fine',
+              amount,
+              description: `${meeting.year}-${meeting.month} 월례회 핸디 초과 (over par ${overPar}타)`,
+              transaction_date: dateStr,
+              created_by: au?.id ?? null,
+              paid: false,
+              fine_kind: 'handicap',
+            })
+          }
+        }
+      }
+    }
+
+    setHcSavingFor(null)
     // 로컬 state 즉시 갱신 (load 재호출 안 해도 화면에 반영)
     setClubMembers(prev => prev.map(m =>
       m.user_id === userId ? { ...m, club_handicap: num } : m,
     ))
+    setScores(prev => prev.map(s => {
+      if (s.user_id !== userId) return s
+      const newNet = num != null && s.gross_score != null ? s.gross_score - num : null
+      return { ...s, handicap_used: num, net_score: newNet }
+    }))
     // 임시 입력 정리
     setHcEdits(prev => { const { [userId]: _, ...rest } = prev; return rest })
+
+    setRsvpSuccess(ko ? `✓ 핸디 ${num ?? '—'} 저장 + 스코어/벌금 재계산` : `✓ HC saved + recomputed`)
+    setTimeout(() => setRsvpSuccess(null), 3000)
   }
 
   // 실시간 벌금 계산 — 입력 시 즉시 표시 (저장 전)
@@ -810,7 +869,7 @@ export default function MeetingsPage() {
   }
 
   // ── 조 편성 인라인 편집 — 시간/코스 수정, 조 추가/삭제 ─────────────────
-  // 권한: canManage && !isPastView (서버 RLS 도 동일하게 차단)
+  // 권한: canManage (서버 RLS 도 동일하게 차단)
   // 동작: surgical UPDATE/INSERT/DELETE — saveGroups 의 전체 재작성과 별개
   const [editingGroupId, setEditingGroupId] = useState<{ id: string; field: 'tee_time' | 'course_name' } | null>(null)
   const [editGroupValue,  setEditGroupValue]  = useState('')
@@ -818,7 +877,7 @@ export default function MeetingsPage() {
   const [groupOpError,    setGroupOpError]    = useState<string | null>(null)
 
   async function updateGroupField(groupId: string, field: 'tee_time' | 'course_name', value: string) {
-    if (!canManage || isPastView) return
+    if (!canManage) return
     setGroupOpSaving(true); setGroupOpError(null)
     const supabase = createClient()
     const v = value.trim() || null
@@ -834,7 +893,7 @@ export default function MeetingsPage() {
   }
 
   async function deleteGroup(groupId: string, groupNumber: number) {
-    if (!canManage || isPastView || !meeting) return
+    if (!canManage || !meeting) return
     const memberCount = groups.find(g => g.id === groupId)?.meeting_group_members?.length ?? 0
     const msg = memberCount > 0
       ? (ko ? `${groupNumber}조를 삭제합니다. 배정된 ${memberCount}명은 자동으로 미배정 상태로 돌아갑니다. 계속할까요?` : `Delete group ${groupNumber}? ${memberCount} assigned members will return to unassigned.`)
@@ -854,7 +913,7 @@ export default function MeetingsPage() {
   }
 
   async function addGroup() {
-    if (!canManage || isPastView || !meeting || !currentClubId) return
+    if (!canManage || !meeting || !currentClubId) return
     setGroupOpSaving(true); setGroupOpError(null)
     const supabase = createClient()
     // 다음 조 번호 = 현재 최대 + 1
@@ -1567,7 +1626,7 @@ export default function MeetingsPage() {
             </p>
             {isPastView ? (
               <button onClick={navReset} className="text-[10px] text-amber-400 underline decoration-dotted">
-                📁 {ko ? '지난 모임 (읽기 전용) · 현재로 돌아가기' : 'Past meeting (read-only) · Back to current'}
+                📁 {ko ? '지난 모임 기록 · 현재로 돌아가기' : 'Past meeting · Back to current'}
               </button>
             ) : (
               <p className="text-[10px]" style={{ color: 'var(--gold-l)' }}>{ko ? '현재 모임' : 'Current meeting'}</p>
@@ -1589,10 +1648,12 @@ export default function MeetingsPage() {
           <span className="text-base">📁</span>
           <div className="flex-1 min-w-0">
             <p className="text-xs font-bold" style={{ color: '#fbbf24' }}>
-              {ko ? `지난 모임 기록 (${viewY}년 ${viewM}월) — 읽기 전용` : `Past meeting (${viewY}-${viewM}) — read-only`}
+              {ko ? `지난 모임 기록 (${viewY}년 ${viewM}월)` : `Past meeting (${viewY}-${viewM})`}
             </p>
-            <p className="text-[10px]" style={{ color: 'rgba(251,191,36,0.7)' }}>
-              {ko ? '응답·조 편성·스코어 모든 편집 비활성. 기록만 열람 가능.' : 'All edits disabled. View only.'}
+            <p className="text-[10px]" style={{ color: 'rgba(251,191,36,0.75)' }}>
+              {canManage
+                ? (ko ? '회장·총무·관리자는 수정 가능. 일반 회원은 기록만 열람.' : 'Officers can edit · members view-only.')
+                : (ko ? '읽기 전용 — 기록 열람만 가능합니다.' : 'Read-only — view records.')}
             </p>
           </div>
         </div>
@@ -1874,7 +1935,7 @@ export default function MeetingsPage() {
                         const display = (lang === 'ko' ? a.users?.full_name : (a.users?.full_name_en || a.users?.full_name))
                           + (a.users?.name_abbr ? ` (${a.users.name_abbr})` : '')
                         const isSelf  = a.user_id === user?.id
-                        const canTap  = canManage || isSelf
+                        const canTap  = canManage || (!isPastView && isSelf)
                         return canTap ? (
                           <button key={a.user_id} type="button"
                             onClick={() => setProxyTarget(tgt)}
@@ -1909,7 +1970,7 @@ export default function MeetingsPage() {
                         const tgt = clubMembers.find((m: any) => m.user_id === a.user_id) ?? a
                         const display = lang === 'ko' ? a.users?.full_name : (a.users?.full_name_en || a.users?.full_name)
                         const isSelf  = a.user_id === user?.id
-                        const canTap  = canManage || isSelf
+                        const canTap  = canManage || (!isPastView && isSelf)
                         return canTap ? (
                           <button key={a.user_id} type="button"
                             onClick={() => setProxyTarget(tgt)}
@@ -1942,7 +2003,7 @@ export default function MeetingsPage() {
                     <div className="flex flex-wrap gap-1.5">
                       {notRespon.map((m: any) => {
                         const isSelf = m.user_id === user?.id
-                        const canTap = canManage || isSelf
+                        const canTap = canManage || (!isPastView && isSelf)
                         return canTap ? (
                           <button key={m.user_id} type="button"
                             onClick={() => setProxyTarget(m)}
@@ -2034,7 +2095,7 @@ export default function MeetingsPage() {
           )}
 
           {/* ── Groups ── */}
-          {(groups.length > 0 || (canManage && !isPastView && isRsvpOpen && attending.length > 0)) && (
+          {(groups.length > 0 || (canManage && isRsvpOpen && attending.length > 0)) && (
             <div className="glass-card rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-bold flex items-center gap-2" style={{ color: 'var(--text)' }}>
@@ -2049,7 +2110,7 @@ export default function MeetingsPage() {
                       <FileDown size={11} />{ko ? '엑셀' : 'Export'}
                     </button>
                   )}
-                  {canManage && !isPastView && (
+                  {canManage && (
                     <button onClick={() => {
                       setHiddenGroupNums(new Set())
                       setShowAllGroups(false)
@@ -2066,13 +2127,13 @@ export default function MeetingsPage() {
               {groups.length === 0 ? (
                 <div className="text-center py-3">
                   <p className="text-xs text-gray-400">{ko ? '아직 조 편성이 없습니다.' : 'No groups yet.'}</p>
-                  {canManage && !isPastView && (
+                  {canManage && (
                     <p className="text-[10px] text-gray-400 mt-1">{ko ? '위 "조편성" 버튼을 눌러 자동/수동으로 배정하세요.' : 'Use the "Assign" button above to set groups.'}</p>
                   )}
                 </div>
               ) : (
                 <div className="space-y-2.5">
-                  {canManage && !isPastView && (
+                  {canManage && (
                     <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>
                       💡 {ko ? '시간·코스 칩을 탭하면 인라인 수정 / 우측 🗑 로 조 삭제 / 아래 ＋ 로 조 추가' : 'Tap time/course chip to edit · 🗑 to delete group · ＋ to add'}
                     </p>
@@ -2108,7 +2169,7 @@ export default function MeetingsPage() {
                             className="text-[11px] px-1.5 py-0.5 rounded outline-none"
                             style={{ background: 'rgba(96,165,250,0.18)', color: '#fff', border: '1px solid rgba(96,165,250,0.6)', minWidth: 90 }}
                           />
-                        ) : canManage && !isPastView ? (
+                        ) : canManage ? (
                           <button
                             type="button"
                             onClick={() => {
@@ -2149,7 +2210,7 @@ export default function MeetingsPage() {
                             className="text-[11px] px-1.5 py-0.5 rounded outline-none"
                             style={{ background: 'rgba(167,139,250,0.18)', color: '#fff', border: '1px solid rgba(167,139,250,0.6)', minWidth: 110 }}
                           />
-                        ) : canManage && !isPastView ? (
+                        ) : canManage ? (
                           <button
                             type="button"
                             onClick={() => {
@@ -2174,7 +2235,7 @@ export default function MeetingsPage() {
                           </span>
                         )}
                         {/* 조 삭제 버튼 — 회장/총무만 */}
-                        {canManage && !isPastView && (
+                        {canManage && (
                           <button
                             type="button"
                             onClick={() => deleteGroup(g.id, g.group_number)}
@@ -2210,7 +2271,7 @@ export default function MeetingsPage() {
                     </div>
                   )})}
                   {/* + 조 추가 버튼 — 회장/총무만 */}
-                  {canManage && !isPastView && (
+                  {canManage && (
                     <button
                       type="button"
                       onClick={addGroup}
@@ -2226,8 +2287,10 @@ export default function MeetingsPage() {
             </div>
           )}
 
-          {/* ── Score Section ── */}
-          {isScoreOpen && displayMeeting.status !== 'cancelled' && attending.length > 0 && (
+          {/* ── Score Section ─────────────────────────────────────────────
+              회장/총무/관리자는 과거 모임에 데이터 없어도 진입 가능 (회원 추가/스코어 입력 위해)
+              일반 회원은 참석자가 있을 때만 노출 */}
+          {isScoreOpen && displayMeeting.status !== 'cancelled' && (attending.length > 0 || (canManage && (isPastView || scores.length > 0))) && (
             <div className="glass-card rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold text-white flex items-center gap-2">
@@ -2280,12 +2343,20 @@ export default function MeetingsPage() {
                 </div>
               )}
 
-              {/* Score inputs — 한 행: [이름] [HC] [스코어 ±] [실시간 벌금] */}
+              {/* Score inputs — 한 행: [이름] [HC] [스코어 ±] [실시간 벌금]
+                  회장/총무/admin 이 attending 없는 과거 모임 진입 시 → 모든 클럽 회원 노출
+                  (그래야 retroactively 스코어 입력 가능. 예: 1월 모임 데이터 없을 때) */}
+              {canManage && attending.length === 0 && (
+                <p className="text-[10px] px-1" style={{ color: '#fbbf24' }}>
+                  💡 {ko ? '참석 응답 없는 과거 모임 — 회원 명단 전체를 보여드립니다. 스코어 입력하시면 자동으로 저장됩니다.' : 'No RSVPs — all members shown for retroactive entry.'}
+                </p>
+              )}
               <div className="space-y-2">
-                {attending.map((att: any) => {
+                {(attending.length > 0 ? attending : (canManage ? clubMembers : [])).map((att: any) => {
                   const name = lang === 'ko' ? att.users?.full_name : (att.users?.full_name_en || att.users?.full_name)
                   const abbr = att.users?.name_abbr
-                  const canEdit = !isPastView && (canManage || att.user_id === user?.id)
+                  // 회장/총무/admin 은 과거 모임도 수정 가능. 일반 회원은 본인 + 미래 모임만.
+                  const canEdit = canManage || (!isPastView && att.user_id === user?.id)
                   const existing = scores.find(s => s.user_id === att.user_id)
                   const hcInfo = clubMembers.find(m => m.user_id === att.user_id)?.club_handicap ?? null
                   const coursePar = courses.find(c => c.name === meeting?.venue)?.par ?? 72
@@ -2318,7 +2389,7 @@ export default function MeetingsPage() {
                       {/* 2행: HC 편집 + 스코어 ± (좌우 분리) */}
                       <div className="flex items-center justify-between gap-2">
                         {/* HC — 회장/총무는 인라인 편집, 일반은 라벨 */}
-                        {canManage && !isPastView ? (
+                        {canManage ? (
                           <div className="flex items-center gap-1.5 flex-shrink-0">
                             <span className="text-[10px] font-semibold" style={{ color: 'var(--text-3)' }}>HC</span>
                             <input
