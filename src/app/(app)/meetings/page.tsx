@@ -502,7 +502,16 @@ export default function MeetingsPage() {
   const nowDate     = new Date(); nowDate.setHours(0, 0, 0, 0)
   const viewY       = displayMeeting?.year  ?? nowDate.getFullYear()
   const viewM       = displayMeeting?.month ?? nowDate.getMonth() + 1
-  const isPastView  = new Date(viewY, viewM - 1) < new Date(nowDate.getFullYear(), nowDate.getMonth())
+  // 과거 모임 판정 — 정확히 모임 날짜 기준
+  // (이전엔 month 단위라 6/22 모임이 6/27 에도 "현재 모임" 으로 잘못 판단 → 편집 가능 버그)
+  const isPastView = (() => {
+    if (!displayMeeting?.date) {
+      return new Date(viewY, viewM - 1) < new Date(nowDate.getFullYear(), nowDate.getMonth())
+    }
+    const md = displayMeeting.date
+    const meetingDay = new Date(md.getFullYear(), md.getMonth(), md.getDate())
+    return meetingDay < nowDate
+  })()
 
   // navigate to prev/next month
   function navMonth(delta: number) {
@@ -1538,12 +1547,19 @@ export default function MeetingsPage() {
         )}
       </div>
 
-      {/* ── Month navigation ── */}
+      {/* ── Month navigation — 좌측 화살표 강조 + "지난 기록" 라벨 ── */}
       {pattern && !loading && (
         <div className="flex items-center gap-2 mb-2">
           <button onClick={() => navMonth(-1)}
-            className="w-10 h-10 flex items-center justify-center rounded-xl bg-gray-800/80 text-gray-400 hover:text-white hover:bg-gray-700 transition flex-shrink-0">
-            <ChevronLeft size={18} />
+            className="h-10 px-2.5 flex items-center justify-center rounded-xl transition flex-shrink-0 gap-1"
+            style={{
+              background: isPastView ? 'rgba(251,191,36,0.15)' : 'rgba(96,165,250,0.12)',
+              border: `1px solid ${isPastView ? 'rgba(251,191,36,0.4)' : 'rgba(96,165,250,0.3)'}`,
+              color: isPastView ? '#fbbf24' : '#93c5fd',
+            }}
+            title={ko ? '지난 모임 기록 보기' : 'View past meeting'}>
+            <ChevronLeft size={16} />
+            <span className="text-[10px] font-bold">{ko ? '지난 기록' : 'Past'}</span>
           </button>
           <div className="flex-1 text-center">
             <p className="text-white font-bold text-sm">
@@ -1551,16 +1567,34 @@ export default function MeetingsPage() {
             </p>
             {isPastView ? (
               <button onClick={navReset} className="text-[10px] text-amber-400 underline decoration-dotted">
-                📁 {ko ? '과거 기록 · 현재로 돌아가기' : 'Past record · Back to current'}
+                📁 {ko ? '지난 모임 (읽기 전용) · 현재로 돌아가기' : 'Past meeting (read-only) · Back to current'}
               </button>
             ) : (
               <p className="text-[10px]" style={{ color: 'var(--gold-l)' }}>{ko ? '현재 모임' : 'Current meeting'}</p>
             )}
           </div>
           <button onClick={() => navMonth(1)}
-            className="w-10 h-10 flex items-center justify-center rounded-xl bg-gray-800/80 text-gray-400 hover:text-white hover:bg-gray-700 transition flex-shrink-0">
-            <ChevronRight size={18} />
+            className="h-10 px-2.5 flex items-center justify-center rounded-xl bg-gray-800/80 text-gray-400 hover:text-white hover:bg-gray-700 transition flex-shrink-0 gap-1"
+            title={ko ? '다음 달' : 'Next month'}>
+            <span className="text-[10px]">{ko ? '다음' : 'Next'}</span>
+            <ChevronRight size={16} />
           </button>
+        </div>
+      )}
+
+      {/* 과거 모임 진입 시 명시적 안내 배너 — "편집 비활성" 으로 회원이 즉시 인지 */}
+      {pattern && !loading && isPastView && (
+        <div className="rounded-xl px-3 py-2 mb-2 flex items-center gap-2"
+          style={{ background: 'rgba(251,191,36,0.10)', border: '1px solid rgba(251,191,36,0.3)' }}>
+          <span className="text-base">📁</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold" style={{ color: '#fbbf24' }}>
+              {ko ? `지난 모임 기록 (${viewY}년 ${viewM}월) — 읽기 전용` : `Past meeting (${viewY}-${viewM}) — read-only`}
+            </p>
+            <p className="text-[10px]" style={{ color: 'rgba(251,191,36,0.7)' }}>
+              {ko ? '응답·조 편성·스코어 모든 편집 비활성. 기록만 열람 가능.' : 'All edits disabled. View only.'}
+            </p>
+          </div>
         </div>
       )}
 
