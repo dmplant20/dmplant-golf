@@ -19,18 +19,32 @@ self.addEventListener('install', (event) => {
 })
 
 // ── Activate ──────────────────────────────────────────────────────────────
+// ⭐ 핵심: SW 가 페이지 JS 의 협조 없이 직접 강제 새로고침한다.
+//    기존엔 postMessage(SW_ACTIVATED) 로 페이지가 스스로 reload 하길 기대 →
+//    옛 JS 에 갇힌 클라이언트는 그 메시지를 못 듣고 영원히 stale.
+//    client.navigate() 는 SW 가 직접 페이지를 리로드 → 페이지 코드 버전 무관하게
+//    SW 만 갱신되면 무조건 최신 코드로 전환됨. (재설치 영구 불필요)
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
-    // 모든 이전 캐시 완전 삭제 — HTML 캐시 잔재가 stale 페이지 보여주는 것 방지
+    // 모든 이전 캐시 완전 삭제 — stale JS/HTML 잔재 제거
     const keys = await caches.keys()
     await Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
     // 현재 열린 모든 탭을 즉시 이 SW 아래로 귀속
     await self.clients.claim()
-    // 모든 클라이언트에 '새 버전 활성화됨' 메시지 전송 → 페이지가 자동 리로드
+
     const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-    clients.forEach((client) => {
+    for (const client of clients) {
+      // 1) fallback — 페이지가 SW_ACTIVATED 듣고 스스로 reload (새 코드용)
       client.postMessage({ type: 'SW_ACTIVATED', version: APP_VERSION })
-    })
+      // 2) ⭐ 강제 — SW 가 직접 navigate (옛 코드 포함 모든 클라이언트 리로드)
+      //    /install 페이지는 제외 (PWA 설치 흐름 깨짐 방지)
+      try {
+        const u = new URL(client.url)
+        if (u.pathname !== '/install' && 'navigate' in client) {
+          await client.navigate(client.url)
+        }
+      } catch (_e) {}
+    }
   })())
 })
 
