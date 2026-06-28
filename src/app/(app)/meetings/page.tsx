@@ -338,15 +338,14 @@ export default function MeetingsPage() {
         }).eq('club_id', currentClubId).eq('user_id', userId)
           .eq('year', meeting.year).eq('month', meeting.month)
 
-        // 벌금 재계산 — 룰 설정된 클럽만. description prefix [미납] 으로 상태 표시.
-        // DB 의 paid/fine_kind 컬럼 누락된 환경에서도 작동 (recorded_by 만 사용)
+        // 벌금 재계산 — 룰 설정된 클럽만. 새 정책: 모든 벌금 즉시 잔고 합산 (미납 prefix 제거)
         const coursePar = courses.find(c => c.name === meeting.venue)?.par ?? 72
         if (clubFineRule.perStroke > 0) {
           const dateStr = meeting.date.toISOString().split('T')[0]
-          // 이 회원의 기존 [미납] 핸디 벌금 삭제 (납부완료는 보존)
+          // 이 회원의 기존 핸디 벌금 삭제 (이전 [미납] prefix 도 함께 정리)
           await supabase.from('finance_transactions').delete()
             .eq('club_id', currentClubId).eq('member_id', userId).eq('type', 'fine')
-            .ilike('description', `[미납] ${meeting.year}-${meeting.month} 월례회 핸디%`)
+            .or(`description.ilike.${meeting.year}-${meeting.month} 월례회 핸디%,description.ilike.[미납] ${meeting.year}-${meeting.month} 월례회 핸디%`)
           if (newNet > coursePar) {
             const overPar = newNet - coursePar
             let amount = overPar * clubFineRule.perStroke
@@ -357,7 +356,7 @@ export default function MeetingsPage() {
               member_id: userId,
               type: 'fine',
               amount,
-              description: `[미납] ${meeting.year}-${meeting.month} 월례회 핸디 초과 (over par ${overPar}타)`,
+              description: `${meeting.year}-${meeting.month} 월례회 핸디 초과 (over par ${overPar}타)`,
               transaction_date: dateStr,
               recorded_by: au?.id ?? null,
             })
@@ -1467,8 +1466,7 @@ export default function MeetingsPage() {
       }
       saved++
 
-      // 자동 벌금 — 핸디 초과 (description 에 [미납] prefix 로 상태 표시)
-      // DB 에 paid/fine_kind 컬럼 없는 환경에서도 작동하도록 정확한 컬럼만 사용
+      // 자동 벌금 — 핸디 초과. 새 정책: 즉시 잔고 적립 ([미납] prefix 제거)
       if (perStroke > 0 && net != null && net > coursePar) {
         const overPar = net - coursePar
         let amount = overPar * perStroke
@@ -1478,14 +1476,14 @@ export default function MeetingsPage() {
           member_id: userId,
           type: 'fine',
           amount,
-          description: `[미납] ${meeting.year}-${meeting.month} 월례회 핸디 초과 (over par ${overPar}타)`,
+          description: `${meeting.year}-${meeting.month} 월례회 핸디 초과 (over par ${overPar}타)`,
           transaction_date: meeting.date.toISOString().split('T')[0],
           recorded_by: au.id,
         })
       }
     }
 
-    // 자동 벌금 — 결장 (absent 명단 → fine_notes 에 결장 금액 설정된 경우)
+    // 자동 벌금 — 결장 (absent 명단). 새 정책: 즉시 잔고 적립
     if (absenceFineAmt > 0) {
       absent.forEach((a: any) => {
         fineRows.push({
@@ -1493,21 +1491,20 @@ export default function MeetingsPage() {
           member_id: a.user_id,
           type: 'fine',
           amount: absenceFineAmt,
-          description: `[미납] ${meeting.year}-${meeting.month} 월례회 결장`,
+          description: `${meeting.year}-${meeting.month} 월례회 결장`,
           transaction_date: meeting.date.toISOString().split('T')[0],
           recorded_by: au.id,
         })
       })
     }
 
-    // 벌금 거래 일괄 등록
-    //   ⭐ 기존 [미납] fine 만 DELETE 하고 납부완료 (description 에 [미납] 없는 것) 은 보존
-    //   재실행해도 회수 완료된 벌금이 사라지지 않음
+    // 벌금 거래 일괄 등록 — 재실행 시 같은 일자/같은 월례회 fine 모두 삭제 후 재삽입
+    //   (이전 [미납] prefix 포함 — 정책 변경 호환). 다른 일자의 수동 fine 은 보존.
     if (fineRows.length > 0) {
       const dateStr = meeting.date.toISOString().split('T')[0]
       await supabase.from('finance_transactions').delete()
         .eq('club_id', currentClubId).eq('type', 'fine').eq('transaction_date', dateStr)
-        .ilike('description', `[미납] ${meeting.year}-${meeting.month} 월례회%`)
+        .or(`description.ilike.${meeting.year}-${meeting.month} 월례회%,description.ilike.[미납] ${meeting.year}-${meeting.month} 월례회%`)
       const { error: fineErr } = await supabase.from('finance_transactions').insert(fineRows)
       if (fineErr) {
         errors.push(`벌금 자동 등록 실패: ${fineErr.message}`)
@@ -2345,31 +2342,26 @@ export default function MeetingsPage() {
                 </p>
               )}
               <div className="space-y-2">
-                {/* ⭐ 명확한 체인: 점수가 있는 회원은 RSVP 상태 무관하게 무조건 노출
-                    회장이 다른 회원에게 점수 저장했는데 그 회원이 참석 응답 안 했어도 보여야 함.
-                    1순위: 참석자  2순위: 불참자(회장만)  3순위: 점수 있는 회원
-                    4순위: clubMembers 전체 fallback (회장 + 데이터 없을 때) */}
+                {/* ⭐ 새 정책: 월례회는 모임이므로 RSVP 무관, 클럽 전체 회원 모두에게 행 표시
+                    모든 회원이 동일하게 봄 (RLS 통해 cross-member 점수 가시).
+                    순서: 참석자 → 불참자 → 점수만 있는 회원 → 미응답(나머지 클럽 회원) */}
                 {((): any[] => {
                   const ids = new Set<string>()
                   const out: any[] = []
-                  // 1. attending 회원
                   attending.forEach((a: any) => { if (!ids.has(a.user_id)) { ids.add(a.user_id); out.push(a) } })
-                  // 2. 회장/총무: absent 도 표시
-                  if (canManage) {
-                    absent.forEach((a: any) => { if (!ids.has(a.user_id)) { ids.add(a.user_id); out.push(a) } })
-                  }
-                  // 3. ⭐ 점수가 있는 회원 — RSVP 상태 무관하게 무조건 표시 (회장님 요구사항)
+                  absent.forEach((a: any) => { if (!ids.has(a.user_id)) { ids.add(a.user_id); out.push(a) } })
                   scores.forEach((s: any) => {
                     if (!ids.has(s.user_id)) {
                       ids.add(s.user_id)
-                      // status 없는 객체로 표시 — RSVP 배지에서 "미응답" 으로 나옴
                       out.push({ user_id: s.user_id, users: s.users, status: undefined })
                     }
                   })
-                  // 4. fallback (회장만, 위 모든 게 0건일 때)
-                  if (out.length === 0 && canManage) {
-                    clubMembers.forEach((m: any) => { if (!ids.has(m.user_id)) { ids.add(m.user_id); out.push(m) } })
-                  }
+                  clubMembers.forEach((m: any) => {
+                    if (!ids.has(m.user_id)) {
+                      ids.add(m.user_id)
+                      out.push({ user_id: m.user_id, users: m.users, status: undefined })
+                    }
+                  })
                   return out
                 })().map((att: any) => {
                   const name = lang === 'ko' ? att.users?.full_name : (att.users?.full_name_en || att.users?.full_name)
