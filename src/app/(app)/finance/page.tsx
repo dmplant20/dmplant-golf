@@ -320,26 +320,32 @@ export default function FinancePage() {
   }, [currentClubId])
 
   const sym = CURRENCY_SYMBOL[currency] ?? '₩'
-  // 잔액 계산 — 미납 벌금 (type=fine, paid=false) 은 제외
-  // (벌금이 매겨졌어도 실제로 받지 않은 돈이므로 잔액에 포함하면 안 됨)
+  // 잔액 계산 — 미납 벌금 (description '[미납]' prefix) 은 제외
+  // DB 에 paid 컬럼 없는 환경 호환 위해 description prefix 로 미납/납부 구분
+  function isUnpaid(t: any): boolean {
+    return t.type === 'fine' && typeof t.description === 'string' && t.description.startsWith('[미납]')
+  }
   const income  = txns
     .filter((t) => INCOME_TYPES.includes(t.type))
-    .filter((t) => !(t.type === 'fine' && t.paid === false))
+    .filter((t) => !isUnpaid(t))
     .reduce((s, t) => s + t.amount, 0)
   const expense = txns.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
   const balance = carryoverAmount + income - expense
 
-  // 미납 벌금 (이번 클럽) — 납부 확인 섹션에 표시
-  const unpaidFines = txns.filter(t => t.type === 'fine' && t.paid === false)
+  // 미납 벌금 — 회장이 직접 받은 후 [✓ 납부 확인] 클릭하면 잔액 적립
+  const unpaidFines = txns.filter(isUnpaid)
     .sort((a, b) => (a.transaction_date ?? '').localeCompare(b.transaction_date ?? ''))
 
-  // 벌금 납부 확인 — paid=true + paid_at=now + transaction_date 오늘로 (이달 회비에 적립)
+  // 벌금 납부 확인 — description 에서 [미납] prefix 제거 + transaction_date 오늘로
   async function markFinePaid(id: string) {
     if (!canManage) return
     const supabase = createClient()
+    const fine = txns.find(t => t.id === id)
+    if (!fine) return
+    const newDesc = String(fine.description ?? '').replace(/^\[미납\]\s*/, '')
     const today = new Date().toISOString().split('T')[0]
     const { error } = await supabase.from('finance_transactions')
-      .update({ paid: true, paid_at: new Date().toISOString(), transaction_date: today })
+      .update({ description: newDesc, transaction_date: today })
       .eq('id', id)
     if (error) { alert(ko ? `납부 확인 실패: ${error.message}` : `Mark paid failed: ${error.message}`); return }
     load()
@@ -1151,9 +1157,11 @@ export default function FinancePage() {
           <div className="space-y-1.5">
             {unpaidFines.map((f: any) => {
               const memName = lang === 'ko' ? f.users?.full_name : (f.users?.full_name_en || f.users?.full_name)
-              const kindBadge = f.fine_kind === 'absence' ? '결장'
-                              : f.fine_kind === 'handicap' ? '핸디 초과'
-                              : f.fine_kind === 'tardy'    ? '지각'
+              // description 에서 종류 추출 (paid/fine_kind 컬럼 없는 환경 호환)
+              const desc = String(f.description ?? '')
+              const kindBadge = desc.includes('결장')       ? '결장'
+                              : desc.includes('핸디 초과')  ? '핸디 초과'
+                              : desc.includes('지각')       ? '지각'
                               :                              (ko ? '기타' : 'Other')
               return (
                 <div key={f.id} className="flex items-center gap-2 rounded-lg px-3 py-2"
@@ -1167,7 +1175,7 @@ export default function FinancePage() {
                       </span>
                     </div>
                     <p className="text-[11px] truncate" style={{ color: 'var(--text-3)' }}>
-                      {f.transaction_date?.slice(5)} · {f.description}
+                      {f.transaction_date?.slice(5)} · {desc.replace(/^\[미납\]\s*/, '')}
                     </p>
                   </div>
                   <span className="text-sm font-bold flex-shrink-0" style={{ color: '#f87171' }}>
