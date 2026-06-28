@@ -310,21 +310,80 @@ export default function MeetingsPage() {
     }
     setHcSavingFor(userId)
     const supabase = createClient()
-    const { error } = await supabase.from('club_memberships')
+
+    // ⭐ 멀티 트리 갱신 — 회장님 요구사항:
+    // "헨디가 수정되는 시점부터 그 헨디 확정이야"
+    //   1) club_memberships.club_handicap = 새 값 (앞으로 모든 계산의 기본값)
+    //   2) 현재 보고 있는 모임에 이 회원의 round_scores 가 있으면:
+    //        handicap_used 새 값, net_score = gross - 새 값 재계산
+    //   3) 그 모임의 자동 벌금도 재계산 (paid=false 미납만)
+    const { error: hcErr } = await supabase.from('club_memberships')
       .update({ club_handicap: num })
       .eq('club_id', currentClubId).eq('user_id', userId)
-    setHcSavingFor(null)
-    if (error) {
-      setRsvpError((ko ? '핸디 저장 실패: ' : 'HC save failed: ') + error.message)
+    if (hcErr) {
+      setHcSavingFor(null)
+      setRsvpError((ko ? '핸디 저장 실패: ' : 'HC save failed: ') + hcErr.message)
       setTimeout(() => setRsvpError(null), 5000)
       return
     }
+
+    // 현재 viewing month 의 score 가 있으면 함께 갱신
+    if (meeting) {
+      const existing = scores.find(s => s.user_id === userId)
+      if (existing && existing.gross_score != null && num != null) {
+        const newNet = existing.gross_score - num
+        await supabase.from('round_scores').update({
+          handicap_used: num,
+          net_score: newNet,
+        }).eq('club_id', currentClubId).eq('user_id', userId)
+          .eq('year', meeting.year).eq('month', meeting.month)
+
+        // 벌금 재계산 — 룰 설정된 클럽만, 미납만 (paid=false)
+        const coursePar = courses.find(c => c.name === meeting.venue)?.par ?? 72
+        if (clubFineRule.perStroke > 0) {
+          const dateStr = meeting.date.toISOString().split('T')[0]
+          // 이 회원의 기존 미납 핸디 벌금 삭제
+          await supabase.from('finance_transactions').delete()
+            .eq('club_id', currentClubId).eq('member_id', userId)
+            .eq('type', 'fine').eq('paid', false).eq('fine_kind', 'handicap')
+            .ilike('description', `${meeting.year}-${meeting.month} 월례회%`)
+          // 새 net 으로 벌금 재계산 후 미납으로 INSERT
+          if (newNet > coursePar) {
+            const overPar = newNet - coursePar
+            let amount = overPar * clubFineRule.perStroke
+            if (clubFineRule.max > 0 && amount > clubFineRule.max) amount = clubFineRule.max
+            const { data: { user: au } } = await supabase.auth.getUser()
+            await supabase.from('finance_transactions').insert({
+              club_id: currentClubId,
+              member_id: userId,
+              type: 'fine',
+              amount,
+              description: `${meeting.year}-${meeting.month} 월례회 핸디 초과 (over par ${overPar}타)`,
+              transaction_date: dateStr,
+              created_by: au?.id ?? null,
+              paid: false,
+              fine_kind: 'handicap',
+            })
+          }
+        }
+      }
+    }
+
+    setHcSavingFor(null)
     // 로컬 state 즉시 갱신 (load 재호출 안 해도 화면에 반영)
     setClubMembers(prev => prev.map(m =>
       m.user_id === userId ? { ...m, club_handicap: num } : m,
     ))
+    setScores(prev => prev.map(s => {
+      if (s.user_id !== userId) return s
+      const newNet = num != null && s.gross_score != null ? s.gross_score - num : null
+      return { ...s, handicap_used: num, net_score: newNet }
+    }))
     // 임시 입력 정리
     setHcEdits(prev => { const { [userId]: _, ...rest } = prev; return rest })
+
+    setRsvpSuccess(ko ? `✓ 핸디 ${num ?? '—'} 저장 + 스코어/벌금 재계산` : `✓ HC saved + recomputed`)
+    setTimeout(() => setRsvpSuccess(null), 3000)
   }
 
   // 실시간 벌금 계산 — 입력 시 즉시 표시 (저장 전)
@@ -2228,8 +2287,10 @@ export default function MeetingsPage() {
             </div>
           )}
 
-          {/* ── Score Section ── */}
-          {isScoreOpen && displayMeeting.status !== 'cancelled' && attending.length > 0 && (
+          {/* ── Score Section ─────────────────────────────────────────────
+              회장/총무/관리자는 과거 모임에 데이터 없어도 진입 가능 (회원 추가/스코어 입력 위해)
+              일반 회원은 참석자가 있을 때만 노출 */}
+          {isScoreOpen && displayMeeting.status !== 'cancelled' && (attending.length > 0 || (canManage && (isPastView || scores.length > 0))) && (
             <div className="glass-card rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold text-white flex items-center gap-2">
@@ -2282,9 +2343,16 @@ export default function MeetingsPage() {
                 </div>
               )}
 
-              {/* Score inputs — 한 행: [이름] [HC] [스코어 ±] [실시간 벌금] */}
+              {/* Score inputs — 한 행: [이름] [HC] [스코어 ±] [실시간 벌금]
+                  회장/총무/admin 이 attending 없는 과거 모임 진입 시 → 모든 클럽 회원 노출
+                  (그래야 retroactively 스코어 입력 가능. 예: 1월 모임 데이터 없을 때) */}
+              {canManage && attending.length === 0 && (
+                <p className="text-[10px] px-1" style={{ color: '#fbbf24' }}>
+                  💡 {ko ? '참석 응답 없는 과거 모임 — 회원 명단 전체를 보여드립니다. 스코어 입력하시면 자동으로 저장됩니다.' : 'No RSVPs — all members shown for retroactive entry.'}
+                </p>
+              )}
               <div className="space-y-2">
-                {attending.map((att: any) => {
+                {(attending.length > 0 ? attending : (canManage ? clubMembers : [])).map((att: any) => {
                   const name = lang === 'ko' ? att.users?.full_name : (att.users?.full_name_en || att.users?.full_name)
                   const abbr = att.users?.name_abbr
                   // 회장/총무/admin 은 과거 모임도 수정 가능. 일반 회원은 본인 + 미래 모임만.
