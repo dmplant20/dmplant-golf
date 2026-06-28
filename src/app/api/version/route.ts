@@ -17,6 +17,9 @@ export async function GET() {
   const res = NextResponse.json({
     version: BUILD_VERSION,
     builtAt: BUILD_TIME,
+    // 진단 — service_role 키가 prod 에 설정됐는지 (값 노출 X, 존재 여부만).
+    // false 면 /api/scores/* 가 RLS 우회 못 해 다른 회원 저장이 실패함.
+    hasServiceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
   })
   // 캐시 절대 금지 — 항상 최신 응답
   res.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
