@@ -2345,11 +2345,27 @@ export default function MeetingsPage() {
                 </p>
               )}
               <div className="space-y-2">
-                {(attending.length > 0 ? attending : (canManage ? clubMembers : [])).map((att: any) => {
+                {/* 회장: 참석자 + 불참자 모두 표시. 일반회원: 참석자만.
+                    불참자는 결장 벌금 ₫500,000 자동 표시 (미납, 잔액에 안 들어감) */}
+                {((): any[] => {
+                  if (!canManage) return attending
+                  // 회장/총무 view — attending + absent 모두. 데이터 없으면 clubMembers 전체
+                  const ids = new Set<string>()
+                  const out: any[] = []
+                  ;[...attending, ...absent].forEach(a => { if (!ids.has(a.user_id)) { ids.add(a.user_id); out.push(a) } })
+                  if (out.length === 0) {
+                    clubMembers.forEach(m => { if (!ids.has(m.user_id)) { ids.add(m.user_id); out.push(m) } })
+                  }
+                  return out
+                })().map((att: any) => {
                   const name = lang === 'ko' ? att.users?.full_name : (att.users?.full_name_en || att.users?.full_name)
                   const abbr = att.users?.name_abbr
+                  // attendance status — 'attending' | 'absent' | undefined(미응답)
+                  const rsvpStatus: 'attending' | 'absent' | undefined = (att.status as any) ?? attendances.find(a => a.user_id === att.user_id)?.status
+                  const isAbsent  = rsvpStatus === 'absent'
                   // 회장/총무/admin 은 과거 모임도 수정 가능. 일반 회원은 본인 + 미래 모임만.
-                  const canEdit = canManage || (!isPastView && att.user_id === user?.id)
+                  // 불참자는 스코어 입력 불가 (결장 벌금만 적용)
+                  const canEdit = !isAbsent && (canManage || (!isPastView && att.user_id === user?.id))
                   const existing = scores.find(s => s.user_id === att.user_id)
                   const hcInfo = clubMembers.find(m => m.user_id === att.user_id)?.club_handicap ?? null
                   const coursePar = courses.find(c => c.name === meeting?.venue)?.par ?? 72
@@ -2358,14 +2374,42 @@ export default function MeetingsPage() {
                   const savedFine = existing && hcInfo != null
                     ? calcLiveFine(String(existing.gross_score), hcInfo, coursePar)
                     : null
-                  const showFine = liveFine != null ? liveFine : savedFine
+                  // 결장 벌금 (fine_notes 의 '결장:N' 파싱) — 안내용 라이브 표시
+                  const absenceFineLive = isAbsent
+                    ? (() => {
+                        const notes = pattern?.fine_notes ?? ''
+                        const m = String(notes).match(/결장\s*[:\s]\s*([\d,]+)/)
+                        return m ? parseInt(m[1].replace(/,/g, ''), 10) || 0 : 0
+                      })()
+                    : 0
+                  const showFine = isAbsent
+                    ? (absenceFineLive > 0 ? absenceFineLive : null)
+                    : (liveFine != null ? liveFine : savedFine)
                   return (
-                    <div key={att.user_id} className="bg-gray-800/60 rounded-xl px-3 py-2.5 space-y-2">
-                      {/* 1행: 이름 (전체 너비) + 실시간 벌금 (우측) */}
+                    <div key={att.user_id}
+                      className="rounded-xl px-3 py-2.5 space-y-2"
+                      style={isAbsent
+                        ? { background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.25)' }
+                        : { background: 'rgba(31,41,55,0.6)' }}>
+                      {/* 1행: 이름 + RSVP 배지 + 실시간 벌금 */}
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-white truncate flex-1 min-w-0">
-                          {name}{abbr ? ` (${abbr})` : ''}
-                        </p>
+                        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                          <p className="text-sm font-semibold truncate" style={{ color: isAbsent ? '#fca5a5' : '#ffffff' }}>
+                            {name}{abbr ? ` (${abbr})` : ''}
+                          </p>
+                          {isAbsent && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0"
+                              style={{ background: 'rgba(239,68,68,0.25)', color: '#fecaca', border: '1px solid rgba(239,68,68,0.5)' }}>
+                              불참
+                            </span>
+                          )}
+                          {!isAbsent && !rsvpStatus && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0"
+                              style={{ background: 'rgba(148,163,184,0.2)', color: '#94a3b8' }}>
+                              미응답
+                            </span>
+                          )}
+                        </div>
                         <div className="flex-shrink-0 text-right">
                           {showFine == null ? (
                             <span className="text-[10px]" style={{ color: 'var(--text-3)' }}>—</span>
@@ -2374,6 +2418,7 @@ export default function MeetingsPage() {
                           ) : (
                             <span className="text-[11px] font-bold" style={{ color: '#f87171' }}>
                               {fmtMoney(showFine)}
+                              {isAbsent && <span className="block text-[9px] font-normal" style={{ color: 'rgba(252,165,165,0.7)' }}>{ko ? '결장 (미납)' : 'Absent (unpaid)'}</span>}
                             </span>
                           )}
                         </div>
