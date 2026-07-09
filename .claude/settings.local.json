@@ -148,7 +148,8 @@
       "Bash(node scripts/activate-lee-jung.mjs)",
       "Bash(timeout 120 npx next build)",
       "Bash(node scripts/brighten-text.mjs)",
-      "Bash(node scripts/brighten-text2.mjs)"
+      "Bash(node scripts/brighten-text2.mjs)",
+      "mcp__d6894bf5-39b3-4af1-9bca-bb337fd6af40__list_projects"
     ]
   }
 }

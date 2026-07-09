@@ -1,0 +1,19 @@
+# 📝 SESSION_NOTES — dmplant-golf
+
+> 이 프로젝트의 마지막 작업 상태 기록. (`작업끝` 자동 생성 / 기능 코드 아님)
+
+- 마지막 작업 PC: DMC-OFFICE
+- 마지막 작업 시간: 2026-07-09 11:09
+- 브랜치: main
+
+## 마지막 작업 상태
+(작업끝 ALL 자동 저장 — 상세 맥락은 개별 `/작업끝 <프로젝트>` 로 보강 가능)
+
+## 수정/생성된 주요 파일
+- M .claude/settings.local.json
+- M src/app/(app)/finance/page.tsx
+- M src/app/api/finance/my-unpaid/route.ts
+- ?? src/app/api/finance/mark-fine-paid/
+
+## 다음 이어갈 작업
+(작업끝 ALL 자동 저장 — 상세 맥락은 개별 `/작업끝 <프로젝트>` 로 보강 가능)

@@ -125,19 +125,24 @@ export async function GET(_req: NextRequest) {
       }
     }
 
-    // ── 3. 벌금 미납 (단순 집계: 본인에게 부과된 fine 트랜잭션 합계) ─────
-    // 정확한 "납부 여부" 추적이 없는 모델이라, 회장이 납부 후 별도 행으로 음수금액 처리하는 패턴 가정
+    // ── 3. 벌금 미납 ──────────────────────────────────────────────────────
+    // 미납 판정 = description 이 '[미납]' 으로 시작하는 행만.
+    // 총무/회장이 "✓ 수납 확인" 하면 '[미납]' prefix 를 제거 → 납부 완료 → 팝업에서 사라짐.
+    // (finance/page.tsx 의 isUnpaid / markFinePaid 와 동일한 규칙)
     const { data: fineRows } = await supabase
       .from('finance_transactions')
-      .select('amount')
+      .select('amount, description')
       .eq('club_id', m.club_id)
       .eq('member_id', user.id)
       .eq('type', 'fine')
-    const fineSum = (fineRows ?? []).reduce((s: number, r: any) => s + Number(r.amount ?? 0), 0)
+    const unpaidRows = (fineRows ?? []).filter(
+      (r: any) => typeof r.description === 'string' && r.description.startsWith('[미납]')
+    )
+    const fineSum = unpaidRows.reduce((s: number, r: any) => s + Number(r.amount ?? 0), 0)
     if (fineSum > 0) {
       unpaidFines.push({
         club_id: m.club_id, club_name: club.name,
-        count: fineRows?.length ?? 0, total: fineSum, currency,
+        count: unpaidRows.length, total: fineSum, currency,
       })
     }
   }

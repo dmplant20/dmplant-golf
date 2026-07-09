@@ -42,6 +42,8 @@ export default function FinancePage() {
   const isOfficer = OFFICER_ROLES.includes(myRole) || isAdmin
   // 회비/벌금 미납자 명단 열람 권한 — 회장·총무·감사·고문만
   const canViewFinance = ['president', 'secretary', 'auditor', 'advisor'].includes(myRole) || isAdmin
+  // 벌금 수납 확인 권한 — 총무·개발자 + 회장 (일반 재무 수정은 여전히 총무 전용)
+  const canConfirmFine = canManage || myRole === 'president'
 
   const [txns,         setTxns]         = useState<any[]>([])
   const [sponsorships, setSponsorships] = useState<any[]>([])
@@ -119,6 +121,10 @@ export default function FinancePage() {
   // 거래 수정/삭제 — editingId 가 있으면 수정 모드
   const [editingId, setEditingId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
+  // 벌금 수납 확인 처리 중인 id — 중복 클릭 방지 (같은 사람 더블클릭 + 여러 임원 동시)
+  const [confirmingFineId, setConfirmingFineId] = useState<string | null>(null)
+  // 거래 저장 중 — 더블클릭/여러 임원 중복 등록 방지
+  const [addSaving, setAddSaving] = useState(false)
 
   // 이전 이월금 — 클럽 단위 단일 값
   const [carryoverAmount, setCarryoverAmount] = useState<number>(0)
@@ -215,6 +221,21 @@ export default function FinancePage() {
       amount: hasCash ? cashAmt : null,
       item_description: hasItem ? spForm.item_description.trim() : null,
       estimated_value: hasItem && spForm.estimated_value ? parseInt(spForm.estimated_value) : null,
+    }
+    // 중복 방지 — 신규 찬조에 한해 같은 회원·같은 날짜·같은 금액이 이미 있으면 중단
+    if (!editingSpId) {
+      const dupQ = supabase.from('sponsorships').select('id')
+        .eq('club_id', currentClubId)
+        .eq('member_name', payload.member_name)
+        .eq('sponsor_date', payload.sponsor_date)
+      const { data: dup } = hasCash
+        ? await dupQ.eq('amount', cashAmt).limit(1)
+        : await dupQ.eq('item_description', payload.item_description).limit(1)
+      if (dup && dup.length > 0) {
+        setSpSaving(false)
+        alert(ko ? '이미 동일한 찬조 내역이 있습니다 (중복 방지)' : 'Identical sponsorship already exists')
+        return
+      }
     }
     const { error } = editingSpId
       ? await supabase.from('sponsorships').update(payload).eq('id', editingSpId)
@@ -348,19 +369,27 @@ export default function FinancePage() {
   const unpaidFines = txns.filter(isUnpaid)
     .sort((a, b) => (a.transaction_date ?? '').localeCompare(b.transaction_date ?? ''))
 
-  // 벌금 납부 확인 — description 에서 [미납] prefix 제거 + transaction_date 오늘로
+  // 벌금 납부 확인 — 서버 API (super_admin/회장/총무 권한 통합, RLS 우회)
+  // description 에서 [미납] prefix 제거 + transaction_date 오늘로 → 잔고 합산 + 미납 팝업에서 사라짐
+  // 중복 방지: 처리 중엔 버튼 비활성 + 서버 멱등 처리(already) → 이미 확인된 건이면 목록에서 조용히 제거
   async function markFinePaid(id: string) {
-    if (!canManage) return
-    const supabase = createClient()
-    const fine = txns.find(t => t.id === id)
-    if (!fine) return
-    const newDesc = String(fine.description ?? '').replace(/^\[미납\]\s*/, '')
-    const today = new Date().toISOString().split('T')[0]
-    const { error } = await supabase.from('finance_transactions')
-      .update({ description: newDesc, transaction_date: today })
-      .eq('id', id)
-    if (error) { alert(ko ? `납부 확인 실패: ${error.message}` : `Mark paid failed: ${error.message}`); return }
-    load()
+    if (!canConfirmFine || confirmingFineId) return
+    setConfirmingFineId(id)
+    try {
+      const res = await fetch('/api/finance/mark-fine-paid', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { alert(ko ? `납부 확인 실패: ${data.error ?? res.status}` : `Mark paid failed: ${data.error ?? res.status}`); return }
+      if (data.already) {
+        alert(ko ? '이미 다른 임원이 수납 확인한 건입니다.' : 'Already confirmed by another officer.')
+      }
+      await load()
+    } finally {
+      setConfirmingFineId(null)
+    }
   }
 
   async function saveCarryover() {
@@ -517,44 +546,60 @@ export default function FinancePage() {
   // ── add transaction ────────────────────────────────────────────────────
   async function addTransaction() {
     if (!form.amount || !form.description) return
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    let desc = form.description
-    let memberId: string | null = form.memberId || null
+    if (addSaving) return   // 더블클릭 방지
+    setAddSaving(true)
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      let desc = form.description
+      let memberId: string | null = form.memberId || null
 
-    // free-text member name: prepend to description, no member_id
-    if (!memberId && form.memberNameText.trim()) {
-      desc = `[${form.memberNameText.trim()}] ${desc}`
-      memberId = null
+      // free-text member name: prepend to description, no member_id
+      if (!memberId && form.memberNameText.trim()) {
+        desc = `[${form.memberNameText.trim()}] ${desc}`
+        memberId = null
+      }
+
+      const payload = {
+        club_id: currentClubId, type: form.type, amount: parseInt(form.amount),
+        currency, description: desc, transaction_date: form.date,
+        member_id: memberId,
+        expense_category: form.type === 'expense' ? form.expense_category : null,
+        item_name: form.type === 'expense' && form.expense_category === 'gift' && form.item_name.trim()
+          ? form.item_name.trim() : null,
+      }
+
+      if (editingId) {
+        // 수정 — recorded_by 는 그대로 유지
+        const { error } = await supabase.from('finance_transactions').update(payload).eq('id', editingId)
+        if (error) { console.error('[finance update]', error); alert(ko ? `저장 실패: ${error.message}` : `Save failed: ${error.message}`); return }
+      } else {
+        // 중복 방지 — 같은 종류·금액·날짜·설명 거래가 이미 있으면 중단 (여러 임원 중복 등록 방지)
+        const { data: dup } = await supabase.from('finance_transactions')
+          .select('id')
+          .eq('club_id', currentClubId).eq('type', payload.type)
+          .eq('amount', payload.amount).eq('transaction_date', payload.transaction_date)
+          .eq('description', desc).limit(1)
+        if (dup && dup.length > 0) {
+          alert(ko ? '이미 동일한 거래 내역이 있습니다 (중복 방지)' : 'Identical transaction already exists')
+          return
+        }
+        const { error } = await supabase.from('finance_transactions').insert({ ...payload, recorded_by: user!.id })
+        if (error) { console.error('[finance insert]', error); alert(ko ? `저장 실패: ${error.message}` : `Save failed: ${error.message}`); return }
+      }
+
+      setShowAdd(false)
+      setEditingId(null)
+      setForm({
+        type: 'fee', amount: '', description: '',
+        date: new Date().toISOString().split('T')[0], memberId: '', memberNameText: '',
+        expense_category: 'event', item_name: '',
+      })
+      setMemberInputTab('select')
+      load()
+    } finally {
+      setAddSaving(false)
     }
-
-    const payload = {
-      club_id: currentClubId, type: form.type, amount: parseInt(form.amount),
-      currency, description: desc, transaction_date: form.date,
-      member_id: memberId,
-      expense_category: form.type === 'expense' ? form.expense_category : null,
-      item_name: form.type === 'expense' && form.expense_category === 'gift' && form.item_name.trim()
-        ? form.item_name.trim() : null,
-    }
-
-    if (editingId) {
-      // 수정 — recorded_by 는 그대로 유지
-      const { error } = await supabase.from('finance_transactions').update(payload).eq('id', editingId)
-      if (error) { console.error('[finance update]', error); alert(ko ? `저장 실패: ${error.message}` : `Save failed: ${error.message}`); return }
-    } else {
-      const { error } = await supabase.from('finance_transactions').insert({ ...payload, recorded_by: user!.id })
-      if (error) { console.error('[finance insert]', error); alert(ko ? `저장 실패: ${error.message}` : `Save failed: ${error.message}`); return }
-    }
-
-    setShowAdd(false)
-    setEditingId(null)
-    setForm({
-      type: 'fee', amount: '', description: '',
-      date: new Date().toISOString().split('T')[0], memberId: '', memberNameText: '',
-      expense_category: 'event', item_name: '',
-    })
-    setMemberInputTab('select')
-    load()
   }
 
   // ── receipt OCR ───────────────────────────────────────────────────────
@@ -667,10 +712,20 @@ export default function FinancePage() {
       ? payingMember.users?.full_name
       : (payingMember.users?.full_name_en || payingMember.users?.full_name)
 
+    // 중복 방지 — 저장 직전 최신 납부 현황 재조회. 다른 임원이 방금 기록한 월/년납과 겹치지 않게.
+    const yStart = `${currentYear}-01-01`, yEnd = `${currentYear + 1}-01-01`
+    const { data: freshFee } = await supabase.from('finance_transactions')
+      .select('transaction_date')
+      .eq('club_id', currentClubId).eq('member_id', payingMember.user_id).eq('type', 'fee')
+      .gte('transaction_date', yStart).lt('transaction_date', yEnd)
+    const freshPaidMonths = new Set((freshFee ?? []).map((r: any) => Number(String(r.transaction_date).slice(5, 7))))
+
     if (feeKind === 'monthly' && clubFees.monthly > 0) {
       // ── 월납 — 입금액을 monthly_fee 로 차감하며 미납 월에 1행씩 분배 ───
-      const info = memberUnpaidInfo(payingMember)
-      const unpaidMonths = info.months  // [Jan..currentMonth] 중 미납인 월
+      // 미납 월 = [가입월..cutoff] 중 최신 재조회 기준 미납. (다른 임원이 이미 낸 월 제외 → 중복 방지)
+      const startM = memberStartMonth(payingMember)
+      const unpaidMonths: number[] = []
+      for (let mm = startM; mm <= cutoffM; mm++) if (!freshPaidMonths.has(mm)) unpaidMonths.push(mm)
       const monthly = clubFees.monthly
       let remaining = amount
       const rows: any[] = []
@@ -694,9 +749,16 @@ export default function FinancePage() {
 
       if (rows.length === 0) {
         setPayingSaving(false)
-        alert(ko
-          ? `입금액(${sym}${amount.toLocaleString()})이 월회비(${sym}${monthly.toLocaleString()}) 미만입니다.`
-          : `Amount is less than monthly fee.`)
+        // 미납 월 자체가 없으면 (다른 임원이 이미 처리) 중복 방지 안내, 아니면 금액 부족 안내
+        if (unpaidMonths.length === 0) {
+          alert(ko ? '이미 미납 월이 모두 납부되었습니다. (다른 임원이 처리했을 수 있습니다)' : 'All unpaid months are already settled.')
+          setPayingMember(null)
+          load()
+        } else {
+          alert(ko
+            ? `입금액(${sym}${amount.toLocaleString()})이 월회비(${sym}${monthly.toLocaleString()}) 미만입니다.`
+            : `Amount is less than monthly fee.`)
+        }
         return
       }
 
@@ -736,6 +798,14 @@ export default function FinancePage() {
       if (error) { alert(ko ? `저장 실패: ${error.message}` : `Save failed: ${error.message}`); return }
     } else {
       // ── 년납 — 단일 트랜잭션 ───────────────────────────────────────────
+      // 중복 방지 — 올해 회비 기록이 이미 있으면 (다른 임원이 처리) 중단
+      if (freshPaidMonths.size > 0) {
+        setPayingSaving(false)
+        alert(ko ? '이미 올해 회비가 기록되어 있습니다. (다른 임원이 처리했을 수 있습니다)' : 'Annual fee already recorded for this year.')
+        setPayingMember(null)
+        load()
+        return
+      }
       const { error } = await supabase.from('finance_transactions').insert({
         club_id:          currentClubId,
         type:             'fee',
@@ -806,6 +876,19 @@ export default function FinancePage() {
     setAddPaySaving(true)
     const supabase = createClient()
     const { data: { user: authUser } } = await supabase.auth.getUser()
+
+    // 중복 방지 — 같은 회원·같은 금액·같은 날짜 회비가 이미 있으면 중단 (더블클릭/여러 임원 중복 기록 방지)
+    const { data: dup } = await supabase.from('finance_transactions')
+      .select('id')
+      .eq('club_id', currentClubId).eq('member_id', feeHistoryMember.user_id).eq('type', 'fee')
+      .eq('amount', amt).eq('transaction_date', addPayForm.date).limit(1)
+    if (dup && dup.length > 0) {
+      setAddPaySaving(false)
+      setAddPayError(ko ? '이미 동일한 회비 내역이 있습니다 (중복 방지)' : 'Identical fee record already exists')
+      await loadFeeHistory(feeHistoryMember)
+      return
+    }
+
     const { error } = await supabase.from('finance_transactions').insert({
       club_id:          currentClubId,
       type:             'fee',
@@ -1213,11 +1296,14 @@ export default function FinancePage() {
                   <span className="text-sm font-bold flex-shrink-0" style={{ color: '#f87171' }}>
                     {sym}{Number(f.amount).toLocaleString()}
                   </span>
-                  {canManage && (
+                  {canConfirmFine && (
                     <button onClick={() => markFinePaid(f.id)}
-                      className="text-[10px] font-bold px-2.5 py-1.5 rounded-md flex-shrink-0 active:scale-95"
+                      disabled={confirmingFineId !== null}
+                      className="text-[10px] font-bold px-2.5 py-1.5 rounded-md flex-shrink-0 active:scale-95 disabled:opacity-40 disabled:active:scale-100"
                       style={{ background: 'rgba(34,197,94,0.18)', border: '1px solid rgba(34,197,94,0.5)', color: '#86efac' }}>
-                      ✓ {ko ? '납부 확인' : 'Mark paid'}
+                      {confirmingFineId === f.id
+                        ? (ko ? '확인 중…' : 'Saving…')
+                        : `✓ ${ko ? '납부 확인' : 'Mark paid'}`}
                     </button>
                   )}
                 </div>
@@ -1657,8 +1743,9 @@ export default function FinancePage() {
             </div>
             <div className="flex gap-3 pt-1">
               <button onClick={() => { setShowAdd(false); setEditingId(null); setMemberInputTab('select') }} className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300">{ko ? '취소' : 'Cancel'}</button>
-              <button onClick={addTransaction} className="flex-1 py-3 rounded-xl bg-green-700 text-white font-semibold">
-                {editingId ? (ko ? '수정 저장' : 'Update') : (ko ? '저장' : 'Save')}
+              <button onClick={addTransaction} disabled={addSaving}
+                className="flex-1 py-3 rounded-xl bg-green-700 text-white font-semibold disabled:opacity-50">
+                {addSaving ? (ko ? '저장 중...' : 'Saving...') : (editingId ? (ko ? '수정 저장' : 'Update') : (ko ? '저장' : 'Save'))}
               </button>
             </div>
           </div>
