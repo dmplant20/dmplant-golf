@@ -127,8 +127,8 @@ export default function PushNotificationToggle({
             {ko ? '푸시 알림' : 'Push Notifications'}
           </p>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>
-            {on                       ? (ko ? '✅ 새 공지·경조사·모임 알림이 활성화되어 있습니다' : '✅ Active for new notices, events, meetings')
-             : status === 'denied'    ? (ko ? '브라우저 설정에서 알림 권한을 허용해주세요' : 'Allow notifications in browser settings')
+            {status === 'denied'      ? (ko ? '브라우저 설정에서 알림 권한을 허용해주세요' : 'Allow notifications in browser settings')
+             : on                     ? (ko ? '✅ 새 공지·경조사·모임 알림이 활성화되어 있습니다' : '✅ Active for new notices, events, meetings')
              :                          (ko ? '활성화하면 새 공지를 모바일로 바로 받아볼 수 있습니다' : 'Enable to receive notifications on this device')}
           </p>
           {error && <p className="text-[11px] text-red-400 mt-0.5">⚠ {error}</p>}

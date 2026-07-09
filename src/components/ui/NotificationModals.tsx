@@ -150,7 +150,8 @@ export default function NotificationModals() {
     fetchPending()
   }, [user])
 
-  const handleRespond = useCallback(async (status: 'attending' | 'not_attending') => {
+  // status 는 DB(meeting_attendances) CHECK 와 동일하게 'attending' | 'absent' 만 사용
+  const handleRespond = useCallback(async (status: 'attending' | 'absent') => {
     if (!meeting) return
     setSubmitting(true)
     setRespondError('')
@@ -162,9 +163,8 @@ export default function NotificationModals() {
           clubId: meeting.clubId,
           year: meeting.year,
           month: meeting.month,
-          // DB CHECK 는 ('attending','absent') — 'absent' 로 정규화해 전송
-          status: status === 'attending' ? 'attending' : 'absent',
-          reason: status === 'not_attending' ? reason : undefined,
+          status,
+          reason: status === 'absent' ? reason : undefined,
         }),
       })
       if (!res.ok) {
@@ -279,7 +279,7 @@ export default function NotificationModals() {
                   </button>
                   <button
                     style={{ ...btnBase, background: '#ef4444', color: '#fff' }}
-                    onClick={() => handleRespond('not_attending')}
+                    onClick={() => handleRespond('absent')}
                     disabled={submitting}
                   >
                     {submitting ? '전송 중...' : '불참 제출'}
