@@ -48,9 +48,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 (function(){
   var ua = navigator.userAgent || '';
 
+  // 공식 네이티브 앱(Capacitor 셸)은 UA 에 InterStellarGolfApp 토큰을 붙인다.
+  // 네이티브에선 (1) WebView→Chrome 리다이렉트를 하면 우리 앱을 튕겨내고,
+  // (2) SW/PWA 자동갱신 머신은 스토어 업데이트와 충돌하므로 둘 다 건너뛴다.
+  // 일반 브라우저엔 토큰이 없어 웹 동작 100% 불변.
+  var isOurApp = /InterStellarGolfApp/i.test(ua);
+
   // ── 1) WebView → Chrome 강제 리다이렉트 ─────────────────────────────────
   var inApp = /FBAN|FBAV|Instagram|KAKAOTALK|kakaotalk|Line\\/|NaverApp| wv[)\\s]|WebView| GSA\\/|MicroMessenger|Twitter\\/|Snapchat|TikTok/i.test(ua);
-  if (/Android/i.test(ua) && inApp) {
+  if (/Android/i.test(ua) && inApp && !isOurApp) {
     var href = window.location.href;
     window.location.replace(
       'intent://' + href.replace(/^https?:\\/\\//, '') +
@@ -79,6 +85,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   // dev (Turbopack) 에서는 SW 가 HMR 와 충돌 + /sw.js fetch 에러 → 프로덕션에서만 등록.
   // 이미 등록된 dev 잔여물이 있으면 깔끔히 해제.
   var __isProd = ${process.env.NODE_ENV === 'production' ? 'true' : 'false'};
+  if (isOurApp) return;   // 네이티브 앱: SW/버전폴링/강제리로드 전부 스킵 (스토어로 업데이트)
   if (!('serviceWorker' in navigator)) return;
   if (!__isProd) {
     navigator.serviceWorker.getRegistrations().then(function(regs){
