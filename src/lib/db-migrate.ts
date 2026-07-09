@@ -84,6 +84,9 @@ DO $$ BEGIN
     CHECK (status IN ('attending', 'absent'));
 EXCEPTION WHEN others THEN NULL;
 END $$;
+-- 구버전(migration_rsvp.sql)로 만들어진 테이블엔 reason 컬럼이 없어 upsert 가 실패한다.
+-- CREATE TABLE IF NOT EXISTS 는 기존 테이블에 컬럼을 추가하지 않으므로 명시적 ALTER 로 보장.
+ALTER TABLE meeting_attendances ADD COLUMN IF NOT EXISTS reason text;
 
 -- meeting_attendances RLS
 ALTER TABLE meeting_attendances ENABLE ROW LEVEL SECURITY;
@@ -401,6 +404,18 @@ CREATE POLICY "unp_upsert" ON user_notification_preferences FOR INSERT
 DROP POLICY IF EXISTS "unp_update" ON user_notification_preferences;
 CREATE POLICY "unp_update" ON user_notification_preferences FOR UPDATE
   USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- 알림받기 영속 플래그 — "사용자가 명시적으로 알림받기를 켰는가"의 진실의 원천.
+--   토글/자동재구독 판정을 이 서버 플래그로 고정 → SW unregister 로 로컬 구독이
+--   파기돼도 상태가 흔들리지 않는다. 사용자가 직접 해지할 때만 false 로 바뀐다.
+--   subscribe route POST=true / DELETE(all)=false 로 갱신.
+-- ────────────────────────────────────────────────────────────────────────────
+ALTER TABLE user_notification_preferences ADD COLUMN IF NOT EXISTS push_opt_in boolean NOT NULL DEFAULT false;
+-- 백필: 현재 push 구독이 있는 사용자는 이미 알림받기를 켠 상태로 간주(수정 배포 후 상태 유지)
+INSERT INTO user_notification_preferences (user_id, push_opt_in)
+  SELECT DISTINCT user_id, true FROM push_subscriptions
+  ON CONFLICT (user_id) DO UPDATE SET push_opt_in = true;
 
 -- push_subscriptions RLS 강화 — 본인 endpoint 만 접근 가능
 ALTER TABLE push_subscriptions ENABLE ROW LEVEL SECURITY;

@@ -113,6 +113,7 @@ export default function NotificationModals() {
   const [notAttendingMode, setNotAttendingMode] = useState(false)
   const [reason, setReason] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [respondError, setRespondError] = useState('')
 
   // Fetch pending notifications when user loads
   useEffect(() => {
@@ -152,24 +153,38 @@ export default function NotificationModals() {
   const handleRespond = useCallback(async (status: 'attending' | 'not_attending') => {
     if (!meeting) return
     setSubmitting(true)
+    setRespondError('')
     try {
-      await fetch('/api/notifications/respond', {
+      const res = await fetch('/api/notifications/respond', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clubId: meeting.clubId,
           year: meeting.year,
           month: meeting.month,
-          status,
+          // DB CHECK 는 ('attending','absent') — 'absent' 로 정규화해 전송
+          status: status === 'attending' ? 'attending' : 'absent',
           reason: status === 'not_attending' ? reason : undefined,
         }),
       })
-    } catch (_e) {
-      // Silent fail — still close modal
+      if (!res.ok) {
+        // 저장 실패 — 성공 안 했는데 닫지 않는다. 사용자에게 실패를 노출하고 재시도 유도.
+        const data = await res.json().catch(() => ({} as { error?: string }))
+        setRespondError(data.error ? `저장 실패: ${data.error}` : '저장에 실패했습니다. 다시 시도해 주세요.')
+        return
+      }
+      // 성공 — DB(meeting_attendances)에 저장됨. pending 이 이 행으로 재노출을 막는다.
+      // sessionStorage 는 같은 세션 내 즉시 재노출 방지용 보조 캐시일 뿐, 진실의 원천은 DB.
+      try { sessionStorage.setItem(SESSION_KEY(meeting.clubId, meeting.year, meeting.month), '1') } catch { /* noop */ }
+      setMeeting(null)
+      setShowMeeting(false)
+      setNotAttendingMode(false)
+      setReason('')
+    } catch {
+      setRespondError('네트워크 오류로 저장하지 못했습니다. 다시 시도해 주세요.')
+    } finally {
+      setSubmitting(false)
     }
-    setMeeting(null)
-    setShowMeeting(false)
-    setSubmitting(false)
   }, [meeting, reason])
 
   const handleMeetingDismiss = useCallback(() => {
@@ -270,6 +285,16 @@ export default function NotificationModals() {
                     {submitting ? '전송 중...' : '불참 제출'}
                   </button>
                 </div>
+              </div>
+            )}
+
+            {/* 저장 실패 안내 — 성공하지 않았는데 닫힌 척하지 않는다 */}
+            {respondError && (
+              <div style={{
+                background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)',
+                borderRadius: 8, padding: '10px 12px', color: '#fca5a5', fontSize: 13,
+              }}>
+                ⚠️ {respondError}
               </div>
             )}
 

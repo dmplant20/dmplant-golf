@@ -36,9 +36,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
-  if (status !== 'attending' && status !== 'not_attending') {
-    return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
-  }
+  // status 정규화 — 팝업은 과거 'not_attending' 을 보냈으나 meeting_attendances CHECK 는
+  // ('attending','absent') 만 허용한다. meetings/rsvp 경로와 동일하게 'absent' 로 통일.
+  // (구버전 클라이언트 호환을 위해 'not_attending' 도 계속 받아 정규화)
+  let normalized: 'attending' | 'absent'
+  if (status === 'attending') normalized = 'attending'
+  else if (status === 'absent' || status === 'not_attending') normalized = 'absent'
+  else return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
 
   const { error } = await supabase.from('meeting_attendances').upsert(
     {
@@ -46,7 +50,7 @@ export async function POST(req: NextRequest) {
       user_id: user.id,
       year,
       month,
-      status,
+      status: normalized,
       reason: reason ?? null,
       responded_at: new Date().toISOString(),
     },

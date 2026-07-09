@@ -90,21 +90,25 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     document.body.setAttribute('data-club-theme', String(theme))
   }, [currentClubId])
 
-  // 푸시 자동 복구 — 권한 이미 허용한 회원은 PWA 열기만 해도 옛 stale 구독 자동 폐기 + 새 VAPID 키로 재구독
-  // (사용자 액션 없이 백그라운드에서 silent 실행)
+  // 푸시 자동 복구 — 알림받기를 "켠" 회원(서버 push_opt_in=true)만, PWA/앱 열기만으로
+  // SW 재등록으로 사라진 로컬 구독을 조용히 재생성한다. 사용자가 직접 해지(opt_in=false)했으면
+  // 절대 되살리지 않는다. → "해지 전까지 유지" + "해지하면 그때만 비활성" 을 서버 기준으로 보장.
   useEffect(() => {
     if (!user?.id) return
     ;(async () => {
       try {
         if (typeof window === 'undefined') return
         if (!('Notification' in window)) return
-        if (Notification.permission !== 'granted') return  // 이전에 권한 허용한 적 있어야 자동 처리
-        const { getPushStatus, subscribePush } = await import('@/lib/push')
+        if (Notification.permission !== 'granted') return  // 권한 없으면 조용히 스킵(재요청 안 함)
+        const { getPushStatus, getServerPushState, subscribePush } = await import('@/lib/push')
+        // 서버 진실의 원천: 사용자가 알림받기를 켠 상태인가?
+        const { opted_in } = await getServerPushState()
+        if (!opted_in) return                          // 안 켰거나 해지함 → 자동 재구독 금지
         const status = await getPushStatus()
         if (status === 'default') {
-          // 권한은 granted 인데 구독이 없거나 stale → 자동 재구독
+          // opt-in 상태인데 로컬 구독이 없거나 stale → 조용히 재구독(상태 유지)
           const r = await subscribePush()
-          if (r.ok) console.log('[push] auto-resubscribed silently')
+          if (r.ok) console.log('[push] auto-resubscribed silently (opted-in)')
           else console.warn('[push] auto-resubscribe failed:', r.reason)
         }
       } catch (e) { console.warn('[push auto]', e) }
