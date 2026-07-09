@@ -97,6 +97,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     ;(async () => {
       try {
         if (typeof window === 'undefined') return
+        // 네이티브 앱 — FCM/APNs 로 등록하고 웹푸시는 건너뜀(채널 배타 → 중복 알림 방지)
+        const { isNativeApp } = await import('@/lib/native')
+        if (isNativeApp()) {
+          const { registerNativePush } = await import('@/lib/push-native')
+          await registerNativePush()
+          return
+        }
         if (!('Notification' in window)) return
         if (Notification.permission !== 'granted') return  // 이전에 권한 허용한 적 있어야 자동 처리
         const { getPushStatus, subscribePush } = await import('@/lib/push')

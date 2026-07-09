@@ -6,6 +6,7 @@
 // - 410/404 만료 endpoint 자동 정리
 import webpush from 'web-push'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { sendNativePush } from './push-native-server'
 
 let vapidReady = false
 export function initVapid(): boolean {
@@ -196,6 +197,18 @@ export async function sendPushWithLogging(args: SendArgs): Promise<SendResult> {
       }
     }
     if (anySuccess) result.sent++; else result.failed++
+  }
+
+  // 4b. 네이티브 푸시(FCM/APNs) 동시 발송 — device_push_tokens.
+  //     env 미설정이면 내부에서 조용히 스킵. logRows 에 결과를 append.
+  //     (채널 배타로 같은 기기 중복 없음. notification_logs 가 발송 진실의 원천)
+  try {
+    await sendNativePush({
+      service, userIds, type, title, body, url, clubId, sentBy,
+      prefMap, prefCol, skipPreferenceCheck, logRows,
+    })
+  } catch (e) {
+    console.warn('[push] native send failed', e)
   }
 
   result.total = userIds.length
