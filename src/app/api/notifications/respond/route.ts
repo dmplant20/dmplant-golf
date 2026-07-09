@@ -36,7 +36,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
-  if (status !== 'attending' && status !== 'not_attending') {
+  // status 는 meeting_attendances CHECK 및 meetings/rsvp 경로와 동일하게 'attending'|'absent' 만 허용.
+  if (status !== 'attending' && status !== 'absent') {
     return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
   }
 

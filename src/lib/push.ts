@@ -29,6 +29,20 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
 
 export type PushStatus = 'unsupported' | 'denied' | 'default' | 'subscribed'
 
+// 알림받기 영속 상태(서버 진실의 원천) 조회.
+//   opted_in: 사용자가 명시적으로 알림받기를 켰는가 (해지 전까지 유지)
+//   subscribed: 서버에 저장된 구독 endpoint 존재 여부
+// SW 재등록으로 로컬 구독이 사라져도 이 값은 흔들리지 않는다.
+export async function getServerPushState(): Promise<{ opted_in: boolean; subscribed: boolean }> {
+  try {
+    const res = await fetch('/api/push/subscribe', { method: 'GET', cache: 'no-store' })
+    if (!res.ok) return { opted_in: false, subscribed: false }
+    return await res.json()
+  } catch {
+    return { opted_in: false, subscribed: false }
+  }
+}
+
 // VAPID 키 형식 사전 검증 — 환경변수 미설정/잘못된 값이면 푸시 기능 자체를 숨김
 function isValidVapidPublic(): boolean {
   return Boolean(VAPID_PUBLIC) && VALID_B64URL.test(VAPID_PUBLIC) && VAPID_PUBLIC.length >= 80
@@ -116,23 +130,22 @@ export async function subscribePush(): Promise<{ ok: boolean; reason?: string }>
   return { ok: true }
 }
 
+// 사용자가 "알림 해지" — 로컬 구독 해제(있으면) + 서버 전체 구독 삭제 + 영속 opt-out.
+// 로컬 구독이 SW 재등록으로 이미 사라졌어도 서버 opt-out 은 반드시 수행되어야 하므로,
+// 로컬 구독 유무와 무관하게 서버 DELETE(all) 를 호출한다.
 export async function unsubscribePush(): Promise<{ ok: boolean }> {
-  if (typeof window === 'undefined') return { ok: false }
-  if (!('serviceWorker' in navigator)) return { ok: false }
-
-  const reg = await navigator.serviceWorker.ready
-  const sub = await reg.pushManager.getSubscription()
-  if (!sub) return { ok: true }
-
-  const endpoint = sub.endpoint
-  await sub.unsubscribe().catch(() => {})
-
+  if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+    try {
+      const reg = await navigator.serviceWorker.ready
+      const sub = await reg.pushManager.getSubscription()
+      if (sub) await sub.unsubscribe().catch(() => {})
+    } catch { /* 로컬 해제 실패는 무시 — 서버 opt-out 이 진실 */ }
+  }
   await fetch('/api/push/subscribe', {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ endpoint }),
+    body: JSON.stringify({ all: true }),
   }).catch(() => {})
-
   return { ok: true }
 }
 
