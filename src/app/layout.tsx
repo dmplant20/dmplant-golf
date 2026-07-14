@@ -111,13 +111,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       }
       // 다른 날짜 발견 → 자정 지났음. 캐시 삭제 후 reload.
       localStorage.setItem(key, today);      // 먼저 마킹 — reload 후 무한루프 방지
-      // SW 해제 + 모든 캐시 삭제 → reload
+      // ⚠️ SW 는 unregister 하지 않음 — unregister 하면 push 구독이 파괴되어
+      //    알림받기 배너가 매번 다시 뜸. 캐시만 삭제하고 reload (SW 갱신은 SW 자체가 담당).
       var jobs = [];
-      if ('serviceWorker' in navigator) {
-        jobs.push(navigator.serviceWorker.getRegistrations().then(function(rs){
-          return Promise.all(rs.map(function(r){ return r.unregister(); }));
-        }));
-      }
       if (typeof caches !== 'undefined') {
         jobs.push(caches.keys().then(function(ks){
           return Promise.all(ks.map(function(k){ return caches.delete(k); }));
@@ -159,14 +155,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           return;
         }
         if (stored === data.version) return;        // 동일 버전 — OK
-        // 새 버전 감지 → 캐시 완전 청소 후 reload
+        // 새 버전 감지 → 캐시 청소 후 reload (SW 는 unregister 안 함 — push 구독 보존)
         try { localStorage.setItem(VERSION_KEY, data.version); } catch(e){}
         var jobs2 = [];
-        if ('serviceWorker' in navigator) {
-          jobs2.push(navigator.serviceWorker.getRegistrations().then(function(rs){
-            return Promise.all(rs.map(function(r){ return r.unregister(); }));
-          }));
-        }
         if (typeof caches !== 'undefined') {
           jobs2.push(caches.keys().then(function(ks){
             return Promise.all(ks.map(function(k){ return caches.delete(k); }));

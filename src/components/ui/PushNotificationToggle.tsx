@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { Bell, BellOff, BellRing } from 'lucide-react'
 import { getPushStatus, subscribePush, unsubscribePush, type PushStatus } from '@/lib/push'
+// subscribePush 는 위 useEffect 의 자동 재구독에서 사용 (권한 granted 시 프롬프트 없이 조용히 실행)
 import { useAuthStore } from '@/stores/authStore'
 
 /**
@@ -26,7 +27,25 @@ export default function PushNotificationToggle({
   const [error,  setError]    = useState<string | null>(null)
 
   useEffect(() => {
-    getPushStatus().then(setStatus)
+    let cancelled = false
+    ;(async () => {
+      const s = await getPushStatus()
+      if (cancelled) return
+      // ⭐ 한 번 권한 허용했는데 구독이 사라진 경우 (SW 갱신/재등록으로 push 구독 파괴)
+      //    → 배너 다시 띄우지 말고 조용히 자동 재구독. 회원이 매번 "활성화" 누를 필요 없음.
+      if (
+        s === 'default' &&
+        typeof Notification !== 'undefined' &&
+        Notification.permission === 'granted'
+      ) {
+        const r = await subscribePush()   // 권한 이미 있으므로 프롬프트 없이 조용히 진행
+        if (cancelled) return
+        setStatus(r.ok ? 'subscribed' : 'default')
+        return
+      }
+      setStatus(s)
+    })()
+    return () => { cancelled = true }
   }, [])
 
   async function enable() {
