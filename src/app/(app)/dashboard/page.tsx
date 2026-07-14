@@ -99,6 +99,8 @@ export default function DashboardPage() {
   const [rsvpPopup, setRsvpPopup] = useState(false)
   const [popupDismissedKey, setPopupDismissedKey] = useState<string | null>(null)
   const [rsvpError,      setRsvpError]      = useState<string | null>(null)
+  // 이미 응답한 뒤 대시보드에서 참석/불참 눌렀을 때 — 직접 변경 대신 안내 팝업
+  const [rsvpGuide,      setRsvpGuide]      = useState(false)
 
   // ── RSVP 창 (D-14 ~ D-1, 참가일 +0 까지 허용) ───────────────────────
   const daysUntilMtg = nextMtg?.date
@@ -436,6 +438,74 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* ── RSVP 변경 안내 팝업 ─────────────────────────────────────────
+          이미 응답한 뒤 대시보드 참석/불참 버튼을 누르면 노출.
+          직접 변경 대신 모임 탭 → 본인 이름 터치로 수정하도록 안내. */}
+      {rsvpGuide && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.75)' }}
+          onClick={() => setRsvpGuide(false)}>
+          <div className="w-full max-w-sm rounded-2xl overflow-hidden"
+            style={{ background: 'var(--surface, #1a1a1a)', border: '1px solid var(--border, rgba(255,255,255,0.1))' }}
+            onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 pt-5 pb-3 text-center relative">
+              <button
+                onClick={() => setRsvpGuide(false)}
+                aria-label="닫기"
+                className="absolute top-3 right-3 w-7 h-7 rounded-full flex items-center justify-center"
+                style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-3)' }}>
+                <XCircle size={16} />
+              </button>
+              <div className="inline-flex items-center justify-center w-14 h-14 rounded-full mb-2"
+                style={{ background: 'rgba(201,168,76,0.15)' }}>
+                <CalendarDays size={26} style={{ color: 'var(--gold-l, #c9a84c)' }} />
+              </div>
+              <h2 className="text-base font-bold leading-snug" style={{ color: 'var(--text)' }}>
+                {ko ? '이미 응답하셨습니다' : 'You already responded'}
+              </h2>
+              <p className="text-[12px] mt-1" style={{ color: 'var(--text-2)' }}>
+                {ko
+                  ? <>현재 응답: <b style={{ color: myRsvp === 'attending' ? 'var(--green-l,#4ade80)' : '#f87171' }}>{myRsvp === 'attending' ? '참석' : '불참'}</b></>
+                  : <>Current: <b>{myRsvp === 'attending' ? 'Attending' : 'Absent'}</b></>}
+              </p>
+            </div>
+
+            {/* 수정 방법 안내 */}
+            <div className="mx-5 mb-4 rounded-xl px-4 py-3 space-y-2"
+              style={{ background: 'var(--surface-2, rgba(255,255,255,0.04))', border: '1px solid var(--border, rgba(255,255,255,0.06))' }}>
+              <p className="text-[12px] font-semibold" style={{ color: 'var(--text)' }}>
+                {ko ? '응답을 변경하려면' : 'To change your response'}
+              </p>
+              <ol className="text-[12px] space-y-1.5" style={{ color: 'var(--text-2)' }}>
+                <li>① {ko ? '하단 ' : 'Open the '}<b style={{ color: 'var(--gold-l,#c9a84c)' }}>{ko ? '모임' : 'Meetings'}</b>{ko ? ' 탭으로 이동' : ' tab'}</li>
+                <li>② {ko ? '참석 명단에서 ' : 'Find '}<b>{ko ? '본인 이름' : 'your name'}</b>{ko ? '을 터치' : ''}</li>
+                <li>③ {ko ? '참석 / 불참을 다시 선택' : 'Re-select attend / absent'}</li>
+              </ol>
+              <p className="text-[11px] pt-1" style={{ color: 'var(--text-3)' }}>
+                {ko ? '※ 일반 회원은 본인 응답만 수정할 수 있습니다.' : '※ Members can only edit their own response.'}
+              </p>
+            </div>
+
+            <div className="px-5 pb-5 grid grid-cols-2 gap-2.5">
+              <button
+                onClick={() => setRsvpGuide(false)}
+                className="py-3 rounded-xl text-sm font-bold transition active:scale-[0.97]"
+                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)', color: 'var(--text-2)' }}>
+                {ko ? '닫기' : 'Close'}
+              </button>
+              <Link
+                href="/meetings"
+                onClick={() => setRsvpGuide(false)}
+                className="py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 transition active:scale-[0.97]"
+                style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)', color: '#fff' }}>
+                <CalendarDays size={15} />
+                {ko ? '모임으로 이동' : 'Go to Meetings'}
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── 히어로 카드 (2단 미니멀) ─────────────────────────────── */}
       <div className="pro-card rounded-2xl px-4 py-3 relative overflow-hidden">
         <div className="flex items-center gap-3">
@@ -588,9 +658,11 @@ export default function DashboardPage() {
                 const absentSelected    = myRsvp === 'absent'
                 return (
                   <>
+                    {/* 이미 응답했으면(myRsvp 있음) 클릭 시 직접 변경 대신 안내 팝업.
+                        미응답이면 최초 응답 1회 허용. */}
                     <button
                       type="button"
-                      onClick={() => submitRsvp('attending')}
+                      onClick={() => { if (myRsvp) { setRsvpGuide(true); return } submitRsvp('attending') }}
                       disabled={rsvpSubmitting || !rsvpOpen}
                       className="py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 transition active:scale-[0.97]"
                       style={
@@ -607,7 +679,7 @@ export default function DashboardPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => submitRsvp('absent')}
+                      onClick={() => { if (myRsvp) { setRsvpGuide(true); return } submitRsvp('absent') }}
                       disabled={rsvpSubmitting || !rsvpOpen}
                       className="py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 transition active:scale-[0.97]"
                       style={
@@ -627,9 +699,14 @@ export default function DashboardPage() {
               })()}
             </div>
             {myRsvp && rsvpOpen && (
-              <p className="text-[10px] text-center" style={{ color: 'var(--text-3)' }}>
-                {ko ? '잘못 누르셨다면 다른 버튼을 다시 눌러 변경할 수 있습니다.' : 'Tap the other button to change your response.'}
-              </p>
+              <button
+                type="button"
+                onClick={() => setRsvpGuide(true)}
+                className="w-full text-[10px] text-center underline decoration-dotted"
+                style={{ color: 'var(--text-3)' }}
+              >
+                {ko ? '응답을 변경하려면? · 모임 탭에서 수정' : 'Change your response? · Edit in Meetings tab'}
+              </button>
             )}
 
             {/* 비활성 안내: D-14 이후부터 활성화 */}
