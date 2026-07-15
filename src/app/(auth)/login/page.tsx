@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores/authStore'
 import { Eye, EyeOff } from 'lucide-react'
+import { isNativeApp } from '@/lib/native'
+import { signInWithGoogle, signInWithApple } from '@/lib/auth/nativeOAuth'
 
 // 자동 채우기 — 로컬 스토리지 키 (개인 기기 PWA 가정)
 // 비밀번호는 btoa 로 미세 난독화. 진짜 암호화는 아니지만, 회원이 같은 기기에서
@@ -35,7 +37,26 @@ export default function LoginPage() {
   const [showPw, setShowPw] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  // 네이티브 앱 여부 — 마운트 후 판별(SSR/하이드레이션 불일치 방지). 웹은 항상 false.
+  const [native, setNative] = useState(false)
+  const [oauthLoading, setOauthLoading] = useState<'google' | 'apple' | null>(null)
   const ko = lang === 'ko'
+
+  useEffect(() => { setNative(isNativeApp()) }, [])
+
+  // 네이티브 소셜 로그인 — 시스템 브라우저 오픈. 이후 세션 처리는 딥링크 리스너가 담당.
+  async function handleOAuth(provider: 'google' | 'apple') {
+    setError('')
+    setOauthLoading(provider)
+    try {
+      if (provider === 'google') await signInWithGoogle()
+      else await signInWithApple()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setError((ko ? '로그인 실패: ' : 'Sign-in failed: ') + msg)
+      setOauthLoading(null)
+    }
+  }
 
   // 마운트 시 저장된 이메일·비밀번호 자동 로드
   useEffect(() => {
@@ -146,6 +167,46 @@ export default function LoginPage() {
             <h2 className="text-lg font-bold text-white mb-5">
               {ko ? '로그인' : 'Sign In'}
             </h2>
+
+            {/* 네이티브 앱 전용 소셜 로그인 — 웹 브라우저에선 렌더되지 않음 */}
+            {native && (
+              <div className="mb-5 space-y-2.5">
+                <button
+                  type="button"
+                  onClick={() => handleOAuth('google')}
+                  disabled={oauthLoading !== null}
+                  className="w-full flex items-center justify-center gap-2.5 bg-white text-gray-800 font-semibold py-3 rounded-xl text-sm disabled:opacity-60 active:scale-[0.98] transition"
+                >
+                  <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+                    <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6.1 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 6.5 29.5 4.5 24 4.5 13.2 4.5 4.5 13.2 4.5 24S13.2 43.5 24 43.5 43.5 34.8 43.5 24c0-1.2-.1-2.3-.4-3.5z"/>
+                    <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 6.5 29.5 4.5 24 4.5 16.3 4.5 9.7 8.8 6.3 14.7z"/>
+                    <path fill="#4CAF50" d="M24 43.5c5.4 0 10.3-2.1 14-5.5l-6.5-5.3c-2 1.5-4.6 2.3-7.5 2.3-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.6 39.1 16.3 43.5 24 43.5z"/>
+                    <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4.1 5.4l6.5 5.3C41.9 35.6 43.5 30.2 43.5 24c0-1.2-.1-2.3-.4-3.5z"/>
+                  </svg>
+                  {oauthLoading === 'google'
+                    ? (ko ? '진행 중...' : 'Continuing...')
+                    : (ko ? 'Google로 로그인' : 'Continue with Google')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOAuth('apple')}
+                  disabled={oauthLoading !== null}
+                  className="w-full flex items-center justify-center gap-2.5 bg-black text-white font-semibold py-3 rounded-xl text-sm border border-gray-700 disabled:opacity-60 active:scale-[0.98] transition"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M16.36 12.9c.02 2.3 2.02 3.06 2.04 3.07-.02.05-.32 1.1-1.06 2.18-.63.94-1.29 1.87-2.33 1.89-1.01.02-1.34-.6-2.5-.6-1.16 0-1.52.58-2.48.62-1 .04-1.76-1.01-2.4-1.95-1.3-1.9-2.3-5.36-.96-7.7.66-1.16 1.85-1.9 3.14-1.92.98-.02 1.9.66 2.5.66.6 0 1.72-.82 2.9-.7.49.02 1.88.2 2.77 1.5-.07.05-1.65.97-1.63 2.95zM14.9 6.7c.53-.64.89-1.53.79-2.42-.76.03-1.69.51-2.24 1.15-.49.56-.92 1.47-.8 2.33.85.07 1.72-.43 2.25-1.06z"/>
+                  </svg>
+                  {oauthLoading === 'apple'
+                    ? (ko ? '진행 중...' : 'Continuing...')
+                    : (ko ? 'Apple로 로그인' : 'Continue with Apple')}
+                </button>
+                <div className="flex items-center gap-3 pt-1">
+                  <div className="flex-1 h-px bg-gray-700" />
+                  <span className="text-[11px] text-gray-500">{ko ? '또는 이메일' : 'or email'}</span>
+                  <div className="flex-1 h-px bg-gray-700" />
+                </div>
+              </div>
+            )}
 
             <form onSubmit={handleLogin} className="space-y-4">
               {/* 이메일 */}

@@ -41,5 +41,24 @@ yarn-error.log*
 next-env.d.ts
 .env*.local
 
+# ── Capacitor 네이티브 ──────────────────────────────────────────────
+# 빌드 산출물 (네이티브 프로젝트 뼈대는 커밋, 빌드 결과/비밀은 제외)
+/android/.gradle/
+/android/build/
+/android/app/build/
+/android/local.properties
+/android/app/release/
+/android/capacitor-cordova-android-plugins/
+/ios/App/Pods/
+/ios/App/build/
+/ios/App/App/public/
+**/xcuserdata/
+# 서명/비밀 파일 — 절대 커밋 금지
+*.keystore
+*.jks
+key.properties
+android/app/google-services.json
+*.p8
+GoogleService-Info.plist
 # Claude Code worktrees (never track embedded repos)
 .claude/worktrees/

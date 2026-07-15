@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { isNativeUA } from '@/lib/native'
 
 // ── WebView 판별 패턴 ────────────────────────────────────────────────────────
 const WEBVIEW_RE = /FBAN|FBAV|Instagram|KAKAOTALK|kakaotalk|com\.kakao\.talk|Line\/|NaverApp|NAVER| wv[);\s]|WebView| GSA\/|MicroMessenger|Twitter\/|Snapchat|TikTok|Musical\.ly|Bytedance|DaumApps|everytime/i
@@ -248,8 +249,12 @@ export function middleware(request: NextRequest) {
   const isAndroid = /Android/i.test(ua)
   const isIOS     = /iPhone|iPad|iPod/i.test(ua)
   const isWebView = WEBVIEW_RE.test(ua)
+  // 공식 네이티브 앱(Capacitor 셸)은 UA 에 InterStellarGolfApp 토큰을 붙인다.
+  // 이 경우 "외부 브라우저로 여세요" 안내를 절대 띄우면 안 됨(우리 앱을 튕겨냄).
+  // 일반 브라우저·인앱브라우저엔 토큰이 없어 웹 동작은 불변.
+  const isOfficialApp = isNativeUA(ua)
 
-  if ((isAndroid || isIOS) && isWebView) {
+  if ((isAndroid || isIOS) && isWebView && !isOfficialApp) {
     const targetUrl = request.url
     return new NextResponse(makeRedirectPage(targetUrl, ua), {
       status: 200,
