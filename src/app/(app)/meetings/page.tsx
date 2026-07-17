@@ -282,8 +282,9 @@ export default function MeetingsPage() {
     const [{ data: pat, error: patErr }, { data: ovr }, { data: mems }, { data: clubRow }] = await Promise.all([
       supabase.from('recurring_meetings').select('*').eq('club_id', currentClubId).maybeSingle(),
       supabase.from('meeting_overrides').select('*').eq('club_id', currentClubId),
+      // ⚠ users:user_id 명시 — club_memberships 는 users 참조 FK 가 2개 (user_id, withdrawn_by)
       supabase.from('club_memberships')
-        .select('user_id, club_handicap, users(full_name, full_name_en, name_abbr)')
+        .select('user_id, club_handicap, users:user_id(full_name, full_name_en, name_abbr)')
         .eq('club_id', currentClubId).eq('status', 'approved'),
       supabase.from('clubs')
         .select('fine_handicap_per_stroke, fine_handicap_max, currency')

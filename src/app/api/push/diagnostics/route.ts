@@ -48,8 +48,9 @@ export async function GET(req: NextRequest) {
   }
 
   // 클럽 회원 + 구독 매핑
+  // ⚠ users:user_id 명시 — club_memberships 는 users 참조 FK 가 2개 (user_id, withdrawn_by)
   const { data: members } = await service.from('club_memberships')
-    .select('user_id, role, users(id, full_name, email, full_name_en)')
+    .select('user_id, role, users:user_id(id, full_name, email, full_name_en)')
     .eq('club_id', clubId).eq('status', 'approved')
 
   const memberRows = (members ?? []).map((m: any) => ({

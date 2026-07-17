@@ -130,14 +130,16 @@ export default function MembersPage() {
     setLoading(true)
     const supabase = createClient()
     const [{ data: approved }, { data: pend }, { data: withdr }, { data: log }] = await Promise.all([
+      // ⚠ users:user_id 명시 — club_memberships 는 user_id + withdrawn_by 두 FK 가 users 참조.
+      //   무지정 embed 는 'more than one relationship' 에러로 회원명단 전체가 빈 화면이 됨.
       supabase.from('club_memberships')
-        .select('*, users(full_name, full_name_en, name_abbr, avatar_url, phone, last_seen_at, password_set)')
+        .select('*, users:user_id(full_name, full_name_en, name_abbr, avatar_url, phone, last_seen_at, password_set)')
         .eq('club_id', currentClubId).eq('status', 'approved'),
       supabase.from('club_memberships')
-        .select('*, users(full_name, full_name_en, name_abbr, phone)')
+        .select('*, users:user_id(full_name, full_name_en, name_abbr, phone)')
         .eq('club_id', currentClubId).eq('status', 'pending'),
       supabase.from('club_memberships')
-        .select('*, users(full_name, full_name_en, name_abbr)')
+        .select('*, users:user_id(full_name, full_name_en, name_abbr)')
         .eq('club_id', currentClubId).eq('status', 'withdrawn')
         .order('withdrawn_at', { ascending: false }),
       canManage
