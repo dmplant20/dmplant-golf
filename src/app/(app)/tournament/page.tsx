@@ -103,7 +103,8 @@ export default function ChampionshipPage() {
     const supabase = createClient()
     const [{ data: evs }, { data: mems }, { data: club }] = await Promise.all([
       supabase.from('tournaments').select('*').eq('club_id', currentClubId).order('date', { ascending: false }),
-      supabase.from('club_memberships').select('user_id, users(full_name, full_name_en, name_abbr)').eq('club_id', currentClubId).eq('status', 'approved'),
+      // ⚠ users:user_id 명시 — club_memberships 는 users 참조 FK 가 2개
+      supabase.from('club_memberships').select('user_id, users:user_id(full_name, full_name_en, name_abbr)').eq('club_id', currentClubId).eq('status', 'approved'),
       supabase.from('clubs').select('currency').eq('id', currentClubId).single(),
     ])
     setAllEvents(evs ?? [])

@@ -305,7 +305,8 @@ export default function FinancePage() {
     const [{ data: transactions }, { data: club }, { data: mems }, { data: pi }, { data: sponsors }, { data: pat }, { data: ovs }] = await Promise.all([
       query.eq('club_id', currentClubId).order('transaction_date', { ascending: false }),
       supabase.from('clubs').select('currency,fine_handicap_per_stroke,fine_handicap_max,fine_notes,annual_fee,monthly_fee,carryover_amount,carryover_note').eq('id', currentClubId).single(),
-      supabase.from('club_memberships').select('user_id, fee_type, joined_at, role, users(full_name, full_name_en)').eq('club_id', currentClubId).eq('status', 'approved'),
+      // ⚠ users:user_id 명시 — club_memberships 는 users 참조 FK 가 2개
+      supabase.from('club_memberships').select('user_id, fee_type, joined_at, role, users:user_id(full_name, full_name_en)').eq('club_id', currentClubId).eq('status', 'approved'),
       supabase.from('club_payment_info').select('*').eq('club_id', currentClubId).maybeSingle(),
       supabase.from('sponsorships').select('*').eq('club_id', currentClubId).order('sponsor_date', { ascending: false }),
       supabase.from('recurring_meetings').select('*').eq('club_id', currentClubId).maybeSingle(),
