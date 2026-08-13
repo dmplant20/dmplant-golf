@@ -1,28 +1,52 @@
 @import "tailwindcss";
 
+/* ══════════════════════════════════════════════════════════
+   INTER STELLAR GOLF — Premium Gold & Silver Design System
+   Deep black · Antique gold accent · Cool silver secondary
+══════════════════════════════════════════════════════════ */
+
 :root {
-  --bg:        #060d06;
-  --bg-2:      #0c160c;
-  --bg-3:      #111e11;
-  --surface:   #141f14;
-  --surface-2: #1a2b1a;
-  --border:    rgba(34, 197, 94, 0.12);
-  --border-2:  rgba(34, 197, 94, 0.22);
-  --green:     #16a34a;
-  --green-l:   #22c55e;
-  --green-d:   #14532d;
-  --gold:      #d4af37;
-  --gold-l:    #f0d060;
-  --text:      #f0fdf4;
-  --text-2:    #a3b8a3;
-  --text-3:    #5a7a5a;
-  --radius:    16px;
+  /* ── Backgrounds ─────────────────────────────────────── */
+  --bg:       #080808;   /* near-black                      */
+  --bg-2:     #0e0e0e;   /* slightly lighter                */
+  --bg-3:     #161616;   /* card background                 */
+  --surface:  #1e1e1e;   /* elevated surface                */
+  --surface-2:#272727;   /* secondary surface / input       */
+
+  /* ── Borders — warm gold tint ────────────────────────── */
+  --border:   rgba(201,168,76,0.12);   /* subtle gold       */
+  --border-2: rgba(201,168,76,0.24);   /* emphasized gold   */
+
+  /* ── Gold — primary accent ───────────────────────────── */
+  --gold:     #c9a84c;   /* antique gold                    */
+  --gold-l:   #e8c96d;   /* light gold (text on dark)       */
+  --gold-d:   #a07830;   /* deep gold (hover / pressed)     */
+
+  /* ── Silver — secondary accent ──────────────────────── */
+  --silver:   #c8c8de;   /* bright cool silver              */
+  --silver-l: #eaeaf6;   /* brilliant light silver          */
+  --silver-d: #9090a8;   /* muted silver                    */
+
+  /* ── Green — scorecard semantic ONLY (golf standard) ── */
+  --green:    #18a34a;
+  --green-l:  #22c55e;
+  --green-d:  #15803d;
+
+  /* ── Text — warm cream ───────────────────────────────── */
+  --text:     #f2ede6;   /* warm cream white                */
+  --text-2:   #a8a097;   /* warm mid-gray  (was #9a938a — bumped for dark-bg legibility) */
+  --text-3:   #7a7268;   /* muted          (was #5c5650 — was nearly invisible)         */
+
+  /* ── Misc ────────────────────────────────────────────── */
+  --radius:   14px;
 }
 
+/* ── System font stack ──────────────────────────────────── */
 @theme inline {
   --color-background: var(--bg);
   --color-foreground: var(--text);
-  --font-sans: var(--font-noto), var(--font-inter), system-ui, sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
+    'Noto Sans KR', 'Malgun Gothic', Roboto, 'Helvetica Neue', sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -30,167 +54,252 @@
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font-noto), var(--font-inter), system-ui, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
+    'Noto Sans KR', 'Malgun Gothic', Roboto, 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overscroll-behavior: none;
 }
 
-/* ── 안전 영역 ─────────────────────────────────────────────────────────── */
+/* ── Per-club background accent (data-club-theme on body) ─── */
+/* z-index -1: 본문 콘텐츠 뒤에 깔리도록 → body > * 에 z-index 부여 불필요
+   (이전엔 body > * { z-index: 1 } 로 stacking context를 만들어서 fixed 모달이
+    layout root 안에 갇히는 버그가 있었음 — 제거) */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  pointer-events: none; z-index: -1;
+  background: radial-gradient(80vw 60vh at 50% -10%, rgba(201,168,76,0.06), transparent 70%);
+  transition: background 0.5s ease;
+}
+body[data-club-theme="2"]::before {
+  background:
+    radial-gradient(80vw 60vh at 50% -10%, rgba(34,197,94,0.08), transparent 70%),
+    radial-gradient(60vw 50vh at 100% 100%, rgba(34,197,94,0.04), transparent 70%);
+}
+body[data-club-theme="3"]::before {
+  background:
+    radial-gradient(80vw 60vh at 50% -10%, rgba(96,165,250,0.07), transparent 70%),
+    radial-gradient(60vw 50vh at 0% 100%, rgba(96,165,250,0.04), transparent 70%);
+}
+body[data-club-theme="4"]::before {
+  background:
+    radial-gradient(80vw 60vh at 50% -10%, rgba(244,114,182,0.07), transparent 70%),
+    radial-gradient(60vw 50vh at 100% 80%, rgba(244,114,182,0.04), transparent 70%);
+}
+
+/* ── Safe areas ─────────────────────────────────────────── */
 .safe-top    { padding-top:    env(safe-area-inset-top); }
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
 .bottom-nav  { padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem); }
 
-/* ── 스크롤바 숨김 ──────────────────────────────────────────────────────── */
+/* Bottom-sheet modal: 마지막 버튼이 home indicator에 가려지지 않도록
+   원래 padding-bottom (1.5rem ≈ p-6 / 1.25rem ≈ p-5)을 유지하면서 safe-area 추가 */
+.modal-sheet-pb { padding-bottom: calc(1.5rem + env(safe-area-inset-bottom)); }
+
+/* ── Scrollbar hide ─────────────────────────────────────── */
 .scroll-hide::-webkit-scrollbar { display: none; }
-.scroll-hide { -ms-overflow-style: none; scrollbar-width: none; }
+.scroll-hide  { -ms-overflow-style: none; scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-/* ── 카드 ────────────────────────────────────────────────────────────────
-   glass-card  : 기본 유리 효과
-   premium-card: 그라디언트 테두리 + 글로우
-   stat-card   : 통계 숫자 카드
-──────────────────────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════
+   CARDS
+══════════════════════════════════════════════════════════ */
+
+/* Standard card */
 .glass-card {
-  background: linear-gradient(135deg, rgba(20,40,20,0.7) 0%, rgba(12,22,12,0.9) 100%);
+  background: var(--bg-3);
   border: 1px solid var(--border);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.5);
 }
 
+/* Elevated card */
 .premium-card {
-  background: linear-gradient(145deg, rgba(22,163,74,0.08) 0%, rgba(6,13,6,0.95) 60%);
+  background: var(--surface);
   border: 1px solid var(--border-2);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  box-shadow: 0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(34,197,94,0.08);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.6),
+              inset 0 1px 0 rgba(201,168,76,0.06);
 }
 
+/* Stat / metric card */
 .stat-card {
-  background: linear-gradient(145deg, rgba(22,163,74,0.12) 0%, rgba(10,18,10,0.98) 100%);
-  border: 1px solid var(--border-2);
-  position: relative;
-  overflow: hidden;
-}
-.stat-card::before {
-  content: '';
-  position: absolute;
-  top: -20px; right: -20px;
-  width: 80px; height: 80px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(22,163,74,0.15) 0%, transparent 70%);
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
 }
 
-/* ── 입력 필드 ────────────────────────────────────────────────────────── */
+/* Pro / hero card */
+.pro-card {
+  background: var(--surface);
+  border: 1px solid var(--border-2);
+  box-shadow: 0 2px 16px rgba(0,0,0,0.6),
+              inset 0 1px 0 rgba(201,168,76,0.08);
+}
+
+/* ══════════════════════════════════════════════════════════
+   INPUTS
+══════════════════════════════════════════════════════════ */
 .input-field {
   width: 100%;
-  background: rgba(10,18,10,0.8);
-  border: 1px solid rgba(34,197,94,0.18);
-  border-radius: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
   padding: 12px 16px;
   color: var(--text);
   font-size: 0.875rem;
   outline: none;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: border-color 0.2s;
 }
 .input-field:focus {
-  border-color: rgba(34,197,94,0.5);
-  box-shadow: 0 0 0 3px rgba(22,163,74,0.1);
+  border-color: var(--gold-l);
 }
 .input-field::placeholder { color: var(--text-3); }
 
-/* ── 버튼 ─────────────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════
+   BUTTONS
+══════════════════════════════════════════════════════════ */
 .btn-primary {
-  background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
-  color: white;
-  font-weight: 600;
-  border-radius: 14px;
+  background: linear-gradient(135deg, #c9a84c 0%, #a07830 100%);
+  color: #fff;
+  font-weight: 700;
+  border-radius: var(--radius);
   padding: 13px 20px;
   border: none;
   cursor: pointer;
   transition: opacity 0.15s, transform 0.1s;
-  box-shadow: 0 4px 16px rgba(22,163,74,0.3);
   font-size: 0.875rem;
+  letter-spacing: 0.01em;
 }
-.btn-primary:hover  { opacity: 0.9; }
+.btn-primary:hover  { opacity: 0.88; }
 .btn-primary:active { transform: scale(0.98); }
-.btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-primary:disabled { opacity: 0.35; cursor: not-allowed; }
 
 .btn-ghost {
-  background: rgba(34,197,94,0.08);
-  border: 1px solid rgba(34,197,94,0.2);
-  color: #86efac;
-  border-radius: 12px;
+  background: transparent;
+  border: 1px solid var(--border-2);
+  color: var(--text-2);
+  border-radius: var(--radius);
   padding: 10px 16px;
   font-size: 0.8125rem;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: border-color 0.15s, color 0.15s;
 }
-.btn-ghost:hover { background: rgba(34,197,94,0.14); }
+.btn-ghost:hover { border-color: var(--gold-l); color: var(--gold-l); }
 
-/* ── 뱃지 ─────────────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════
+   TYPOGRAPHY UTILITIES
+══════════════════════════════════════════════════════════ */
+
+/* Section label */
+.section-title {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+/* ── Nav pill ────────────────────────────────────────────── */
+.nav-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 99px;
+  background: transparent;
+  border: 1px solid var(--border-2);
+  color: var(--text-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+.nav-pill:hover { border-color: var(--gold-l); color: var(--gold-l); }
+.nav-pill.active {
+  background: rgba(201,168,76,0.12);
+  border-color: rgba(201,168,76,0.35);
+  color: var(--gold-l);
+}
+
+/* ── Badge ──────────────────────────────────────────────── */
 .badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 3px 10px;
   border-radius: 99px;
-  font-size: 0.7rem;
+  font-size: 0.6875rem;
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
 }
 
-/* ── 섹션 헤더 ────────────────────────────────────────────────────────── */
-.section-title {
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--green-l);
-}
-
-/* ── 구분선 ───────────────────────────────────────────────────────────── */
+/* ── Divider ────────────────────────────────────────────── */
 .divider {
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(34,197,94,0.2), transparent);
+  background: var(--border);
 }
 
-/* ── 스코어 컬러 ──────────────────────────────────────────────────────── */
-.score-eagle  { background: #4338ca; color: #fef3c7; }
-.score-birdie { background: #1d4ed8; color: #fff; }
-.score-par    { background: #15803d; color: #fff; }
-.score-bogey  { background: #a16207; color: #fff; }
-.score-double { background: #c2410c; color: #fff; }
-.score-triple { background: #b91c1c; color: #fff; }
-
-/* ── 애니메이션 ───────────────────────────────────────────────────────── */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-@keyframes slideUp {
-  from { transform: translateY(100%); }
-  to   { transform: translateY(0); }
-}
-@keyframes pulse-green {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(22,163,74,0.4); }
-  50%       { box-shadow: 0 0 0 8px rgba(22,163,74,0); }
+/* ══════════════════════════════════════════════════════════
+   SCORE BADGES — semantic golf colors (unchanged)
+══════════════════════════════════════════════════════════ */
+.score-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
-.animate-fade-in  { animation: fadeIn  0.25s ease both; }
-.animate-slide-up { animation: slideUp 0.3s cubic-bezier(0.32,0.72,0,1) both; }
-.pulse-green      { animation: pulse-green 2s infinite; }
+.score-eagle  { background: #312e81; color: #e0e7ff; }
+.score-birdie { background: #1e3a8a; color: #dbeafe; }
+.score-par    { background: #14532d; color: #dcfce7; }
+.score-bogey  { background: #78350f; color: #fef3c7; }
+.score-double { background: #7c2d12; color: #ffedd5; }
+.score-triple { background: #7f1d1d; color: #fee2e2; }
 
-/* ── 골프 코스 자동완성 드롭다운 ─────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════
+   LANDSCAPE SCORECARD TABLE
+══════════════════════════════════════════════════════════ */
+.landscape-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.8125rem;
+}
+.landscape-table th,
+.landscape-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+  white-space: nowrap;
+}
+.landscape-table th {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  background: var(--surface);
+}
+.landscape-table tr:last-child td { border-bottom: none; }
+
+/* ══════════════════════════════════════════════════════════
+   COURSE DROPDOWN
+══════════════════════════════════════════════════════════ */
 .course-dropdown {
   position: absolute;
   top: calc(100% + 6px);
   left: 0; right: 0;
-  background: #0c160c;
+  background: var(--surface);
   border: 1px solid var(--border-2);
-  border-radius: 14px;
+  border-radius: var(--radius);
   overflow: hidden;
   z-index: 300;
-  box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.8);
   max-height: 240px;
   overflow-y: auto;
 }
@@ -198,20 +307,62 @@ body {
   padding: 10px 14px;
   cursor: pointer;
   transition: background 0.12s;
-  border-bottom: 1px solid rgba(34,197,94,0.06);
+  border-bottom: 1px solid var(--border);
 }
 .course-item:last-child { border-bottom: none; }
-.course-item:hover, .course-item:focus { background: rgba(22,163,74,0.12); }
+.course-item:hover,
+.course-item:focus { background: var(--surface-2); }
 
-/* ── 메뉴 아이템 ──────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════
+   MENU ITEM
+══════════════════════════════════════════════════════════ */
 .menu-item {
   display: flex;
   align-items: center;
   gap: 14px;
   padding: 14px 16px;
-  border-radius: 16px;
+  border-radius: var(--radius);
   transition: background 0.15s;
   cursor: pointer;
 }
-.menu-item:hover { background: rgba(34,197,94,0.06); }
-.menu-item:active { background: rgba(34,197,94,0.12); }
+.menu-item:hover  { background: var(--surface-2); }
+.menu-item:active { background: var(--surface);   }
+
+/* ══════════════════════════════════════════════════════════
+   GOLD GLOW UTILITY
+══════════════════════════════════════════════════════════ */
+.gold-glow {
+  box-shadow: 0 0 16px rgba(201,168,76,0.25), 0 0 4px rgba(201,168,76,0.15);
+}
+
+/* ══════════════════════════════════════════════════════════
+   ANIMATIONS
+══════════════════════════════════════════════════════════ */
+@keyframes fadeIn {
+  /* transform 제거: 애니메이션 끝나도 페이지 root가 containing block이 되어
+     fixed 모달이 viewport 전체를 못 덮는 버그 발생. opacity만 사용. */
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+@keyframes landscapeLabelIn {
+  0%   { opacity: 0; transform: translateX(-8px) rotate(-90deg); }
+  100% { opacity: 1; transform: translateX(0)    rotate(-90deg); }
+}
+@keyframes shimmer {
+  0%   { opacity: 0.6; }
+  50%  { opacity: 1; }
+  100% { opacity: 0.6; }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1;   transform: scale(1); }
+  50%      { opacity: 0.7; transform: scale(1.18); }
+}
+
+.animate-fade-in    { animation: fadeIn  0.2s ease both; }
+.animate-slide-up   { animation: slideUp 0.28s cubic-bezier(0.32,0.72,0,1) both; }
+.landscape-label-in { animation: landscapeLabelIn 0.3s ease both; }
+.animate-shimmer    { animation: shimmer 2s ease-in-out infinite; }

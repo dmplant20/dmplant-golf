@@ -4,7 +4,8 @@ import Anthropic from '@anthropic-ai/sdk'
 const client = new Anthropic()
 
 export async function POST(req: NextRequest) {
-  const { image, currency, lang } = await req.json()
+  const { image, mediaType, currency, lang } = await req.json()
+  const imgType = (mediaType ?? 'image/jpeg') as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
 
   const currencyName = { KRW: '한국 원(₩)', VND: '베트남 동(₫)', IDR: '인도네시아 루피아(Rp)' }[currency as string] ?? '원'
   const isKo = lang === 'ko'
@@ -19,7 +20,7 @@ export async function POST(req: NextRequest) {
     messages: [{
       role: 'user',
       content: [
-        { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: image } },
+        { type: 'image', source: { type: 'base64', media_type: imgType, data: image } },
         { type: 'text', text: prompt }
       ]
     }]
