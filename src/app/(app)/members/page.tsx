@@ -2,10 +2,11 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores/authStore'
+import { useAutoRefresh } from '@/hooks/useAutoRefresh'
 import {
   UserCheck, Clock, UserX, Edit2, ShieldCheck, GaugeCircle,
   UserMinus, RotateCcw, AlertTriangle, History, Shield,
-  UserPlus, Copy, Check as CheckIcon, X,
+  UserPlus, X,
 } from 'lucide-react'
 
 // ── role config ────────────────────────────────────────────────────────────
@@ -57,7 +58,7 @@ export default function MembersPage() {
   const ko       = lang === 'ko'
   const myMembership = myClubs.find(c => c.id === currentClubId)
   const myRole       = myMembership?.role ?? 'member'
-  const canManage    = ['president', 'secretary'].includes(myRole)
+  const canManage    = ['president', 'secretary'].includes(myRole) || !!user?.is_developer
 
   const [tab,           setTab]           = useState<'approved' | 'pending' | 'withdrawn' | 'log'>('approved')
   const [members,       setMembers]       = useState<any[]>([])
@@ -72,16 +73,16 @@ export default function MembersPage() {
     feeType: string; paid: boolean; unpaidMonths: number[]
   } | null>(null)
   const [showAddMember, setShowAddMember] = useState(false)
-  const [addSuccess,    setAddSuccess]    = useState<{ email: string; tempPassword: string; full_name: string } | null>(null)
+  const [addSuccess,    setAddSuccess]    = useState<{ email: string; full_name: string } | null>(null)
 
-  async function load() {
+  async function load(silent = false) {
     if (!currentClubId) return
-    setLoading(true)
+    if (!silent) setLoading(true)
     const supabase = createClient()
     const [{ data: approved }, { data: pend }, { data: withdr }, { data: log }] = await Promise.all([
       supabase.from('club_memberships')
-        .select('*, users(full_name, full_name_en, name_abbr, avatar_url, phone)')
-        .eq('club_id', currentClubId).eq('status', 'approved').order('role'),
+        .select('*, users(full_name, full_name_en, name_abbr, avatar_url, phone, is_developer)')
+        .eq('club_id', currentClubId).eq('status', 'approved'),
       supabase.from('club_memberships')
         .select('*, users(full_name, full_name_en, name_abbr, phone)')
         .eq('club_id', currentClubId).eq('status', 'pending'),
@@ -97,11 +98,19 @@ export default function MembersPage() {
             .limit(50)
         : Promise.resolve({ data: [] }),
     ])
-    setMembers(approved ?? [])
+    // 역할 순서: 회장 → 부회장 → 감사 → 총무 → 고문 → 임원 → 회원
+    const ROLE_ORDER: Record<string, number> = {
+      president: 1, vice_president: 2, auditor: 3,
+      secretary: 4, advisor: 5, officer: 6, member: 7,
+    }
+    const sorted = (approved ?? []).sort((a: any, b: any) =>
+      (ROLE_ORDER[a.role] ?? 99) - (ROLE_ORDER[b.role] ?? 99)
+    )
+    setMembers(sorted)
     setPending(pend ?? [])
     setWithdrawn(withdr ?? [])
     setActivityLog(log ?? [])
-    setLoading(false)
+    if (!silent) setLoading(false)
 
     // 내 회비 납부 현황
     if (user?.id) {
@@ -128,6 +137,10 @@ export default function MembersPage() {
   }
 
   useEffect(() => { load() }, [currentClubId])
+  useAutoRefresh(load, currentClubId, {
+    realtime: { table: 'club_memberships', filter: currentClubId ? `club_id=eq.${currentClubId}` : undefined },
+    silentLoad: () => load(true),
+  })
 
   // ── actions ────────────────────────────────────────────────────────────────
   async function logAction(target_user_id: string | null, action: string, old_value?: string, new_value?: string, note?: string) {
@@ -230,7 +243,7 @@ export default function MembersPage() {
             </button>
           ))}
         </div>
-        {canManage && (
+        {!!user?.is_developer && (
           <button
             onClick={() => { setShowAddMember(true); setAddSuccess(null) }}
             title={ko ? '회원 추가' : 'Add Member'}
@@ -248,18 +261,18 @@ export default function MembersPage() {
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-green-300 mb-0.5">
-                계정 생성됨 — {addSuccess.full_name}
+                {ko ? '계정 생성됨' : 'Account Created'} — {addSuccess.full_name}
               </p>
               <p className="text-xs text-gray-400 break-all">
-                {addSuccess.email} / PW: <span className="text-white font-mono">{addSuccess.tempPassword}</span>
+                {addSuccess.email}
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {ko ? '회원이 이메일로 로그인 후 비밀번호를 직접 설정합니다.' : 'Member will set their own password on first login.'}
               </p>
             </div>
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              <CopyButton text={`${addSuccess.email} / ${addSuccess.tempPassword}`} ko={ko} />
-              <button onClick={() => setAddSuccess(null)} className="text-gray-500 hover:text-white transition">
-                <X size={15} />
-              </button>
-            </div>
+            <button onClick={() => setAddSuccess(null)} className="text-gray-500 hover:text-white transition flex-shrink-0">
+              <X size={15} />
+            </button>
           </div>
         </div>
       )}
@@ -277,14 +290,16 @@ export default function MembersPage() {
                 {m.users?.avatar_url ? <img src={m.users.avatar_url} className="w-10 h-10 rounded-full object-cover" alt="" /> : '👤'}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-white font-semibold text-sm">
+                <div className="flex items-baseline gap-1 min-w-0">
+                  <span className="text-white font-semibold text-sm whitespace-nowrap overflow-hidden text-ellipsis min-w-0">
                     {lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}
                   </span>
-                  {m.users?.name_abbr && <span className="text-xs text-gray-500">({m.users.name_abbr})</span>}
+                  {m.users?.name_abbr && (
+                    <span className="text-gray-500 font-normal text-xs flex-shrink-0 whitespace-nowrap">({m.users.name_abbr})</span>
+                  )}
                 </div>
                 <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                  <RoleBadge role={m.role} ko={ko} />
+                  <RoleBadge role={m.users?.is_developer ? 'member' : m.role} ko={ko} />
                   {m.fee_type === 'annual'  && <span className="text-[11px] px-2 py-0.5 rounded-full bg-yellow-900/50 text-yellow-300">{ko ? '년회비' : 'Annual'}</span>}
                   {m.fee_type === 'monthly' && <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-900/50  text-blue-300">{ko ? '월회비' : 'Monthly'}</span>}
                   {m.club_handicap != null && <span className="text-[11px]" style={{ color: 'var(--gold-l)' }}>HC {m.club_handicap}</span>}
@@ -298,29 +313,25 @@ export default function MembersPage() {
                   )}
                 </div>
               </div>
-              {canManage && (
-                <div className="flex items-center gap-1.5 flex-shrink-0">
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                {canManage && (
                   <button onClick={() => setQuickHcMember(m)} title={ko ? '핸디 수정' : 'Edit HC'}
                     className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 transition"
                     onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--gold-l)'; (e.currentTarget as HTMLButtonElement).style.background = 'rgba(201,168,76,0.12)' }}
                     onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = ''; (e.currentTarget as HTMLButtonElement).style.background = '' }}>
                     <GaugeCircle size={15} />
                   </button>
-                  <button onClick={() => setEditMember(m)} title={ko ? '정보 수정' : 'Edit'}
+                )}
+                {/* 수정 버튼: 관리자는 모두, 일반 회원은 본인만 */}
+                {(canManage || m.user_id === user?.id) && (
+                  <button onClick={() => setEditMember(m)} title={ko ? '수정' : 'Edit'}
                     className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 transition"
                     onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--gold-l)'; (e.currentTarget as HTMLButtonElement).style.background = 'rgba(201,168,76,0.12)' }}
                     onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = ''; (e.currentTarget as HTMLButtonElement).style.background = '' }}>
                     <Edit2 size={15} />
                   </button>
-                  {/* 탈퇴 처리: 본인 제외 */}
-                  {m.user_id !== user?.id && (
-                    <button onClick={() => setWithdrawTarget(m)} title={ko ? '탈퇴 처리' : 'Withdraw'}
-                      className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-600 hover:text-red-400 hover:bg-red-900/20 transition">
-                      <UserMinus size={15} />
-                    </button>
-                  )}
-                </div>
-              )}
+                )}
+              </div>
             </div>
           ))}
           {members.length === 0 && (
@@ -480,6 +491,10 @@ export default function MembersPage() {
           onClose={() => setEditMember(null)}
           onSave={updateMember}
           onDelegate={delegateRole}
+          onWithdraw={(m: any, reason: string) => {
+            setEditMember(null)
+            withdrawMember(m, reason)
+          }}
         />
       )}
       {withdrawTarget && (
@@ -506,35 +521,13 @@ export default function MembersPage() {
   )
 }
 
-// ── CopyButton ─────────────────────────────────────────────────────────────
-function CopyButton({ text, ko }: { text: string; ko: boolean }) {
-  const [copied, setCopied] = useState(false)
-  async function doCopy() {
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch { /* ignore */ }
-  }
-  return (
-    <button onClick={doCopy} title={ko ? '복사' : 'Copy'}
-      className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 transition">
-      {copied ? <CheckIcon size={12} className="text-green-400" /> : <Copy size={12} />}
-      {copied ? (ko ? '복사됨' : 'Copied') : (ko ? '복사' : 'Copy')}
-    </button>
-  )
-}
 
 // ── AddMemberModal ─────────────────────────────────────────────────────────
-function generateTempPw() {
-  return `Golf@${Math.floor(1000 + Math.random() * 9000)}`
-}
-
 function AddMemberModal({ ko, clubId, onClose, onSuccess }: {
   ko: boolean
   clubId: string
   onClose: () => void
-  onSuccess: (result: { email: string; tempPassword: string; full_name: string }) => void
+  onSuccess: (result: { email: string; full_name: string }) => void
 }) {
   const [form, setForm] = useState({
     full_name:    '',
@@ -542,15 +535,9 @@ function AddMemberModal({ ko, clubId, onClose, onSuccess }: {
     name_abbr:    '',
     email:        '',
     role:         'member',
-    tempPassword: generateTempPw(),
   })
   const [submitting, setSubmitting] = useState(false)
   const [error,      setError]      = useState<string | null>(null)
-  const [pwCopied,   setPwCopied]   = useState(false)
-
-  async function copyPw() {
-    try { await navigator.clipboard.writeText(form.tempPassword); setPwCopied(true); setTimeout(() => setPwCopied(false), 2000) } catch { /* ignore */ }
-  }
 
   async function submit() {
     setError(null)
@@ -573,7 +560,7 @@ function AddMemberModal({ ko, clubId, onClose, onSuccess }: {
       if (!res.ok) {
         setError(data.error ?? (ko ? '오류가 발생했습니다' : 'An error occurred'))
       } else {
-        onSuccess({ email: data.email, tempPassword: data.tempPassword, full_name: data.full_name })
+        onSuccess({ email: data.email, full_name: data.full_name })
       }
     } catch {
       setError(ko ? '네트워크 오류' : 'Network error')
@@ -667,34 +654,13 @@ function AddMemberModal({ ko, clubId, onClose, onSuccess }: {
             </select>
           </div>
 
-          {/* 임시 비밀번호 */}
-          <div>
-            <label className="text-xs text-gray-400 block mb-1.5">{ko ? '임시 비밀번호' : 'Temp Password'}</label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={form.tempPassword}
-                onChange={e => setForm(f => ({ ...f, tempPassword: e.target.value }))}
-                className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm font-mono outline-none focus:border-yellow-600/60"
-              />
-              <button
-                type="button"
-                onClick={copyPw}
-                title={ko ? '복사' : 'Copy'}
-                className="px-3 rounded-xl bg-gray-800 border border-gray-700 text-gray-400 hover:text-white transition flex-shrink-0"
-              >
-                {pwCopied ? <CheckIcon size={15} className="text-green-400" /> : <Copy size={15} />}
-              </button>
-              <button
-                type="button"
-                onClick={() => setForm(f => ({ ...f, tempPassword: generateTempPw() }))}
-                title={ko ? '새로 생성' : 'Regenerate'}
-                className="px-3 rounded-xl bg-gray-800 border border-gray-700 text-gray-400 hover:text-white transition text-xs flex-shrink-0"
-              >
-                {ko ? '새로' : 'New'}
-              </button>
-            </div>
-            <p className="text-[11px] text-gray-600 mt-1">{ko ? '회원이 처음 로그인 후 변경할 수 있습니다' : 'Member can change this after first login'}</p>
+          {/* 안내 */}
+          <div className="rounded-xl bg-green-900/20 border border-green-800/30 px-3 py-2.5">
+            <p className="text-xs text-green-400">
+              {ko
+                ? '✉️ 회원이 이메일로 첫 로그인 시 비밀번호를 직접 설정합니다.'
+                : '✉️ Member will set their own password via email on first login.'}
+            </p>
           </div>
 
           {/* 에러 */}
@@ -723,6 +689,49 @@ function AddMemberModal({ ko, clubId, onClose, onSuccess }: {
               ) : (ko ? '계정 생성' : 'Create Account')}
             </button>
           </div>
+          {/* ── 탈퇴 처리 ── */}
+          {canWithdraw && (
+            <div className="border-t border-gray-800 pt-4">
+              {!showWithdraw ? (
+                <button onClick={() => setShowWithdraw(true)}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-red-900/50 text-red-500 text-sm hover:bg-red-900/20 transition">
+                  <UserMinus size={15} />
+                  {isSelf
+                    ? (ko ? '클럽 탈퇴' : 'Leave Club')
+                    : (ko ? `${member.users?.full_name} 탈퇴 처리` : `Withdraw ${member.users?.full_name}`)}
+                </button>
+              ) : (
+                <div className="space-y-3 bg-red-900/10 border border-red-800/40 rounded-xl p-4">
+                  <p className="text-sm font-semibold text-red-400 flex items-center gap-2">
+                    <UserMinus size={14} />
+                    {isSelf ? (ko ? '클럽 탈퇴' : 'Leave Club') : (ko ? '탈퇴 처리' : 'Withdraw Member')}
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    {isSelf
+                      ? (ko ? '탈퇴 후에도 모든 기록은 보존됩니다.' : 'Your records will be preserved after leaving.')
+                      : (ko ? `${member.users?.full_name}님의 모든 기록은 보존됩니다.` : `All records of ${member.users?.full_name} will be preserved.`)}
+                  </p>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">{ko ? '탈퇴 사유 (선택)' : 'Reason (optional)'}</label>
+                    <input
+                      type="text" value={withdrawReason}
+                      onChange={e => setWithdrawReason(e.target.value)}
+                      placeholder={ko ? '예: 개인 사정' : 'e.g. Personal reasons'}
+                      className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-white text-sm outline-none focus:border-red-600/60"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => setShowWithdraw(false)}
+                      className="flex-1 py-2 rounded-xl bg-gray-800 text-gray-300 text-sm">{ko ? '취소' : 'Cancel'}</button>
+                    <button onClick={() => onWithdraw(member, withdrawReason)}
+                      className="flex-1 py-2 rounded-xl bg-red-700 hover:bg-red-600 text-white text-sm font-semibold transition">
+                      {ko ? '탈퇴 확인' : 'Confirm'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -787,7 +796,7 @@ function QuickHcModal({ member, ko, onClose, onSave }: any) {
 }
 
 // ── EditMemberModal ────────────────────────────────────────────────────────
-function EditMemberModal({ member, ko, myRole, members, onClose, onSave, onDelegate }: any) {
+function EditMemberModal({ member, ko, myRole, members, onClose, onSave, onDelegate, onWithdraw }: any) {
   const [clubHc,       setClubHc]       = useState(member.club_handicap     != null ? String(member.club_handicap)     : '')
   const [personalHc,   setPersonalHc]   = useState(member.personal_handicap != null ? String(member.personal_handicap) : '')
   const [role,         setRole]         = useState(member.role)
@@ -798,6 +807,9 @@ function EditMemberModal({ member, ko, myRole, members, onClose, onSave, onDeleg
   const { currentClubId, myClubs } = useAuthStore()
   const isSelf      = member.user_id === useAuthStore.getState().user?.id
   const canDelegate = ['president', 'secretary'].includes(myRole) && !isSelf
+  const canWithdraw = isSelf || ['president', 'secretary'].includes(myRole)
+  const [showWithdraw,   setShowWithdraw]   = useState(false)
+  const [withdrawReason, setWithdrawReason] = useState('')
 
   // Role change buttons
   const officerRoles = [

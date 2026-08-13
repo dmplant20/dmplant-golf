@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores/authStore'
+import { useAutoRefresh } from '@/hooks/useAutoRefresh'
 import {
   Trophy, Plus, Camera, Users, ChevronLeft,
   ChevronDown, ChevronUp, Gift, Award, MapPin,
@@ -70,7 +71,7 @@ export default function ChampionshipPage() {
   const { currentClubId, user, lang, myClubs } = useAuthStore()
   const ko = lang === 'ko'
   const myRole = myClubs.find(c => c.id === currentClubId)?.role ?? 'member'
-  const canManage = OFFICER_ROLES.includes(myRole)
+  const canManage = OFFICER_ROLES.includes(myRole) || !!user?.is_developer
 
   const thisYear = new Date().getFullYear()
   const years    = Array.from({ length: 5 }, (_, i) => thisYear - i)
@@ -97,9 +98,9 @@ export default function ChampionshipPage() {
   const [prizeForm,  setPrizeForm]  = useState(emptyPrize)
 
   // ── data ──────────────────────────────────────────────────────────────────
-  async function load() {
+  async function load(silent = false) {
     if (!currentClubId) return
-    setLoading(true)
+    if (!silent) setLoading(true)
     const supabase = createClient()
     const [{ data: evs }, { data: mems }, { data: club }] = await Promise.all([
       supabase.from('tournaments').select('*').eq('club_id', currentClubId).order('date', { ascending: false }),
@@ -109,11 +110,12 @@ export default function ChampionshipPage() {
     setAllEvents(evs ?? [])
     setMembers(mems ?? [])
     if (club?.currency) setCurrency(club.currency)
-    setLoading(false)
+    if (!silent) setLoading(false)
   }
 
   useEffect(() => { setEvents(allEvents.filter(e => new Date(e.date).getFullYear() === selectedYear)) }, [allEvents, selectedYear])
   useEffect(() => { load() }, [currentClubId])
+  useAutoRefresh(load, currentClubId, { silentLoad: () => load(true) })
 
   async function loadEventDetail(ev: Tournament) {
     setSelectedEvent(ev); setView('detail')

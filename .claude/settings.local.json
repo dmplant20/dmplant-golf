@@ -78,7 +78,11 @@
       "Bash(findstr /i \"deploy\\\\|build\\\\|start\")",
       "Bash(node scripts/bump-sw.js)",
       "Bash(node -e \"console.log\\(require\\('crypto'\\).randomBytes\\(32\\).toString\\('hex'\\)\\)\")",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(xargs -I{} basename {})",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "mcp__Claude_in_Chrome__list_connected_browsers",
+      "mcp__Claude_in_Chrome__select_browser"
     ]
   }
 }

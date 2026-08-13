@@ -2,6 +2,7 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores/authStore'
+import { useAutoRefresh } from '@/hooks/useAutoRefresh'
 import {
   CalendarDays, Settings2, X, ChevronLeft, ChevronRight, AlertTriangle,
   CheckCircle, XCircle, Clock, MapPin, Users, Shuffle,
@@ -135,7 +136,7 @@ export default function MeetingsPage() {
   const { currentClubId, lang, myClubs, user } = useAuthStore()
   const ko = lang === 'ko'
   const myRole = myClubs.find(c => c.id === currentClubId)?.role ?? 'member'
-  const canManage = ['president', 'secretary'].includes(myRole)
+  const canManage = ['president', 'secretary'].includes(myRole) || !!user?.is_developer
 
   const [pattern,     setPattern]     = useState<any>(null)
   const [overrides,   setOverrides]   = useState<any[]>([])
@@ -209,9 +210,9 @@ export default function MeetingsPage() {
   const [yearlyLoading, setYearlyLoading] = useState(false)
 
   // ── load ──────────────────────────────────────────────────────────────
-  async function load() {
+  async function load(silent = false) {
     if (!currentClubId) return
-    setLoading(true)
+    if (!silent) setLoading(true)
     const supabase = createClient()
     const [{ data: pat, error: patErr }, { data: ovr }, { data: mems }] = await Promise.all([
       supabase.from('recurring_meetings').select('*').eq('club_id', currentClubId).maybeSingle(),
@@ -225,7 +226,7 @@ export default function MeetingsPage() {
     setOverrides(ovr ?? [])
     setClubMembers(mems ?? [])
     if (pat) setPForm({ week: pat.week_of_month, dow: pat.day_of_week, time: pat.start_time?.slice(0, 5) ?? '07:00', venue: pat.venue ?? '', notes: pat.notes ?? '' })
-    setLoading(false)
+    if (!silent) setLoading(false)
   }
 
   async function loadRsvp(year: number, month: number) {
@@ -275,6 +276,10 @@ export default function MeetingsPage() {
   }
 
   useEffect(() => { load() }, [currentClubId])
+  useAutoRefresh(load, currentClubId, {
+    realtime: { table: 'meeting_attendances', filter: currentClubId ? `club_id=eq.${currentClubId}` : undefined },
+    silentLoad: () => load(true),
+  })
 
   const meeting = useMemo(() => getRelevantMeeting(pattern, overrides), [pattern, overrides])
 

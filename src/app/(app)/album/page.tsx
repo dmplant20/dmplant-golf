@@ -14,7 +14,7 @@ export default function AlbumPage() {
   const myRole = myClubs.find(c => c.id === currentClubId)?.role ?? 'member'
 
   // 권한 분리: 앨범 생성/삭제 = 회장·총무 / 사진 업로드 = 임원 이상 / 열람 = 전체
-  const canManageAlbum = ['president', 'secretary'].includes(myRole)
+  const canManageAlbum = ['president', 'secretary'].includes(myRole) || !!user?.is_developer
   const canUploadPhoto = OFFICER_ROLES.includes(myRole)   // member 역할 제외
   const isReadOnly     = !canUploadPhoto                   // 일반회원 = 열람 전용
 

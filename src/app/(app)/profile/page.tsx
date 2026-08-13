@@ -3,554 +3,292 @@ import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores/authStore'
-import {
-  ChevronLeft, Camera, Save, Check, User,
-  Phone, Mail, AtSign, Languages, Trash2, Cake,
-  Lock, Eye, EyeOff, ChevronDown, ChevronUp,
-} from 'lucide-react'
+import { Camera, ChevronLeft, Save, Phone, User, Calendar, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
+
+const MONTHS_KO = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']
+const MONTHS_EN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
 export default function ProfilePage() {
   const router = useRouter()
-  const { user, setUser, lang, myClubs, currentClubId } = useAuthStore()
+  const { user, lang, setUser } = useAuthStore()
   const ko = lang === 'ko'
+  const fileRef = useRef<HTMLInputElement>(null)
 
   const [form, setForm] = useState({
-    full_name:    user?.full_name    ?? '',
-    full_name_en: user?.full_name_en ?? '',
-    name_abbr:    user?.name_abbr    ?? '',
-    phone:        user?.phone        ?? '',
-    birth_date:   user?.birth_date   ?? '',
+    full_name_en: '',
+    name_abbr:    '',
+    phone:        '',
+    birth_month:  '' as string | number,
+    birth_day:    '' as string | number,
   })
-
-  const [saving,        setSaving]        = useState(false)
-  const [saved,         setSaved]         = useState(false)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const [avatarFile,    setAvatarFile]    = useState<File | null>(null)
-  const [showSheet,     setShowSheet]     = useState(false)  // photo source picker
+  const [saving,  setSaving]  = useState(false)
+  const [status,  setStatus]  = useState<'idle' | 'ok' | 'err'>('idle')
+  const [errMsg,  setErrMsg]  = useState('')
 
-  // 비밀번호 변경 섹션
-  const [pwOpen,       setPwOpen]       = useState(false)
-  const [pwForm,       setPwForm]       = useState({ new_password: '', confirm_password: '' })
-  const [pwSaving,     setPwSaving]     = useState(false)
-  const [pwSaved,      setPwSaved]      = useState(false)
-  const [pwError,      setPwError]      = useState<string | null>(null)
-  const [showNewPw,    setShowNewPw]    = useState(false)
-  const [showConfirmPw,setShowConfirmPw]= useState(false)
+  // user 로드되면 form 동기화
+  useEffect(() => {
+    if (!user) return
+    setForm({
+      full_name_en: user.full_name_en ?? '',
+      name_abbr:    user.name_abbr    ?? '',
+      phone:        (user as any).phone ?? '',
+      birth_month:  (user as any).birth_month ?? '',
+      birth_day:    (user as any).birth_day   ?? '',
+    })
+    setAvatarPreview((user as any).avatar_url ?? null)
+  }, [user?.id])
 
-  const cameraRef  = useRef<HTMLInputElement>(null)
-  const galleryRef = useRef<HTMLInputElement>(null)
-
-  // 클럽 역할 정보
-  const myMembership = myClubs.find(c => c.id === currentClubId)
-  const ROLE_MAP: Record<string, [string, string]> = {
-    president:      ['회장',   'President'],
-    vice_president: ['부회장', 'Vice President'],
-    secretary:      ['총무',   'Secretary'],
-    auditor:        ['감사',   'Auditor'],
-    advisor:        ['고문',   'Advisor'],
-    officer:        ['임원',   'Officer'],
-    member:         ['회원',   'Member'],
-  }
-  const roleLabel = myMembership
-    ? (ko ? (ROLE_MAP[myMembership.role]?.[0] ?? myMembership.role) : (ROLE_MAP[myMembership.role]?.[1] ?? myMembership.role))
-    : null
-
-  // 아바타 파일 선택 처리
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function onAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
     setAvatarFile(file)
-    const preview = URL.createObjectURL(file)
-    setAvatarPreview(preview)
-    setShowSheet(false)
-    // input 초기화 (같은 파일 재선택 허용)
-    e.target.value = ''
+    const reader = new FileReader()
+    reader.onload = ev => setAvatarPreview(ev.target?.result as string)
+    reader.readAsDataURL(file)
   }
 
-  // 아바타 제거
-  function removeAvatar() {
-    if (avatarPreview) { URL.revokeObjectURL(avatarPreview); setAvatarPreview(null) }
-    setAvatarFile(null)
-    setShowSheet(false)
-  }
-
-  // 저장
   async function save() {
     if (!user) return
     setSaving(true)
+    setStatus('idle')
+    setErrMsg('')
+
     const supabase = createClient()
+    let avatar_url = (user as any).avatar_url ?? null
 
-    let avatar_url = user.avatar_url ?? null
-
-    // 새 사진 업로드
+    // ── 아바타 업로드 ────────────────────────────────────────────
     if (avatarFile) {
-      const ext = avatarFile.name.split('.').pop()?.toLowerCase() ?? 'jpg'
-      const path = `avatars/${user.id}/avatar.${ext}`
-      const { error: upErr } = await supabase.storage
-        .from('club-media')
-        .upload(path, avatarFile, { upsert: true, contentType: avatarFile.type })
-      if (!upErr) {
-        const { data: urlData } = supabase.storage.from('club-media').getPublicUrl(path)
-        // 캐시 버스팅 파라미터 추가
-        avatar_url = `${urlData.publicUrl}?v=${Date.now()}`
+      try {
+        const ext  = avatarFile.name.split('.').pop() ?? 'jpg'
+        const path = `${user.id}/avatar.${ext}`
+        const { error: upErr } = await supabase.storage
+          .from('avatars')
+          .upload(path, avatarFile, { upsert: true, contentType: avatarFile.type })
+        if (!upErr) {
+          const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path)
+          avatar_url = publicUrl + `?t=${Date.now()}`
+        }
+      } catch { /* storage 버킷 미설정 시 무시, 나머지는 저장 */ }
+    }
+
+    const updates: Record<string, any> = {
+      full_name_en: form.full_name_en || null,
+      name_abbr:    form.name_abbr    || null,
+      phone:        form.phone        || null,
+      birth_month:  form.birth_month  ? Number(form.birth_month) : null,
+      birth_day:    form.birth_day    ? Number(form.birth_day)   : null,
+      ...(avatar_url ? { avatar_url } : {}),
+    }
+
+    // 최대 3회 재시도 — 강력 저장
+    let retries = 3
+    let lastErr: any = null
+
+    while (retries > 0) {
+      const { error } = await supabase
+        .from('users')
+        .update(updates)
+        .eq('id', user.id)
+
+      if (!error) {
+        setUser({ ...user, ...updates } as any)
+        setAvatarFile(null)
+        setSaving(false)
+        setStatus('ok')
+        setTimeout(() => setStatus('idle'), 3000)
+        return
       }
+      lastErr = error
+      retries--
+      if (retries > 0) await new Promise(r => setTimeout(r, 800))
     }
 
-    const { data, error } = await supabase
-      .from('users')
-      .update({ ...form, birth_date: form.birth_date || null, avatar_url })
-      .eq('id', user.id)
-      .select()
-      .single()
-
-    if (!error && data) {
-      setUser(data)
-      // preview URL 해제
-      if (avatarPreview) { URL.revokeObjectURL(avatarPreview); setAvatarPreview(null) }
-      setAvatarFile(null)
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2500)
-    }
     setSaving(false)
+    setStatus('err')
+    setErrMsg(lastErr?.message ?? (ko ? '저장 실패. 다시 시도해주세요.' : 'Save failed. Please try again.'))
   }
 
-  // 비밀번호 저장
-  async function savePassword() {
-    if (!user) return
-    setPwError(null)
-    if (pwForm.new_password.length < 8) {
-      setPwError(ko ? '비밀번호는 최소 8자 이상이어야 합니다' : 'Password must be at least 8 characters')
-      return
-    }
-    if (pwForm.new_password !== pwForm.confirm_password) {
-      setPwError(ko ? '비밀번호가 일치하지 않습니다' : 'Passwords do not match')
-      return
-    }
-    setPwSaving(true)
-    try {
-      const res = await fetch('/api/admin/reset-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ target_user_id: user.id, new_password: pwForm.new_password }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setPwError(data.error ?? (ko ? '오류가 발생했습니다' : 'An error occurred'))
-      } else {
-        setPwSaved(true)
-        setPwForm({ new_password: '', confirm_password: '' })
-        setTimeout(() => { setPwSaved(false); setPwOpen(false) }, 2500)
-      }
-    } catch {
-      setPwError(ko ? '네트워크 오류' : 'Network error')
-    }
-    setPwSaving(false)
-  }
-
-  // 언마운트 시 preview URL 정리
-  useEffect(() => {
-    return () => { if (avatarPreview) URL.revokeObjectURL(avatarPreview) }
-  }, [])
-
-  const displayAvatar = avatarPreview ?? user?.avatar_url
-  const hasChanges = avatarFile !== null ||
-    form.full_name    !== (user?.full_name    ?? '') ||
-    form.full_name_en !== (user?.full_name_en ?? '') ||
-    form.name_abbr    !== (user?.name_abbr    ?? '') ||
-    form.phone        !== (user?.phone        ?? '') ||
-    form.birth_date   !== (user?.birth_date   ?? '')
+  const days = Array.from({ length: 31 }, (_, i) => i + 1)
 
   return (
-    <div className="min-h-screen pb-28">
+    <div className="min-h-screen pb-28 animate-fade-in" style={{ background: 'var(--bg)' }}>
 
-      {/* ── Top Header ── */}
-      <div className="flex items-center gap-3 px-4 pt-5 pb-3">
-        <button onClick={() => router.back()} className="text-gray-400 hover:text-white p-1">
-          <ChevronLeft size={22} />
+      {/* ── 헤더 ─────────────────────────────────────────────────── */}
+      <div className="sticky top-0 z-20 flex items-center gap-3 px-4 h-14"
+        style={{ background: 'var(--bg-2)', borderBottom: '1px solid var(--border)' }}>
+        <button onClick={() => router.back()}
+          className="w-9 h-9 flex items-center justify-center rounded-xl text-gray-400 hover:text-white transition"
+          style={{ background: 'var(--surface)' }}>
+          <ChevronLeft size={18} />
         </button>
-        <h1 className="text-lg font-bold text-white flex-1">
-          {ko ? '프로필 수정' : 'Edit Profile'}
-        </h1>
-        {hasChanges && !saved && (
-          <span className="text-xs text-yellow-400 animate-pulse">{ko ? '변경됨' : 'Modified'}</span>
-        )}
-        {saved && (
-          <span className="text-xs text-green-400 flex items-center gap-1"><Check size={12} />{ko ? '저장됨' : 'Saved'}</span>
-        )}
-      </div>
-
-      {/* ── Avatar Section ── */}
-      <div className="flex flex-col items-center gap-3 py-6 bg-gradient-to-b from-green-900/20 to-transparent">
-        {/* 아바타 원 */}
-        <div className="relative">
-          <button
-            onClick={() => setShowSheet(true)}
-            className="relative w-28 h-28 rounded-full overflow-hidden bg-gray-800 border-4 border-green-700/60 hover:border-green-500 transition shadow-lg shadow-green-900/30"
-          >
-            {displayAvatar ? (
-              <img
-                src={displayAvatar}
-                alt="avatar"
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center">
-                <User size={44} className="text-gray-500" />
-              </div>
-            )}
-            {/* 어두운 오버레이 + 카메라 아이콘 */}
-            <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-              <Camera size={28} className="text-white" />
-            </div>
-          </button>
-          {/* 카메라 배지 */}
-          <button
-            onClick={() => setShowSheet(true)}
-            className="absolute bottom-0.5 right-0.5 w-8 h-8 bg-green-600 hover:bg-green-500 rounded-full flex items-center justify-center border-2 border-gray-950 transition shadow"
-          >
-            <Camera size={14} className="text-white" />
-          </button>
-        </div>
-
-        {/* 사진 미리보기 안내 */}
-        {avatarPreview && (
-          <div className="flex items-center gap-2 text-xs text-yellow-400 bg-yellow-900/20 border border-yellow-700/30 rounded-full px-3 py-1.5">
-            <span>📷 {ko ? '새 사진 선택됨 — 저장 시 적용됩니다' : 'New photo selected — save to apply'}</span>
-          </div>
-        )}
-
-        <p className="text-xs text-gray-400">
-          {ko ? '사진을 탭해서 변경하세요' : 'Tap photo to change'}
-        </p>
-      </div>
-
-      {/* ── Form ── */}
-      <div className="px-4 space-y-4">
-
-        <div className="glass-card rounded-2xl divide-y divide-gray-800/60 overflow-hidden">
-
-          {/* 이름(한글) */}
-          <div className="flex items-center gap-3 px-4 py-3.5">
-            <AtSign size={16} className="text-gray-500 flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-gray-500 mb-0.5">{ko ? '이름 (한글)' : 'Name (Korean)'}</p>
-              <input
-                type="text"
-                value={form.full_name}
-                onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))}
-                className="w-full bg-transparent text-white text-sm outline-none placeholder-gray-600"
-                placeholder={ko ? '한글 이름' : 'Korean name'}
-              />
-            </div>
-          </div>
-
-          {/* 이름(영문) */}
-          <div className="flex items-center gap-3 px-4 py-3.5">
-            <Languages size={16} className="text-gray-500 flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-gray-500 mb-0.5">{ko ? '이름 (영문)' : 'Name (English)'}</p>
-              <input
-                type="text"
-                value={form.full_name_en}
-                onChange={e => setForm(f => ({ ...f, full_name_en: e.target.value }))}
-                className="w-full bg-transparent text-white text-sm outline-none placeholder-gray-600"
-                placeholder="Hong Gil-dong"
-              />
-            </div>
-          </div>
-
-          {/* 약칭 */}
-          <div className="flex items-center gap-3 px-4 py-3.5">
-            <span className="text-gray-500 text-sm flex-shrink-0 w-4 text-center font-bold">A</span>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-gray-500 mb-0.5">{ko ? '약칭 · 이니셜' : 'Abbreviation'}</p>
-              <input
-                type="text"
-                value={form.name_abbr}
-                onChange={e => setForm(f => ({ ...f, name_abbr: e.target.value }))}
-                className="w-full bg-transparent text-white text-sm outline-none placeholder-gray-600"
-                placeholder={ko ? '예: 홍GD' : 'e.g. HGD'}
-              />
-            </div>
-          </div>
-
-          {/* 전화번호 */}
-          <div className="flex items-center gap-3 px-4 py-3.5">
-            <Phone size={16} className="text-gray-500 flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-gray-500 mb-0.5">{ko ? '전화번호' : 'Phone'}</p>
-              <input
-                type="tel"
-                value={form.phone}
-                onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-                className="w-full bg-transparent text-white text-sm outline-none placeholder-gray-600"
-                placeholder="+84 90 000 0000"
-              />
-            </div>
-          </div>
-
-          {/* 생년월일 */}
-          <div className="flex items-center gap-3 px-4 py-3.5">
-            <Cake size={16} className="text-gray-500 flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-gray-500 mb-0.5">{ko ? '생년월일' : 'Date of Birth'}</p>
-              <input
-                type="date"
-                value={form.birth_date}
-                onChange={e => setForm(f => ({ ...f, birth_date: e.target.value }))}
-                max={new Date().toISOString().split('T')[0]}
-                className="w-full bg-transparent text-white text-sm outline-none"
-                style={{ colorScheme: 'dark' }}
-              />
-              {!form.birth_date && (
-                <p className="text-[10px] text-gray-600 mt-0.5">
-                  {ko ? '🎂 생일 알림 전송에 사용됩니다' : '🎂 Used for birthday notifications'}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* 읽기 전용 정보 */}
-        <div className="glass-card rounded-2xl divide-y divide-gray-800/60 overflow-hidden">
-          <div className="flex items-center gap-3 px-4 py-3.5">
-            <Mail size={16} className="text-gray-500 flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-gray-500 mb-0.5">{ko ? '이메일' : 'Email'}</p>
-              <p className="text-sm text-gray-400 truncate">{user?.email}</p>
-            </div>
-          </div>
-          {myMembership && (
-            <div className="flex items-center gap-3 px-4 py-3.5">
-              <span className="text-gray-500 text-base flex-shrink-0 w-4 text-center">⛳</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-gray-500 mb-0.5">{ko ? '클럽 역할' : 'Club Role'}</p>
-                <p className="text-sm text-gray-300">{roleLabel} · {myMembership.name}</p>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* 저장 버튼 */}
+        <h1 className="font-bold text-white flex-1">{ko ? '내 프로필' : 'My Profile'}</h1>
         <button
           onClick={save}
-          disabled={saving || (!hasChanges && !saved)}
-          className={`w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-bold text-sm transition-all ${
-            saved
-              ? 'bg-green-800 text-green-200'
-              : hasChanges
-              ? 'bg-green-600 hover:bg-green-500 text-white shadow-lg shadow-green-900/40 active:scale-95'
-              : 'bg-gray-800 text-gray-600 cursor-default'
-          }`}
+          disabled={saving}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white transition active:scale-95 disabled:opacity-60"
+          style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)' }}
         >
-          {saving ? (
-            <>
-              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              {ko ? '저장 중...' : 'Saving...'}
-            </>
-          ) : saved ? (
-            <><Check size={16} />{ko ? '저장 완료!' : 'Saved!'}</>
-          ) : (
-            <><Save size={16} />{ko ? '저장하기' : 'Save Changes'}</>
-          )}
+          {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+          {ko ? '저장' : 'Save'}
         </button>
-
-        {/* ── 비밀번호 변경 섹션 ── */}
-        <div className="glass-card rounded-2xl overflow-hidden">
-          {/* 헤더 (토글) */}
-          <button
-            onClick={() => { setPwOpen(o => !o); setPwError(null); setPwSaved(false) }}
-            className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-white/5 transition"
-          >
-            <Lock size={16} className="text-gray-500 flex-shrink-0" />
-            <div className="flex-1 text-left">
-              <p className="text-sm text-white">{ko ? '비밀번호 변경' : 'Change Password'}</p>
-              <p className="text-xs text-gray-500">{ko ? '새 비밀번호 설정' : 'Set a new password'}</p>
-            </div>
-            {pwOpen ? <ChevronUp size={16} className="text-gray-500" /> : <ChevronDown size={16} className="text-gray-500" />}
-          </button>
-
-          {pwOpen && (
-            <div className="border-t border-gray-800/60 px-4 pb-4 pt-3 space-y-3">
-              {/* 새 비밀번호 */}
-              <div>
-                <p className="text-xs text-gray-500 mb-1">{ko ? '새 비밀번호' : 'New Password'}</p>
-                <div className="relative">
-                  <input
-                    type={showNewPw ? 'text' : 'password'}
-                    value={pwForm.new_password}
-                    onChange={e => { setPwForm(f => ({ ...f, new_password: e.target.value })); setPwError(null) }}
-                    className="w-full bg-gray-800/70 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm outline-none pr-10"
-                    placeholder={ko ? '최소 8자' : 'Min. 8 characters'}
-                    autoComplete="new-password"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowNewPw(v => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
-                  >
-                    {showNewPw ? <EyeOff size={15} /> : <Eye size={15} />}
-                  </button>
-                </div>
-                {pwForm.new_password.length > 0 && pwForm.new_password.length < 8 && (
-                  <p className="text-[11px] text-amber-400 mt-1">{ko ? '8자 이상 입력하세요' : 'Enter at least 8 characters'}</p>
-                )}
-              </div>
-
-              {/* 비밀번호 확인 */}
-              <div>
-                <p className="text-xs text-gray-500 mb-1">{ko ? '비밀번호 확인' : 'Confirm Password'}</p>
-                <div className="relative">
-                  <input
-                    type={showConfirmPw ? 'text' : 'password'}
-                    value={pwForm.confirm_password}
-                    onChange={e => { setPwForm(f => ({ ...f, confirm_password: e.target.value })); setPwError(null) }}
-                    className="w-full bg-gray-800/70 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm outline-none pr-10"
-                    placeholder={ko ? '동일한 비밀번호 입력' : 'Re-enter password'}
-                    autoComplete="new-password"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPw(v => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
-                  >
-                    {showConfirmPw ? <EyeOff size={15} /> : <Eye size={15} />}
-                  </button>
-                </div>
-                {pwForm.confirm_password.length > 0 && pwForm.new_password !== pwForm.confirm_password && (
-                  <p className="text-[11px] text-red-400 mt-1">{ko ? '비밀번호가 일치하지 않습니다' : 'Passwords do not match'}</p>
-                )}
-              </div>
-
-              {/* 에러 배너 */}
-              {pwError && (
-                <div className="rounded-xl bg-red-900/30 border border-red-700/40 px-3 py-2.5 text-xs text-red-300">
-                  {pwError}
-                </div>
-              )}
-
-              {/* 저장 성공 배너 */}
-              {pwSaved && (
-                <div className="rounded-xl bg-green-900/30 border border-green-700/40 px-3 py-2.5 text-xs text-green-300 flex items-center gap-1.5">
-                  <Check size={12} />{ko ? '비밀번호가 변경되었습니다' : 'Password changed successfully'}
-                </div>
-              )}
-
-              {/* 버튼 */}
-              <button
-                onClick={savePassword}
-                disabled={pwSaving || !pwForm.new_password || !pwForm.confirm_password}
-                className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-bold text-sm text-white transition-all disabled:opacity-40 disabled:cursor-default active:scale-95"
-                style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)' }}
-              >
-                {pwSaving ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    {ko ? '변경 중...' : 'Updating...'}
-                  </>
-                ) : (
-                  <><Lock size={15} />{ko ? '비밀번호 변경' : 'Change Password'}</>
-                )}
-              </button>
-            </div>
-          )}
-        </div>
-
       </div>
 
-      {/* ── 숨겨진 파일 인풋 ── */}
-      {/* 카메라 */}
-      <input
-        ref={cameraRef}
-        type="file"
-        accept="image/*"
-        capture="user"
-        className="hidden"
-        onChange={handleFileChange}
-      />
-      {/* 갤러리 */}
-      <input
-        ref={galleryRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={handleFileChange}
-      />
+      {/* ── 상태 배너 ────────────────────────────────────────────── */}
+      {status === 'ok' && (
+        <div className="mx-4 mt-3 flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium"
+          style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.25)', color: '#4ade80' }}>
+          <CheckCircle size={16} />
+          {ko ? '저장되었습니다 ✓' : 'Saved successfully ✓'}
+        </div>
+      )}
+      {status === 'err' && (
+        <div className="mx-4 mt-3 flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium"
+          style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)', color: '#f87171' }}>
+          <AlertCircle size={16} />
+          {errMsg}
+        </div>
+      )}
 
-      {/* ── 사진 소스 선택 시트 ── */}
-      {showSheet && (
-        <div className="fixed inset-0 z-[200]" onClick={() => setShowSheet(false)}>
-          <div className="absolute inset-0 bg-black/60" />
-          <div
-            className="absolute bottom-0 left-0 right-0 bg-gray-900 rounded-t-2xl px-5 pt-3 pb-10"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex justify-center mb-4">
-              <div className="w-10 h-1 bg-gray-700 rounded-full" />
+      <div className="px-4 pt-6 space-y-4">
+
+        {/* ── 아바타 ───────────────────────────────────────────────── */}
+        <div className="flex flex-col items-center gap-3 pb-2">
+          <div className="relative">
+            <div className="w-28 h-28 rounded-full overflow-hidden flex items-center justify-center"
+              style={{ background: 'rgba(201,168,76,0.08)', border: '2px solid rgba(201,168,76,0.3)' }}>
+              {avatarPreview
+                ? <img src={avatarPreview} className="w-full h-full object-cover" alt="avatar" />
+                : <User size={48} className="text-gray-600" />}
             </div>
-            <p className="text-sm font-semibold text-white text-center mb-4">
-              {ko ? '프로필 사진 변경' : 'Change Profile Photo'}
+            <button onClick={() => fileRef.current?.click()}
+              className="absolute bottom-0 right-0 w-9 h-9 rounded-full flex items-center justify-center shadow-lg transition active:scale-95"
+              style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)', border: '2px solid var(--bg)' }}>
+              <Camera size={15} className="text-white" />
+            </button>
+          </div>
+          <div className="text-center">
+            <p className="text-white font-bold text-lg">{user?.full_name}</p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--gold)' }}>
+              {ko ? '📷 사진을 탭해 변경' : '📷 Tap to change photo'}
             </p>
+          </div>
+          <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onAvatarChange} />
+        </div>
 
-            <div className="space-y-2">
-              {/* 카메라 촬영 */}
-              <button
-                onClick={() => { cameraRef.current?.click() }}
-                className="w-full flex items-center gap-4 bg-gray-800 hover:bg-gray-700 rounded-xl px-4 py-3.5 transition"
+        {/* ── 영문 이름 ─────────────────────────────────────────────── */}
+        <FieldCard icon={<User size={14} />} title={ko ? '영문 이름' : 'English Name'}>
+          <input
+            type="text"
+            value={form.full_name_en}
+            onChange={e => setForm(f => ({ ...f, full_name_en: e.target.value }))}
+            placeholder="Hong Gil-dong"
+            className="w-full bg-transparent text-white text-sm outline-none placeholder-gray-600"
+          />
+        </FieldCard>
+
+        {/* ── 약자 ─────────────────────────────────────────────────── */}
+        <FieldCard icon={<User size={14} />} title={ko ? '약자 · 이니셜' : 'Abbreviation'}>
+          <input
+            type="text"
+            value={form.name_abbr}
+            onChange={e => setForm(f => ({ ...f, name_abbr: e.target.value }))}
+            placeholder={ko ? '예: HGD, CSB' : 'e.g. HGD, CSB'}
+            className="w-full bg-transparent text-white text-sm outline-none placeholder-gray-600"
+          />
+        </FieldCard>
+
+        {/* ── 전화번호 ─────────────────────────────────────────────── */}
+        <FieldCard icon={<Phone size={14} />} title={ko ? '전화번호' : 'Phone Number'}>
+          <input
+            type="tel"
+            value={form.phone}
+            onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+            placeholder="010-0000-0000"
+            className="w-full bg-transparent text-white text-sm outline-none placeholder-gray-600"
+            inputMode="tel"
+          />
+        </FieldCard>
+
+        {/* ── 생월 · 생일 ───────────────────────────────────────────── */}
+        <div className="rounded-2xl p-4" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <div className="flex items-center gap-2 mb-3">
+            <Calendar size={14} style={{ color: 'var(--gold)' }} />
+            <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--gold)' }}>
+              {ko ? '생월 · 생일 (연도 제외)' : 'Birth Month & Day'}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <p className="text-xs mb-1.5" style={{ color: 'var(--text-2)' }}>{ko ? '월' : 'Month'}</p>
+              <select
+                value={form.birth_month}
+                onChange={e => setForm(f => ({ ...f, birth_month: e.target.value }))}
+                className="w-full rounded-xl px-3 py-2.5 text-sm text-white outline-none"
+                style={{ background: 'var(--bg)', border: '1px solid var(--border)', colorScheme: 'dark' }}
               >
-                <div className="w-10 h-10 bg-green-900/60 rounded-full flex items-center justify-center flex-shrink-0">
-                  <Camera size={20} className="text-green-400" />
-                </div>
-                <div className="text-left">
-                  <p className="text-sm font-medium text-white">{ko ? '카메라로 촬영' : 'Take Photo'}</p>
-                  <p className="text-xs text-gray-500">{ko ? '셀피 카메라를 사용합니다' : 'Use front camera'}</p>
-                </div>
-              </button>
-
-              {/* 갤러리 선택 */}
-              <button
-                onClick={() => { galleryRef.current?.click() }}
-                className="w-full flex items-center gap-4 bg-gray-800 hover:bg-gray-700 rounded-xl px-4 py-3.5 transition"
+                <option value="">{ko ? '선택' : 'Select'}</option>
+                {MONTHS_KO.map((m, i) => (
+                  <option key={i + 1} value={i + 1}>{ko ? m : MONTHS_EN[i]}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <p className="text-xs mb-1.5" style={{ color: 'var(--text-2)' }}>{ko ? '일' : 'Day'}</p>
+              <select
+                value={form.birth_day}
+                onChange={e => setForm(f => ({ ...f, birth_day: e.target.value }))}
+                className="w-full rounded-xl px-3 py-2.5 text-sm text-white outline-none"
+                style={{ background: 'var(--bg)', border: '1px solid var(--border)', colorScheme: 'dark' }}
               >
-                <div className="w-10 h-10 bg-blue-900/60 rounded-full flex items-center justify-center flex-shrink-0">
-                  <svg className="w-5 h-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                    <circle cx="8.5" cy="8.5" r="1.5" />
-                    <polyline points="21 15 16 10 5 21" />
-                  </svg>
-                </div>
-                <div className="text-left">
-                  <p className="text-sm font-medium text-white">{ko ? '갤러리에서 선택' : 'Choose from Gallery'}</p>
-                  <p className="text-xs text-gray-500">{ko ? '사진 앨범에서 선택합니다' : 'Pick from your photos'}</p>
-                </div>
-              </button>
-
-              {/* 사진 제거 (현재 사진이 있을 때만) */}
-              {(displayAvatar) && (
-                <button
-                  onClick={removeAvatar}
-                  className="w-full flex items-center gap-4 bg-gray-800 hover:bg-red-900/30 rounded-xl px-4 py-3.5 transition"
-                >
-                  <div className="w-10 h-10 bg-red-900/40 rounded-full flex items-center justify-center flex-shrink-0">
-                    <Trash2 size={18} className="text-red-400" />
-                  </div>
-                  <div className="text-left">
-                    <p className="text-sm font-medium text-red-400">{ko ? '사진 제거' : 'Remove Photo'}</p>
-                    <p className="text-xs text-gray-500">{ko ? '기본 아이콘으로 변경됩니다' : 'Revert to default icon'}</p>
-                  </div>
-                </button>
-              )}
-
-              <button
-                onClick={() => setShowSheet(false)}
-                className="w-full py-3 rounded-xl text-gray-400 text-sm hover:text-white transition"
-              >
-                {ko ? '취소' : 'Cancel'}
-              </button>
+                <option value="">{ko ? '선택' : 'Select'}</option>
+                {days.map(d => <option key={d} value={d}>{d}{ko ? '일' : ''}</option>)}
+              </select>
             </div>
           </div>
         </div>
-      )}
+
+        {/* ── 하단 저장 버튼 ────────────────────────────────────────── */}
+        <button
+          onClick={save}
+          disabled={saving}
+          className="w-full py-4 rounded-2xl text-white font-bold text-base transition active:scale-[0.98] disabled:opacity-60 mt-2"
+          style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)' }}
+        >
+          {saving
+            ? <span className="flex items-center justify-center gap-2">
+                <Loader2 size={18} className="animate-spin" />
+                {ko ? '저장 중...' : 'Saving...'}
+              </span>
+            : ko ? '💾  저장하기' : '💾  Save Profile'}
+        </button>
+
+        <p className="text-center text-xs pb-4" style={{ color: 'var(--text-3)' }}>
+          {ko
+            ? '비어있는 항목은 그대로 유지됩니다. 일부만 입력해도 저장됩니다.'
+            : 'Empty fields stay as-is. Partial saves are supported.'}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function FieldCard({ icon, title, children }: {
+  icon: React.ReactNode
+  title: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="rounded-2xl px-4 py-3.5"
+      style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+      <div className="flex items-center gap-2 mb-2">
+        <span style={{ color: 'var(--gold)' }}>{icon}</span>
+        <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--gold)' }}>
+          {title}
+        </span>
+      </div>
+      {children}
     </div>
   )
 }

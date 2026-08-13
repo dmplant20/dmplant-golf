@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores/authStore'
+import { useAutoRefresh } from '@/hooks/useAutoRefresh'
 import {
   Plus, Camera, TrendingUp, TrendingDown, Wallet,
   ChevronDown, ChevronUp, Receipt, Copy, Check,
@@ -10,20 +11,29 @@ import {
 import { OFFICER_ROLES } from '../members/page'
 
 const TYPE_LABELS: Record<string, [string, string]> = {
-  fee:      ['회비', 'Fee'],
-  expense:  ['지출', 'Expense'],
-  fine:     ['벌금', 'Fine'],
-  donation: ['찬조', 'Donation'],
-  other:    ['기타', 'Other'],
+  carryover: ['이월금', 'Carryover'],
+  fee:       ['회비', 'Fee'],
+  donation:  ['찬조', 'Donation'],
+  fine:      ['벌금', 'Fine'],
+  other:     ['기타', 'Other'],
+  expense:   ['지출', 'Expense'],
+}
+const TYPE_COLOR: Record<string, string> = {
+  carryover: '#818cf8',
+  fee:       '#4ade80',
+  donation:  '#34d399',
+  fine:      '#fb923c',
+  other:     '#94a3b8',
+  expense:   '#f87171',
 }
 const CURRENCY_SYMBOL: Record<string, string> = { KRW: '₩', VND: '₫', IDR: 'Rp' }
-const INCOME_TYPES = ['fee', 'donation', 'fine', 'other']
+const INCOME_TYPES = ['carryover', 'fee', 'donation', 'fine', 'other']
 
 export default function FinancePage() {
-  const { currentClubId, lang, myClubs } = useAuthStore()
+  const { currentClubId, lang, myClubs, user } = useAuthStore()
   const ko = lang === 'ko'
   const myRole = myClubs.find((c) => c.id === currentClubId)?.role ?? 'member'
-  const canManage = ['president', 'secretary'].includes(myRole)
+  const canManage = ['president', 'secretary'].includes(myRole) || !!user?.is_developer
   const isOfficer = OFFICER_ROLES.includes(myRole)
 
   const [txns,         setTxns]         = useState<any[]>([])
@@ -38,6 +48,13 @@ export default function FinancePage() {
   const [members,      setMembers]      = useState<any[]>([])
   const [showFineRules,setShowFineRules]= useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+
+  const [showCarryover,    setShowCarryover]    = useState(false)
+  const [carryoverForm,    setCarryoverForm]    = useState({
+    amount: '', fromYear: String(new Date().getFullYear() - 1),
+    bankBalance: '', cashBalance: '', memo: '',
+  })
+  const [carryoverSaving,  setCarryoverSaving]  = useState(false)
 
   // ── payment info ───────────────────────────────────────────────────────
   const [payInfo,         setPayInfo]         = useState<any>(null)
@@ -65,6 +82,10 @@ export default function FinancePage() {
   const [fineForm,        setFineForm]         = useState({ perStroke: '', max: '', notes: '' })
   const [fineSaving,      setFineSaving]       = useState(false)
 
+  // ── 연도 필터 ──────────────────────────────────────────────────────────
+  const currentYear = new Date().getFullYear()
+  const [selectedYear, setSelectedYear] = useState<number | 'all'>(currentYear)
+
   // ── member name text (free text) ──────────────────────────────────────
   const [memberInputTab,  setMemberInputTab]   = useState<'select'|'text'>('select')
 
@@ -86,9 +107,9 @@ export default function FinancePage() {
   }, [fineRules])
 
   // ── load ──────────────────────────────────────────────────────────────
-  async function load() {
+  async function load(silent = false) {
     if (!currentClubId) return
-    setLoading(true)
+    if (!silent) setLoading(true)
     const supabase = createClient()
     const query = isOfficer
       ? supabase.from('finance_transactions').select('*, users!member_id(full_name, full_name_en), recorder:users!recorded_by(full_name, full_name_en)')
@@ -109,25 +130,42 @@ export default function FinancePage() {
     setMembers(mems ?? [])
     setPayInfo(pi ?? null)
     if (pi) setPayForm({ bankName: pi.bank_name ?? '', bankAccount: pi.bank_account ?? '', bankHolder: pi.bank_holder ?? '', memo: pi.memo ?? '' })
-    setLoading(false)
+    if (!silent) setLoading(false)
   }
 
   useEffect(() => { load() }, [currentClubId])
+  useAutoRefresh(load, currentClubId, {
+    realtime: { table: 'finance_transactions', filter: currentClubId ? `club_id=eq.${currentClubId}` : undefined },
+    silentLoad: () => load(true),
+  })
 
   const sym = CURRENCY_SYMBOL[currency] ?? '₩'
-  const income  = txns.filter((t) => INCOME_TYPES.includes(t.type)).reduce((s, t) => s + t.amount, 0)
-  const expense = txns.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
-  const balance = income - expense
+
+  // 연도별 필터링 ('all' = 전체)
+  const filteredTxns = selectedYear === 'all'
+    ? txns
+    : txns.filter(t => t.transaction_date?.startsWith(String(selectedYear)))
+
+  const carryoverAmt = filteredTxns.filter(t => t.type === 'carryover').reduce((s, t) => s + t.amount, 0)
+  const income  = filteredTxns.filter((t) => INCOME_TYPES.includes(t.type) && t.type !== 'carryover').reduce((s, t) => s + t.amount, 0)
+  const expense = filteredTxns.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
+  const balance = carryoverAmt + income - expense
 
   const byType = Object.keys(TYPE_LABELS).reduce((acc, type) => {
-    acc[type] = txns.filter((t) => t.type === type).reduce((s, t) => s + t.amount, 0)
+    acc[type] = filteredTxns.filter((t) => t.type === type).reduce((s, t) => s + t.amount, 0)
     return acc
   }, {} as Record<string, number>)
 
+  // 거래 기록에서 연도 목록 추출
+  const availableYears = Array.from(new Set(
+    txns.map(t => Number(t.transaction_date?.slice(0, 4))).filter(Boolean)
+  )).sort((a, b) => b - a)
+  if (!availableYears.includes(currentYear)) availableYears.unshift(currentYear)
+
   // ── fee payment status (computed) ─────────────────────────────────────
-  const currentYear = new Date().getFullYear()
+  const feeYear = selectedYear === 'all' ? currentYear : selectedYear
   const feeTxnsThisYear = txns.filter(
-    (t) => t.type === 'fee' && t.transaction_date?.startsWith(String(currentYear))
+    (t) => t.type === 'fee' && t.transaction_date?.startsWith(String(feeYear))
   )
   const paidMemberIds = new Set(feeTxnsThisYear.filter((t) => t.member_id).map((t) => t.member_id))
   const paidMembers = canManage
@@ -164,6 +202,42 @@ export default function FinancePage() {
     setShowAdd(false)
     setForm({ type: 'fee', amount: '', description: '', date: new Date().toISOString().split('T')[0], memberId: '', memberNameText: '' })
     setMemberInputTab('select')
+    load()
+  }
+
+  async function saveCarryover() {
+    if (!carryoverForm.amount) return
+    setCarryoverSaving(true)
+    const supabase = createClient()
+    const { data: { user: u } } = await supabase.auth.getUser()
+    let desc = `${carryoverForm.fromYear}년도 이월금`
+    const details: string[] = []
+    if (carryoverForm.bankBalance) details.push(`통장 ${sym}${Number(carryoverForm.bankBalance).toLocaleString()}`)
+    if (carryoverForm.cashBalance) details.push(`현금 ${sym}${Number(carryoverForm.cashBalance).toLocaleString()}`)
+    if (carryoverForm.memo) details.push(carryoverForm.memo)
+    if (details.length) desc += ` (${details.join(', ')})`
+
+    // Use Jan 1 of selected year as the date
+    const txnDate = `${selectedYear}-01-01`
+
+    let retries = 3
+    while (retries > 0) {
+      const { error } = await supabase.from('finance_transactions').insert({
+        club_id: currentClubId,
+        type: 'carryover',
+        amount: parseInt(carryoverForm.amount),
+        currency,
+        description: desc,
+        transaction_date: txnDate,
+        recorded_by: u!.id,
+      })
+      if (!error) break
+      retries--
+      if (retries > 0) await new Promise(r => setTimeout(r, 500))
+    }
+    setCarryoverSaving(false)
+    setShowCarryover(false)
+    setCarryoverForm({ amount: '', fromYear: String(selectedYear - 1), bankBalance: '', cashBalance: '', memo: '' })
     load()
   }
 
@@ -302,21 +376,71 @@ export default function FinancePage() {
   return (
     <div className="px-4 py-5 space-y-4">
 
-      {/* 잔액 요약 */}
+      {/* ━━ 연도 선택 + 잔액 요약 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      {/* 연도 선택 */}
+      <div className="flex items-center gap-2 overflow-x-auto scroll-hide pb-1">
+        <button
+          onClick={() => setSelectedYear('all')}
+          className="flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-semibold transition"
+          style={selectedYear === 'all'
+            ? { background: 'linear-gradient(135deg,#c9a84c,#a07830)', color: '#fff' }
+            : { background: 'var(--surface)', color: 'var(--text-2)', border: '1px solid var(--border)' }
+          }
+        >
+          {ko ? '전체' : 'All'}
+        </button>
+        {availableYears.map(yr => (
+          <button
+            key={yr}
+            onClick={() => setSelectedYear(yr)}
+            className="flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-semibold transition"
+            style={selectedYear === yr
+              ? { background: 'linear-gradient(135deg,#c9a84c,#a07830)', color: '#fff' }
+              : { background: 'var(--surface)', color: 'var(--text-2)', border: '1px solid var(--border)' }
+            }
+          >
+            {yr}{ko ? '년' : ''}
+          </button>
+        ))}
+      </div>
+
+      {/* 잔액 카드 */}
       <div className="glass-card rounded-2xl p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <span className="text-gray-400 text-sm">{ko ? '총 잔액' : 'Balance'}</span>
-          <Wallet size={18} className="text-green-400" />
+          <span className="text-gray-400 text-sm">
+            {selectedYear === 'all'
+              ? (ko ? '전체 잔액' : 'Total Balance')
+              : (ko ? `${selectedYear}년 잔액` : `${selectedYear} Balance`)}
+          </span>
+          <div className="flex items-center gap-2">
+            {canManage && (
+              <button
+                onClick={() => setShowCarryover(true)}
+                className="flex items-center gap-1 text-xs px-3 py-1 rounded-lg font-semibold transition active:scale-95"
+                style={{ background: 'rgba(201,168,76,0.15)', color: 'var(--gold)', border: '1px solid rgba(201,168,76,0.3)' }}
+              >
+                <Plus size={11} />
+                {ko ? '이월금' : 'Carryover'}
+              </button>
+            )}
+            <Wallet size={18} className="text-green-400" />
+          </div>
         </div>
         <p className="text-2xl font-bold text-white">{sym}{balance.toLocaleString()}</p>
-        <div className="flex gap-4">
-          <div className="flex items-center gap-1.5">
-            <TrendingUp size={14} className="text-green-400" />
-            <span className="text-xs text-gray-400">{ko ? '수입' : 'Income'}: <span className="text-green-400">{sym}{income.toLocaleString()}</span></span>
+        <div className="grid grid-cols-3 gap-2 text-xs">
+          {carryoverAmt > 0 && (
+            <div className="flex flex-col gap-0.5 px-2 py-1.5 rounded-xl" style={{ background: 'rgba(201,168,76,0.1)' }}>
+              <span style={{ color: 'var(--gold)' }}>{ko ? '이월금' : 'Carryover'}</span>
+              <span className="font-semibold" style={{ color: 'var(--gold-l)' }}>{sym}{carryoverAmt.toLocaleString()}</span>
+            </div>
+          )}
+          <div className="flex flex-col gap-0.5 px-2 py-1.5 rounded-xl" style={{ background: 'rgba(34,197,94,0.08)' }}>
+            <span className="text-gray-400">{ko ? '수입' : 'Income'}</span>
+            <span className="font-semibold text-green-400">{sym}{income.toLocaleString()}</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <TrendingDown size={14} className="text-red-400" />
-            <span className="text-xs text-gray-400">{ko ? '지출' : 'Expense'}: <span className="text-red-400">{sym}{expense.toLocaleString()}</span></span>
+          <div className="flex flex-col gap-0.5 px-2 py-1.5 rounded-xl" style={{ background: 'rgba(239,68,68,0.08)' }}>
+            <span className="text-gray-400">{ko ? '지출' : 'Expense'}</span>
+            <span className="font-semibold text-red-400">{sym}{expense.toLocaleString()}</span>
           </div>
         </div>
       </div>
@@ -512,13 +636,13 @@ export default function FinancePage() {
 
       {/* 거래 내역 */}
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-gray-400">{ko ? '거래 내역' : 'Transactions'}</h3>
+        <h3 className="text-sm font-semibold text-gray-400">{ko ? `거래 내역 (${filteredTxns.length})` : `Transactions (${filteredTxns.length})`}</h3>
         {loading ? (
           <p className="text-center text-gray-600 py-6">{ko ? '로딩 중...' : 'Loading...'}</p>
-        ) : txns.length === 0 ? (
+        ) : filteredTxns.length === 0 ? (
           <p className="text-center text-gray-600 py-6">{ko ? '내역이 없습니다' : 'No transactions'}</p>
         ) : (
-          txns.map((t) => {
+          filteredTxns.map((t) => {
             const isIncome  = INCOME_TYPES.includes(t.type)
             const isExpanded = expandedId === t.id
             const freeTextName = extractMemberName(t)
@@ -945,6 +1069,119 @@ export default function FinancePage() {
                 {payingSaving ? '...' : (ko ? '납부 확인' : 'Confirm Payment')}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ━━ 이월금 / 집행부 인수인계 모달 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      {showCarryover && (
+        <div className="fixed inset-0 bg-black/80 flex items-end z-[300]" onClick={() => setShowCarryover(false)}>
+          <div className="w-full rounded-t-3xl p-5 space-y-4 max-h-[90vh] overflow-y-auto"
+            style={{ background: 'var(--bg-2)', border: '1px solid var(--border)' }}
+            onClick={e => e.stopPropagation()}>
+
+            <div className="flex items-center gap-3 pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)' }}>
+                <Wallet size={16} className="text-white" />
+              </div>
+              <div className="flex-1">
+                <h2 className="font-bold text-white">{ko ? '이월금 등록' : 'Record Carryover'}</h2>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-2)' }}>
+                  {ko ? '이전 집행부로부터 인수한 금액을 입력하세요' : 'Enter funds received from previous committee'}
+                </p>
+              </div>
+              <button onClick={() => setShowCarryover(false)} className="text-gray-500"><X size={18} /></button>
+            </div>
+
+            {/* 이월 출처 연도 */}
+            <div>
+              <label className="text-xs font-semibold block mb-1.5" style={{ color: 'var(--gold)' }}>
+                {ko ? '이월 출처 연도' : 'From Year'}
+              </label>
+              <select
+                value={carryoverForm.fromYear}
+                onChange={e => setCarryoverForm(f => ({ ...f, fromYear: e.target.value }))}
+                className="w-full rounded-xl px-4 py-3 text-white text-sm outline-none"
+                style={{ background: 'var(--surface)', border: '1px solid var(--border)', colorScheme: 'dark' }}
+              >
+                {Array.from({ length: 10 }, (_, i) => currentYear - i - 1).map(yr => (
+                  <option key={yr} value={yr}>{yr}{ko ? '년도' : ''}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* 이월 총액 */}
+            <div>
+              <label className="text-xs font-semibold block mb-1.5" style={{ color: 'var(--gold)' }}>
+                {ko ? '이월 총액 *' : 'Total Carryover Amount *'}
+              </label>
+              <input
+                type="number" inputMode="numeric"
+                value={carryoverForm.amount}
+                onChange={e => setCarryoverForm(f => ({ ...f, amount: e.target.value }))}
+                placeholder="0"
+                className="w-full rounded-xl px-4 py-3 text-white text-sm outline-none"
+                style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+              />
+            </div>
+
+            {/* 상세 내역 (선택) */}
+            <p className="text-xs font-semibold" style={{ color: 'var(--text-2)' }}>
+              {ko ? '상세 내역 (선택)' : 'Breakdown (optional)'}
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs block mb-1.5" style={{ color: 'var(--text-2)' }}>
+                  {ko ? '통장 잔액' : 'Bank Balance'}
+                </label>
+                <input
+                  type="number" inputMode="numeric"
+                  value={carryoverForm.bankBalance}
+                  onChange={e => setCarryoverForm(f => ({ ...f, bankBalance: e.target.value }))}
+                  placeholder="0"
+                  className="w-full rounded-xl px-3 py-2.5 text-white text-sm outline-none"
+                  style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+                />
+              </div>
+              <div>
+                <label className="text-xs block mb-1.5" style={{ color: 'var(--text-2)' }}>
+                  {ko ? '현금' : 'Cash'}
+                </label>
+                <input
+                  type="number" inputMode="numeric"
+                  value={carryoverForm.cashBalance}
+                  onChange={e => setCarryoverForm(f => ({ ...f, cashBalance: e.target.value }))}
+                  placeholder="0"
+                  className="w-full rounded-xl px-3 py-2.5 text-white text-sm outline-none"
+                  style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+                />
+              </div>
+            </div>
+
+            {/* 메모 */}
+            <div>
+              <label className="text-xs font-semibold block mb-1.5" style={{ color: 'var(--text-2)' }}>
+                {ko ? '메모 (인수인계 내용 등)' : 'Memo (handover notes)'}
+              </label>
+              <textarea
+                value={carryoverForm.memo}
+                onChange={e => setCarryoverForm(f => ({ ...f, memo: e.target.value }))}
+                placeholder={ko ? '예: 전 집행부 2024년도 회계 인수, 미수금 포함' : 'e.g. Received from 2024 committee, includes receivables'}
+                rows={3}
+                className="w-full rounded-xl px-4 py-3 text-white text-sm outline-none resize-none"
+                style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+              />
+            </div>
+
+            <button
+              onClick={saveCarryover}
+              disabled={carryoverSaving || !carryoverForm.amount}
+              className="w-full py-4 rounded-2xl text-white font-bold transition active:scale-[0.98] disabled:opacity-50"
+              style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)' }}
+            >
+              {carryoverSaving ? (ko ? '저장 중...' : 'Saving...') : (ko ? '💾 이월금 저장' : '💾 Save Carryover')}
+            </button>
           </div>
         </div>
       )}

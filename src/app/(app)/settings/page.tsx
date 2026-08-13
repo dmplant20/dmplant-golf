@@ -32,10 +32,10 @@ const PROVINCES = [
 
 export default function SettingsPage() {
   const router = useRouter()
-  const { currentClubId, lang, myClubs, setMyClubs } = useAuthStore()
+  const { currentClubId, lang, myClubs, setMyClubs, user } = useAuthStore()
   const ko = lang === 'ko'
   const myRole = myClubs.find((c) => c.id === currentClubId)?.role ?? 'member'
-  const canManage = ['president', 'secretary'].includes(myRole)
+  const canManage = ['president', 'secretary'].includes(myRole) || !!user?.is_developer
 
   // ── Club settings ─────────────────────────────────────────────────────
   const [club, setClub] = useState<any>(null)
