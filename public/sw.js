@@ -6,6 +6,26 @@ const CACHE_NAME   = `is-golf-${APP_VERSION}`
 // HTML 은 캐시하지 않음 — 정적 에셋만 캐시 (Next.js 해시 번들 = 컨텐츠 영구 불변)
 const STATIC_ASSETS = ['/manifest.json', '/icons/icon-192.png', '/icons/icon-72.png']
 
+// 최후 회복 페이지 — 네트워크 실패 + 캐시 없음일 때 죽은 "연결 실패" 대신 표시.
+// 3초마다 자동 재시도 + 수동 버튼. 네트워크 돌아오면 스스로 앱으로 복귀 → 재설치 불필요.
+const RECOVER_HTML = `<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Inter Stellar GOLF</title>
+<style>html,body{margin:0;height:100%;background:#0a0807;color:#e7e2d6;font:500 15px/1.6 system-ui,-apple-system,"Apple SD Gothic Neo",sans-serif}
+.wrap{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:24px;text-align:center}
+.dot{width:44px;height:44px;border-radius:50%;border:3px solid rgba(201,168,76,.25);border-top-color:#c9a84c;animation:s 1s linear infinite}
+@keyframes s{to{transform:rotate(360deg)}}
+h1{font-size:17px;margin:0;color:#c9a84c}p{margin:0;color:#9a927f;font-size:13px}
+button{margin-top:8px;padding:12px 22px;border:none;border-radius:12px;background:linear-gradient(135deg,#c9a84c,#a07830);color:#fff;font-weight:800;font-size:15px}</style></head>
+<body><div class="wrap"><div class="dot"></div>
+<h1>다시 연결 중…</h1><p>인터넷 연결을 확인하는 중입니다.<br>연결되면 자동으로 열립니다.</p>
+<button onclick="location.reload()">지금 다시 시도</button></div>
+<script>
+// 온라인 복귀 즉시 + 3초마다 자동 재시도. 실제 서버가 살아있으면 곧바로 앱으로 전환됨.
+addEventListener('online',function(){location.reload()});
+var n=0;setInterval(function(){ n++; fetch('/login',{method:'HEAD',cache:'no-store'}).then(function(r){if(r&&r.status<500)location.reload()}).catch(function(){}); if(n>40)location.reload(); },3000);
+</script></body></html>`
+
 // ── Install ───────────────────────────────────────────────────────────────
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -71,11 +91,24 @@ self.addEventListener('fetch', (event) => {
     accept.includes('text/html')
 
   if (isHTML) {
-    // HTML 은 항상 네트워크 — 오프라인일 때만 마지막 수단으로 캐시 폴백
-    event.respondWith(
-      fetch(req, { cache: 'no-store' })
-        .catch(() => caches.match(req).then((r) => r || caches.match('/')))
-    )
+    // HTML 은 항상 네트워크 우선. 단 실패해도 절대 죽은 "연결 실패" 를 내지 않는다.
+    //   1) 네트워크 1회 재시도(일시적 흔들림 흡수)
+    //   2) 캐시 폴백
+    //   3) 최후: 자동 재시도 회복 페이지 (undefined 반환 금지 — 이게 "연결 실패" 벽돌의 원인이었음)
+    event.respondWith((async () => {
+      for (let i = 0; i < 2; i++) {
+        try {
+          const res = await fetch(req, { cache: 'no-store' })
+          if (res) return res
+        } catch (_e) { /* 재시도 or 폴백 */ }
+      }
+      const cached = (await caches.match(req)) || (await caches.match('/'))
+      if (cached) return cached
+      return new Response(RECOVER_HTML, {
+        status: 200,
+        headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
+      })
+    })())
     return
   }
 

@@ -57,8 +57,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   var isOurApp = /InterStellarGolfApp/i.test(ua);
 
   // ── 1) WebView → Chrome 강제 리다이렉트 ─────────────────────────────────
-  var inApp = /FBAN|FBAV|Instagram|KAKAOTALK|kakaotalk|Line\\/|NaverApp| wv[)\\s]|WebView| GSA\\/|MicroMessenger|Twitter\\/|Snapchat|TikTok/i.test(ua);
-  if (/Android/i.test(ua) && inApp && !isOurApp) {
+  // ⚠ 알려진 "인앱 브라우저"(카톡·페북·인스타·라인·네이버 등)에서만 튕긴다.
+  //   이전엔 일반 'wv'/'WebView' 까지 잡아서 우리 앱(홈화면 설치/네이티브 WebView)까지
+  //   intent:// 로 튕겨 "연결 실패" 벽돌을 만들었음 → 그 광범위 매칭 제거.
+  //   추가 안전장치: 이미 설치/standalone(홈화면 앱)이면 절대 리다이렉트 안 함.
+  var inApp = /FBAN|FBAV|Instagram|KAKAOTALK|kakaotalk|Line\\/|NaverApp|MicroMessenger|Twitter\\/|Snapchat|TikTok/i.test(ua);
+  var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+  if (/Android/i.test(ua) && inApp && !isOurApp && !standalone) {
     var href = window.location.href;
     window.location.replace(
       'intent://' + href.replace(/^https?:\\/\\//, '') +
