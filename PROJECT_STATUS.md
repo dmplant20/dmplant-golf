@@ -17,6 +17,6 @@
 - **Last completed**: PR #34 fix(pwa): 기존 설치 앱 '연결 실패' 자가복구 — 재설치 불필요 (merged 2026-08-13)
 - **Current work**: PR #29 feat(native) Phase 0: WebView 리다이렉트 가드 (웹 무영향); PR #1 feat: permissions, life events, fine rules, sponsorships & club championship
 - **Next**: review/merge 2 open PR(s)
-- **Active branches/worktrees**: (detached) -> dmplant-golf\.claude\worktrees\lucid-goldberg-e1304b
+- **Active branches/worktrees**: canonical checkout only (worktree standard: `_worktrees\GOLF\<task>`)
 - **Risks/blockers**: MEDIUM 4, INFO 2 (see _sync-tools/control/catalog/RISK_REGISTER.md)
-- **Last updated**: 2026-10-02 by [GOV] P2/Consolidation — PROJECT_STATUS rollout
+- **Last updated**: 2026-10-02 by [GOV] P5/Cleanup — physical workspace simplification (worktree paths)
