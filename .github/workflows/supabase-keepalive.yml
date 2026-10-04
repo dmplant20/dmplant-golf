@@ -1,0 +1,29 @@
+# Supabase Free 프로젝트 자동 일시정지 방지 + 장애 감시.
+# 2026-10 프로젝트가 7일 저활동으로 정지 → 전원 로그인 불가("비밀번호 오류"로 보임) 사고 재발 방지.
+# 4시간마다 /api/health 를 호출해 실제 DB 쿼리를 발생시킨다.
+# 실패(503/연결불가) 시 워크플로가 실패 → GitHub 가 저장소 소유자에게 실패 메일 발송.
+name: supabase-keepalive
+
+on:
+  schedule:
+    - cron: '17 */4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping /api/health (retry 3x)
+        run: |
+          for i in 1 2 3; do
+            code=$(curl -s -o body.json -w '%{http_code}' -m 30 https://dmplant-golf.vercel.app/api/health || echo 000)
+            echo "attempt $i → HTTP $code"; cat body.json 2>/dev/null; echo
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 20
+          done
+          echo "::error::Supabase/앱 헬스체크 실패 — Supabase 프로젝트 일시정지 여부를 즉시 확인하세요 (dashboard → dmplant20's golf)"
+          exit 1
