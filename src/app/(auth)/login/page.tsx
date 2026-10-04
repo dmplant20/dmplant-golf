@@ -29,6 +29,24 @@ function saveCreds(email: string, password: string) {
   } catch {}
 }
 
+// 로그인 에러 분류 — 서버 연결 실패(Supabase 일시정지/네트워크)를 "비밀번호 오류"로
+// 오인하지 않도록 원인별 메시지를 구분한다. AuthRetryableFetchError 는 status 0.
+function loginErrorMessage(err: { name?: string; status?: number; code?: string }, ko: boolean): string {
+  const unreachable = err.name === 'AuthRetryableFetchError' || !err.status || err.status >= 500
+  if (unreachable) {
+    return ko
+      ? '로그인 서버에 연결할 수 없습니다. 비밀번호 문제가 아니니 잠시 후 다시 시도해 주세요.'
+      : 'Cannot reach the sign-in server. This is not a password problem — please try again later.'
+  }
+  if (err.code === 'email_not_confirmed') {
+    return ko ? '이메일 인증이 완료되지 않은 계정입니다. 관리자에게 문의해 주세요.' : 'Email not confirmed. Please contact an admin.'
+  }
+  if (err.status === 429 || err.code === 'over_request_rate_limit') {
+    return ko ? '로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.' : 'Too many attempts. Please wait and try again.'
+  }
+  return ko ? '이메일 또는 비밀번호가 올바르지 않습니다.' : 'Invalid email or password.'
+}
+
 export default function LoginPage() {
   const router = useRouter()
   const { lang, setLang } = useAuthStore()
@@ -114,7 +132,8 @@ export default function LoginPage() {
     // 비밀번호가 있으면 → 일반 로그인
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) {
-      setError(ko ? '이메일 또는 비밀번호가 올바르지 않습니다.' : 'Invalid email or password.')
+      console.warn('[auth] signInWithPassword failed', { name: error.name, status: error.status, code: error.code, message: error.message })
+      setError(loginErrorMessage(error, ko))
       setLoading(false)
     } else {
       // 다음 로그인부터 자동 채우기 — 같은 기기에서는 클릭 한 번으로 입장
