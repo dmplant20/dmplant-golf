@@ -13,6 +13,7 @@ export const metadata: Metadata = {
   title: 'Inter Stellar GOLF',
   description: '골프 모임 관리 앱 | Golf Club Management App',
   manifest: '/manifest.json',
+  referrer: 'no-referrer',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
@@ -63,7 +64,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   //   추가 안전장치: 이미 설치/standalone(홈화면 앱)이면 절대 리다이렉트 안 함.
   var inApp = /FBAN|FBAV|Instagram|KAKAOTALK|kakaotalk|Line\\/|NaverApp|MicroMessenger|Twitter\\/|Snapchat|TikTok/i.test(ua);
   var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
-  if (/Android/i.test(ua) && inApp && !isOurApp && !standalone) {
+  var authCallback = window.location.pathname === '/reset-password' || window.location.pathname.indexOf('/auth/') === 0 || /(?:[?#&])(code|token_hash|access_token|refresh_token)=/.test(window.location.search + window.location.hash);
+  if (/Android/i.test(ua) && inApp && !isOurApp && !standalone && !authCallback) {
     var href = window.location.href;
     window.location.replace(
       'intent://' + href.replace(/^https?:\\/\\//, '') +
