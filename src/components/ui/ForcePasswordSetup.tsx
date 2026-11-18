@@ -49,7 +49,7 @@ export default function ForcePasswordSetup() {
       setUser({ ...(user as any), password_set: true })
       // 한 박자 보여주고 닫기
       setTimeout(async () => {
-        // 새로 발급된 토큰으로 세션 갱신 시도 (어드민 update 가 비밀번호만 갱신해서 세션 자체는 유효함)
+        // 서버의 사용자 세션 갱신 후 프로필 상태 확인
         const supabase = createClient()
         const { data: profile } = await supabase.from('users').select('*').eq('id', user!.id).single()
         if (profile) setUser(profile)
@@ -133,6 +133,9 @@ export default function ForcePasswordSetup() {
           {error && (
             <div className="bg-red-900/30 border border-red-800/50 rounded-xl px-3 py-2">
               <p className="text-xs text-red-400">{error}</p>
+              <a href="/forgot-password" className="mt-2 block text-xs text-green-300 underline">
+                {ko ? '이메일로 본인 확인하고 비밀번호 재설정' : 'Verify your email and reset your password'}
+              </a>
             </div>
           )}
           {success && (
