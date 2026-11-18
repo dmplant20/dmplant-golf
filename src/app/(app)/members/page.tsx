@@ -1,297 +1,1148 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/stores/authStore'
-import { UserCheck, Clock, UserX, Edit2, ShieldCheck, GaugeCircle } from 'lucide-react'
+import { isSuperAdmin } from '@/lib/superAdmin'
+import {
+  UserCheck, Clock, UserX, Edit2, ShieldCheck, GaugeCircle,
+  UserMinus, RotateCcw, AlertTriangle, History, Shield,
+  UserPlus, Copy, Check as CheckIcon, X, Wallet, Plus, Trash2,
+} from 'lucide-react'
 
+// ── role config ────────────────────────────────────────────────────────────
 const ROLE_COLORS: Record<string, string> = {
-  president:      'bg-yellow-900/60 text-yellow-300',
-  vice_president: 'bg-orange-900/60 text-orange-300',
-  secretary:      'bg-blue-900/60 text-blue-300',
-  auditor:        'bg-red-900/60 text-red-300',
-  advisor:        'bg-teal-900/60 text-teal-300',
-  officer:        'bg-purple-900/60 text-purple-300',
-  member:         'bg-gray-800 text-gray-300',
+  president:      'bg-yellow-900/60 text-yellow-300 border-yellow-700/40',
+  vice_president: 'bg-orange-900/60 text-orange-300 border-orange-700/40',
+  secretary:      'bg-blue-900/60 text-blue-300 border-blue-700/40',
+  auditor:        'bg-red-900/60 text-red-300 border-red-700/40',
+  advisor:        'bg-teal-900/60 text-teal-300 border-teal-700/40',
+  officer:        'bg-purple-900/60 text-purple-300 border-purple-700/40',
+  member:         'bg-gray-800 text-gray-300 border-gray-700/30',
+  associate:      'bg-cyan-900/40 text-cyan-300 border-cyan-700/40',
+  guest:          'bg-slate-800/60 text-slate-300 border-slate-600/40',
 }
 
 const ROLE_MAP: Record<string, [string, string]> = {
-  president:      ['회장',   'President'],
-  vice_president: ['부회장', 'Vice President'],
-  secretary:      ['총무',   'Secretary'],
-  auditor:        ['감사',   'Auditor'],
-  advisor:        ['고문',   'Advisor'],
-  officer:        ['임원',   'Officer'],
-  member:         ['회원',   'Member'],
+  president:      ['회장',     'President'],
+  vice_president: ['부회장',   'Vice Pres.'],
+  secretary:      ['총무',     'Secretary'],
+  auditor:        ['감사',     'Auditor'],
+  advisor:        ['고문',     'Advisor'],
+  officer:        ['임원',     'Officer'],
+  member:         ['회원',     'Member'],
+  associate:      ['준회원',   'Associate'],
+  guest:          ['게스트',   'Guest'],
 }
 
 // 임원급 이상 (회계 상세 열람 권한)
 export const OFFICER_ROLES = ['president', 'vice_president', 'secretary', 'auditor', 'advisor', 'officer']
 
+// 회원 명부 정렬 순서 (회장 → 부회장 → 감사 → 총무 → 고문 → 임원 → 회원 → 준회원 → 게스트)
+const ROLE_ORDER: Record<string, number> = {
+  president:      1,
+  vice_president: 2,
+  auditor:        3,
+  secretary:      4,
+  advisor:        5,
+  officer:        6,
+  member:         7,
+  associate:      8,
+  guest:          9,
+}
+
+const ACTION_LABELS: Record<string, [string, string]> = {
+  approval:      ['가입 승인', 'Approved'],
+  rejection:     ['가입 거부', 'Rejected'],
+  role_change:   ['역할 변경', 'Role changed'],
+  withdrawal:    ['탈퇴 처리', 'Withdrawn'],
+  reinstatement: ['복권',      'Reinstated'],
+  delegation:    ['역할 위임', 'Role delegated'],
+}
+
+// ── helpers ────────────────────────────────────────────────────────────────
+function RoleBadge({ role, ko, active }: { role: string; ko: boolean; active?: boolean }) {
+  const entry = ROLE_MAP[role]
+  // active=true 면 굵은 채색 테두리 + 살짝 글로우, false 면 기본
+  return (
+    <span
+      className={`text-[11px] px-2 py-0.5 rounded-full border ${ROLE_COLORS[role] ?? ROLE_COLORS.member}`}
+      style={active ? {
+        borderWidth: 1.5,
+        boxShadow: '0 0 0 1px currentColor, 0 0 8px rgba(34,197,94,0.35)',
+      } : undefined}
+    >
+      {entry ? (ko ? entry[0] : entry[1]) : role}
+    </span>
+  )
+}
+
+// 다중 트리 확인 — 한 번이라도 접속했는지
+// Tree 1: users.last_seen_at IS NOT NULL (heartbeat 발사 = 실제 진입 증거)
+// Tree 2: users.password_set === true     (첫 로그인 후 비밀번호 설정 완료 증거)
+// 둘 중 하나라도 참이면 활성 (한번이라도 접속한 회원)
+function hasEverLoggedIn(u: any): boolean {
+  if (!u) return false
+  if (u.last_seen_at) return true
+  if (u.password_set === true) return true
+  return false
+}
+
+// ── component ──────────────────────────────────────────────────────────────
 export default function MembersPage() {
   const { currentClubId, lang, myClubs, user, setMyClubs } = useAuthStore()
-  const ko = lang === 'ko'
-  const myMembership = myClubs.find((c) => c.id === currentClubId)
-  const myRole = myMembership?.role ?? 'member'
-  const canManage = ['president', 'secretary'].includes(myRole)
+  const ko       = lang === 'ko'
+  const myMembership = myClubs.find(c => c.id === currentClubId)
+  const myRole       = myMembership?.role ?? 'member'
+  const isAdmin      = isSuperAdmin(user)
+  // 회비/벌금 미납 정보 열람 권한 — 회장·총무·감사·고문 (본인 자신은 항상 볼 수 있음)
+  const canViewFinance = ['president', 'secretary', 'auditor', 'advisor'].includes(myRole) || isAdmin
+  const canManage    = ['president', 'secretary'].includes(myRole) || isAdmin
 
-  const [tab, setTab] = useState<'approved' | 'pending'>('approved')
-  const [members, setMembers] = useState<any[]>([])
-  const [pending, setPending] = useState<any[]>([])
-  const [editMember, setEditMember] = useState<any>(null)
+  const [tab,           setTab]           = useState<'approved' | 'pending' | 'withdrawn' | 'log'>('approved')
+  const [members,       setMembers]       = useState<any[]>([])
+  const [pending,       setPending]       = useState<any[]>([])
+  const [withdrawn,     setWithdrawn]     = useState<any[]>([])
+  const [activityLog,   setActivityLog]   = useState<any[]>([])
+  const [editMember,    setEditMember]    = useState<any>(null)
   const [quickHcMember, setQuickHcMember] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
+  const [withdrawTarget,setWithdrawTarget]= useState<any>(null)
+  const [loading,       setLoading]       = useState(true)
+  const [myFeeStatus,   setMyFeeStatus]   = useState<{
+    feeType: string; paid: boolean; unpaidMonths: number[]
+  } | null>(null)
+  const [feeStatusByUser, setFeeStatusByUser] = useState<Record<string, {
+    feeType: 'annual' | 'monthly'; paid: boolean; unpaidMonths: number[]
+  }>>({})
+  const [showAddMember, setShowAddMember] = useState(false)
+  const [addSuccess,    setAddSuccess]    = useState<{ email: string; tempPassword: string; full_name: string } | null>(null)
+  // 개인 회비 내역 모달 — 회장·총무·감사·고문 + 본인이 볼 수 있음
+  const [feeHistoryMember, setFeeHistoryMember] = useState<any | null>(null)
+  const [feeHistoryTxns,   setFeeHistoryTxns]   = useState<any[]>([])
+  const [feeHistoryLoading,setFeeHistoryLoading]= useState(false)
+  const [clubFees,         setClubFees]         = useState<{annual:number; monthly:number; currency:string}>({annual:0, monthly:0, currency:'KRW'})
+  const [addPayForm,       setAddPayForm]       = useState({ amount:'', date: new Date().toISOString().split('T')[0], note:'' })
+  const [addPaySaving,     setAddPaySaving]     = useState(false)
+  const [addPayError,      setAddPayError]      = useState<string | null>(null)
 
   async function load() {
     if (!currentClubId) return
     setLoading(true)
     const supabase = createClient()
-    const [{ data: approved }, { data: pend }] = await Promise.all([
+    const [{ data: approved }, { data: pend }, { data: withdr }, { data: log }] = await Promise.all([
+      // ⚠ users:user_id 명시 — club_memberships 는 user_id + withdrawn_by 두 FK 가 users 참조.
+      //   무지정 embed 는 'more than one relationship' 에러로 회원명단 전체가 빈 화면이 됨.
       supabase.from('club_memberships')
-        .select('*, users(full_name, full_name_en, name_abbr, avatar_url, phone)')
-        .eq('club_id', currentClubId).eq('status', 'approved')
-        .order('role'),
+        .select('*, users:user_id(full_name, full_name_en, name_abbr, avatar_url, phone, last_seen_at, password_set)')
+        .eq('club_id', currentClubId).eq('status', 'approved'),
       supabase.from('club_memberships')
-        .select('*, users(full_name, full_name_en, name_abbr, phone)')
+        .select('*, users:user_id(full_name, full_name_en, name_abbr, phone)')
         .eq('club_id', currentClubId).eq('status', 'pending'),
+      supabase.from('club_memberships')
+        .select('*, users:user_id(full_name, full_name_en, name_abbr)')
+        .eq('club_id', currentClubId).eq('status', 'withdrawn')
+        .order('withdrawn_at', { ascending: false }),
+      canManage
+        ? supabase.from('member_activity_log')
+            .select('*, users!target_user_id(full_name), actor:users!actor_id(full_name)')
+            .eq('club_id', currentClubId)
+            .order('created_at', { ascending: false })
+            .limit(50)
+        : Promise.resolve({ data: [] }),
     ])
-    setMembers(approved ?? [])
+    const sortedApproved = (approved ?? []).slice().sort((a: any, b: any) => {
+      const ra = ROLE_ORDER[a.role] ?? 99
+      const rb = ROLE_ORDER[b.role] ?? 99
+      if (ra !== rb) return ra - rb
+      const na = a.users?.full_name ?? ''
+      const nb = b.users?.full_name ?? ''
+      return na.localeCompare(nb, 'ko')
+    })
+    setMembers(sortedApproved)
     setPending(pend ?? [])
+    setWithdrawn(withdr ?? [])
+    setActivityLog(log ?? [])
     setLoading(false)
+
+    // ── 회비 납부 현황 (전 회원) ──────────────────────────────────────────
+    const currentYear  = new Date().getFullYear()
+    const currentMonth = new Date().getMonth() + 1
+    const { data: allFeeTxns } = await supabase
+      .from('finance_transactions').select('member_id, transaction_date')
+      .eq('club_id', currentClubId).eq('type', 'fee')
+      .gte('transaction_date', `${currentYear}-01-01`).lte('transaction_date', `${currentYear}-12-31`)
+
+    const txnsByUser: Record<string, string[]> = {}
+    ;(allFeeTxns ?? []).forEach((t: any) => {
+      if (!t.member_id) return
+      ;(txnsByUser[t.member_id] ||= []).push(t.transaction_date)
+    })
+
+    const statusMap: Record<string, { feeType: 'annual' | 'monthly'; paid: boolean; unpaidMonths: number[] }> = {}
+    ;(approved ?? []).forEach((m: any) => {
+      if (!m.fee_type) return
+      const dates = txnsByUser[m.user_id] ?? []
+      if (m.fee_type === 'annual') {
+        statusMap[m.user_id] = { feeType: 'annual', paid: dates.length > 0, unpaidMonths: [] }
+      } else {
+        const paidMonths = new Set(dates.map((d) => new Date(d).getMonth() + 1))
+        const unpaidMonths: number[] = []
+        for (let mm = 1; mm <= currentMonth; mm++) if (!paidMonths.has(mm)) unpaidMonths.push(mm)
+        statusMap[m.user_id] = { feeType: 'monthly', paid: unpaidMonths.length === 0, unpaidMonths }
+      }
+    })
+    setFeeStatusByUser(statusMap)
+    setMyFeeStatus(user?.id && statusMap[user.id] ? statusMap[user.id] : null)
+
+    // 클럽 회비 단가 — 개인 회비 추가 시 빠른 입력에 사용
+    const { data: club } = await supabase
+      .from('clubs').select('annual_fee, monthly_fee, currency').eq('id', currentClubId).single()
+    if (club) setClubFees({
+      annual: club.annual_fee ?? 0, monthly: club.monthly_fee ?? 0, currency: club.currency ?? 'KRW',
+    })
   }
 
-  useEffect(() => { load() }, [currentClubId])
-
-  async function approve(membershipId: string) {
+  // ── 개인 회비 내역 로드 ────────────────────────────────────────────────
+  // 강한 체인: 항상 DB 직접 조회 (캐시 신뢰 X)
+  async function loadFeeHistory(memberRow: any) {
+    if (!currentClubId || !memberRow?.user_id) return
+    setFeeHistoryLoading(true)
     const supabase = createClient()
-    await supabase.from('club_memberships').update({ status: 'approved', joined_at: new Date().toISOString() }).eq('id', membershipId)
+    const { data, error } = await supabase
+      .from('finance_transactions')
+      .select('id, transaction_date, amount, description, type, recorded_by, recorder:users!recorded_by(full_name, full_name_en)')
+      .eq('club_id', currentClubId)
+      .eq('member_id', memberRow.user_id)
+      .eq('type', 'fee')
+      .order('transaction_date', { ascending: false })
+    if (error) console.error('[fee history]', error)
+    setFeeHistoryTxns(data ?? [])
+    setFeeHistoryLoading(false)
+  }
+  function openFeeHistory(m: any) {
+    setFeeHistoryMember(m)
+    setAddPayForm({ amount: '', date: new Date().toISOString().split('T')[0], note: '' })
+    setAddPayError(null)
+    loadFeeHistory(m)
+  }
+
+  // ── 회비 추가 등록 (canManage 전용) ────────────────────────────────────
+  async function addFeePayment() {
+    if (!feeHistoryMember || !currentClubId || !user?.id) return
+    setAddPayError(null)
+    const amt = parseInt((addPayForm.amount || '0').replace(/[^\d]/g, ''))
+    if (!amt || amt <= 0) {
+      setAddPayError(ko ? '금액을 입력하세요' : 'Enter amount')
+      return
+    }
+    if (!addPayForm.date) {
+      setAddPayError(ko ? '날짜를 선택하세요' : 'Pick a date')
+      return
+    }
+    const memberName = lang === 'ko'
+      ? feeHistoryMember.users?.full_name
+      : (feeHistoryMember.users?.full_name_en || feeHistoryMember.users?.full_name)
+    const month = Number(addPayForm.date.slice(5, 7))
+    const description = (addPayForm.note?.trim())
+      || (feeHistoryMember.fee_type === 'annual'
+            ? `${memberName} 회비 납부 (년납)`
+            : `${memberName} ${month}월 회비 납부`)
+
+    setAddPaySaving(true)
+    const supabase = createClient()
+    const { error } = await supabase.from('finance_transactions').insert({
+      club_id: currentClubId,
+      type: 'fee',
+      amount: amt,
+      currency: clubFees.currency,
+      description,
+      transaction_date: addPayForm.date,
+      recorded_by: user.id,
+      member_id: feeHistoryMember.user_id,
+    })
+    setAddPaySaving(false)
+    if (error) {
+      setAddPayError(ko ? `저장 실패: ${error.message}` : `Save failed: ${error.message}`)
+      return
+    }
+    // 강한 체인: 폼 초기화 → 거래 내역 재조회 → 회비 현황 전체 재계산
+    setAddPayForm({ amount: '', date: new Date().toISOString().split('T')[0], note: '' })
+    await loadFeeHistory(feeHistoryMember)
+    await load()   // statusMap·members·feeStatusByUser 모두 새로고침
+  }
+
+  // ── 회비 거래 삭제 (총무 전용 — 실수 정정용) ─────────────────────────
+  async function deleteFeeTxn(txnId: string) {
+    if (!currentClubId || !canManage) return
+    if (!confirm(ko ? '이 회비 거래를 삭제하시겠습니까?' : 'Delete this fee transaction?')) return
+    const supabase = createClient()
+    const { error } = await supabase.from('finance_transactions').delete().eq('id', txnId).eq('type', 'fee')
+    if (error) { alert(`${error.message}`); return }
+    if (feeHistoryMember) await loadFeeHistory(feeHistoryMember)
+    await load()
+  }
+
+  useEffect(() => {
+    load()
+    function onWake() { if (document.visibilityState === 'visible') load() }
+    document.addEventListener('visibilitychange', onWake)
+    window.addEventListener('focus', onWake)
+    window.addEventListener('pageshow', onWake)
+    // 30초마다 자동 폴링 — 누가 새로 들어오는지 거의 실시간 반영
+    const pollId = setInterval(() => {
+      if (document.visibilityState === 'visible') load()
+    }, 30_000)
+    return () => {
+      document.removeEventListener('visibilitychange', onWake)
+      window.removeEventListener('focus', onWake)
+      window.removeEventListener('pageshow', onWake)
+      clearInterval(pollId)
+    }
+  }, [currentClubId])
+
+  // 시계 tick — 데이터 재호출 없이 isOnline 표시만 15초마다 재계산 (TimeNow 갱신)
+  const [, forceTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => forceTick(t => t + 1), 15_000)
+    return () => clearInterval(id)
+  }, [])
+
+  // ── actions ────────────────────────────────────────────────────────────────
+  async function logAction(target_user_id: string | null, action: string, old_value?: string, new_value?: string, note?: string) {
+    if (!currentClubId || !user?.id) return
+    const supabase = createClient()
+    await supabase.from('member_activity_log').insert({
+      club_id: currentClubId, target_user_id, actor_id: user.id,
+      action, old_value: old_value ?? null, new_value: new_value ?? null, note: note ?? null,
+    })
+  }
+
+  async function approve(m: any) {
+    const supabase = createClient()
+    await supabase.from('club_memberships').update({ status: 'approved', joined_at: new Date().toISOString() }).eq('id', m.id)
+    await logAction(m.user_id, 'approval', 'pending', 'approved')
     load()
   }
 
-  async function reject(membershipId: string) {
+  async function reject(m: any) {
     const supabase = createClient()
-    await supabase.from('club_memberships').update({ status: 'rejected' }).eq('id', membershipId)
+    await supabase.from('club_memberships').update({ status: 'rejected' }).eq('id', m.id)
+    await logAction(m.user_id, 'rejection', 'pending', 'rejected')
     load()
   }
 
-  async function updateMember(membershipId: string, clubHc: number, personalHc: number, role: string, feeType: string | null) {
+  async function updateMember(membershipId: string, clubHc: number | null, personalHc: number | null, role: string, feeType: string | null) {
     const supabase = createClient()
+    const target   = members.find(m => m.id === membershipId)
     await supabase.from('club_memberships').update({
-      club_handicap: clubHc,
-      personal_handicap: personalHc,
-      role,
-      fee_type: feeType || null,
+      club_handicap: clubHc, personal_handicap: personalHc, role, fee_type: feeType || null,
     }).eq('id', membershipId)
+    if (target && target.role !== role) {
+      await logAction(target.user_id, 'role_change', target.role, role)
+    }
     setEditMember(null)
     load()
   }
 
   async function updateHc(membershipId: string, clubHc: number | null, personalHc: number | null) {
     const supabase = createClient()
-    await supabase.from('club_memberships').update({
-      club_handicap: clubHc,
-      personal_handicap: personalHc,
-    }).eq('id', membershipId)
+    await supabase.from('club_memberships').update({ club_handicap: clubHc, personal_handicap: personalHc }).eq('id', membershipId)
     setQuickHcMember(null)
     load()
   }
 
-  // 현재 내 역할을 다른 회원에게 위임하고 내 역할은 임원으로 변경
   async function delegateRole(targetMembershipId: string, roleToDelegate: string, myMembershipId: string) {
     const supabase = createClient()
+    const target   = members.find(m => m.id === targetMembershipId)
     await Promise.all([
       supabase.from('club_memberships').update({ role: roleToDelegate }).eq('id', targetMembershipId),
       supabase.from('club_memberships').update({ role: 'officer' }).eq('id', myMembershipId),
     ])
-    // 로컬 스토어의 내 역할 업데이트
-    setMyClubs(myClubs.map((c) => c.id === currentClubId ? { ...c, role: 'officer' } : c))
+    await logAction(target?.user_id ?? null, 'delegation', myRole, roleToDelegate, `위임자: ${user?.full_name}`)
+    setMyClubs(myClubs.map(c => c.id === currentClubId ? { ...c, role: 'officer' } : c))
     setEditMember(null)
     load()
   }
 
-  const roleLabel = (r: string) => {
-    const entry = ROLE_MAP[r]
-    return entry ? (ko ? entry[0] : entry[1]) : r
+  async function withdrawMember(m: any, reason: string) {
+    const supabase = createClient()
+    await supabase.from('club_memberships').update({
+      status:            'withdrawn',
+      withdrawn_at:      new Date().toISOString(),
+      withdrawn_by:      user?.id,
+      withdrawal_reason: reason.trim() || null,
+    }).eq('id', m.id)
+    await logAction(m.user_id, 'withdrawal', 'approved', 'withdrawn', reason.trim() || undefined)
+    setWithdrawTarget(null)
+    load()
   }
 
+  async function reinstateMember(m: any) {
+    const supabase = createClient()
+    await supabase.from('club_memberships').update({
+      status: 'approved', withdrawn_at: null, withdrawn_by: null, withdrawal_reason: null,
+    }).eq('id', m.id)
+    await logAction(m.user_id, 'reinstatement', 'withdrawn', 'approved')
+    load()
+  }
+
+  const roleLabel = (r: string) => { const e = ROLE_MAP[r]; return e ? (ko ? e[0] : e[1]) : r }
+
+  const tabs: Array<{ id: string; label: string; count?: number }> = [
+    { id: 'approved',  label: ko ? '회원'   : 'Members', count: members.length },
+    { id: 'pending',   label: ko ? '대기'   : 'Pending', count: pending.length },
+    { id: 'withdrawn', label: ko ? '탈퇴'   : 'Withdrawn', count: withdrawn.length },
+    ...(canManage ? [{ id: 'log', label: ko ? '활동기록' : 'Activity' }] : []),
+  ]
+
+  // 게스트는 회원 명부 열람 가능 — 단, 회비 정보·관리 버튼은 자동으로 숨겨짐
+  // (canViewFinance, canManage 권한 체크에 guest 가 포함되어 있지 않기 때문)
+
   return (
-    <div className="px-4 py-5">
-      {/* Tabs */}
-      <div className="flex gap-2 mb-5">
-        {(['approved', 'pending'] as const).map((t) => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`flex-1 py-2 rounded-xl text-sm font-medium transition ${tab === t ? 'bg-green-700 text-white' : 'bg-gray-900 text-gray-400'}`}>
-            {t === 'approved' ? (ko ? '회원' : 'Members') : (ko ? `가입 대기 (${pending.length})` : `Pending (${pending.length})`)}
+    <div className="px-4 py-5 pb-28">
+      {/* ── 탭 + 회원 추가 버튼 ── */}
+      <div className="flex items-center gap-1.5 mb-5">
+        <div className="flex gap-1.5 flex-1 overflow-x-auto no-scrollbar">
+          {tabs.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id as any)}
+              className={`flex-shrink-0 px-3 py-2 rounded-xl text-sm font-medium transition ${tab === t.id ? 'text-white' : 'bg-gray-900 text-gray-400 hover:text-white'}`}
+              style={tab === t.id ? { background: 'linear-gradient(135deg,#c9a84c,#a07830)' } : undefined}>
+              {t.label}{t.count !== undefined ? ` (${t.count})` : ''}
+            </button>
+          ))}
+        </div>
+        {canManage && (
+          <button
+            onClick={() => { setShowAddMember(true); setAddSuccess(null) }}
+            title={ko ? '회원 추가' : 'Add Member'}
+            className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-xl text-white transition active:scale-95"
+            style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)' }}
+          >
+            <UserPlus size={16} />
           </button>
-        ))}
+        )}
       </div>
 
+      {/* ── 계정 생성 성공 배너 ── */}
+      {addSuccess && (
+        <div className="mb-4 rounded-2xl bg-green-900/25 border border-green-700/40 px-4 py-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-green-300 mb-0.5">
+                계정 생성됨 — {addSuccess.full_name}
+              </p>
+              <p className="text-xs text-gray-400 break-all">
+                {addSuccess.email} / PW: <span className="text-white font-mono">{addSuccess.tempPassword}</span>
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <CopyButton text={`${addSuccess.email} / ${addSuccess.tempPassword}`} ko={ko} />
+              <button onClick={() => setAddSuccess(null)} className="text-gray-400 hover:text-white transition">
+                <X size={15} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {loading ? (
-        <div className="text-center text-gray-500 py-10">{ko ? '로딩 중...' : 'Loading...'}</div>
+        <div className="text-center text-gray-400 py-10">{ko ? '로딩 중...' : 'Loading...'}</div>
       ) : tab === 'approved' ? (
+
+        /* ── 활성 회원 ── */
         <div className="space-y-2">
-          {members.map((m) => (
-            <div key={m.id} className="glass-card rounded-xl px-4 py-3 flex items-center gap-3">
-              <div className="w-10 h-10 bg-green-800 rounded-full flex items-center justify-center text-lg flex-shrink-0">
-                {m.users?.avatar_url ? <img src={m.users.avatar_url} className="w-10 h-10 rounded-full object-cover" alt="" /> : '👤'}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-white font-medium text-sm">{lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}</span>
-                  {m.users?.name_abbr && <span className="text-xs text-gray-500">({m.users.name_abbr})</span>}
+          {members.map(m => {
+            // 접속 표시: 마지막 활동이 90초 이내면 온라인 (heartbeat 30s × 3 = 1회 누락 허용)
+            const lastSeen = m.users?.last_seen_at
+            const isOnline = lastSeen && (Date.now() - new Date(lastSeen).getTime()) < 90_000
+            // 한 번이라도 로그인 했는지 (다중 트리 확인)
+            const hasLoggedIn = hasEverLoggedIn(m.users)
+            return (
+            <div key={m.id} className="glass-card rounded-2xl px-4 py-3 flex items-center gap-3">
+              <div className="relative w-10 h-10 flex-shrink-0">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg overflow-hidden"
+                  style={{ background: 'rgba(201,168,76,0.10)', border: '1px solid rgba(201,168,76,0.20)' }}>
+                  {m.users?.avatar_url ? <img src={m.users.avatar_url} className="w-10 h-10 rounded-full object-cover" alt="" /> : '👤'}
                 </div>
-                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${ROLE_COLORS[m.role] ?? ROLE_COLORS.member}`}>{roleLabel(m.role)}</span>
-                  {m.fee_type === 'annual' && <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-900/50 text-yellow-300">{ko ? '년회비' : 'Annual'}</span>}
-                  {m.fee_type === 'monthly' && <span className="text-xs px-2 py-0.5 rounded-full bg-blue-900/50 text-blue-300">{ko ? '월회비' : 'Monthly'}</span>}
-                  {m.club_handicap != null && <span className="text-xs text-green-400">{ko ? '클럽핸디' : 'Club HC'}: {m.club_handicap}</span>}
-                  {m.personal_handicap != null && m.user_id === user?.id && <span className="text-xs text-blue-400">{ko ? '개인핸디' : 'Personal HC'}: {m.personal_handicap}</span>}
-                </div>
+                {/* 접속 중 표시 — 우하단 초록 점 (펄스) */}
+                {isOnline && (
+                  <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full"
+                    style={{
+                      background: '#22c55e',
+                      border: '2px solid #0a140a',
+                      boxShadow: '0 0 8px rgba(34,197,94,0.7)',
+                      animation: 'pulse 2s ease-in-out infinite',
+                    }}
+                    title={ko ? '접속 중' : 'Online'}
+                  />
+                )}
               </div>
+              {(() => {
+                const canSeeFees = canViewFinance || m.user_id === user?.id
+                const Inner = (
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-semibold text-sm"
+                        style={hasLoggedIn ? { color: '#fff' } : { color: '#94a3b8' }}
+                        title={hasLoggedIn ? undefined : (ko ? '아직 한 번도 접속하지 않은 회원' : 'Never logged in')}>
+                        {lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}
+                      </span>
+                      {m.users?.name_abbr && (
+                        <span className="text-xs" style={{ color: hasLoggedIn ? '#9ca3af' : '#4b5563' }}>
+                          ({m.users.name_abbr})
+                        </span>
+                      )}
+                      {canSeeFees && (
+                        <span className="text-[9px] ml-0.5" style={{ color: '#7a9a7a' }}>
+                          {ko ? '· 회비내역' : '· fees'}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                      <RoleBadge role={m.role} ko={ko} active={hasLoggedIn} />
+                      {/* 회비 정보 — 임원·고문 또는 본인 한정 (일반 회원에게는 다른 사람 회비 정보 노출 X) */}
+                      {(canViewFinance || m.user_id === user?.id) && (
+                        <>
+                          {m.fee_type === 'annual'  && <span className="text-[11px] px-2 py-0.5 rounded-full bg-yellow-900/50 text-yellow-300">{ko ? '년회비' : 'Annual'}</span>}
+                          {m.fee_type === 'monthly' && <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-900/50  text-blue-300">{ko ? '월회비' : 'Monthly'}</span>}
+                        </>
+                      )}
+                      {m.club_handicap != null && <span className="text-[11px]" style={{ color: 'var(--gold-l)' }}>HC {m.club_handicap}</span>}
+                      {/* 납부완료·미납 뱃지 — 동일 권한 가드 (긍정/부정 정보 모두 본인·임원만) */}
+                      {(canViewFinance || m.user_id === user?.id) && feeStatusByUser[m.user_id] && (
+                        feeStatusByUser[m.user_id].paid
+                          ? <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-900/60 text-green-300">✓ {ko ? '납부완료' : 'Paid'}</span>
+                          : feeStatusByUser[m.user_id].feeType === 'annual'
+                            ? <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-900/60 text-red-300">{ko ? '연회비 미납' : 'Annual unpaid'}</span>
+                            : <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-900/60 text-red-300">
+                                {ko
+                                  ? `${feeStatusByUser[m.user_id].unpaidMonths.join(',')}월 미납`
+                                  : `Unpaid ${feeStatusByUser[m.user_id].unpaidMonths.join(',')}`}
+                              </span>
+                      )}
+                    </div>
+                  </div>
+                )
+                return canSeeFees
+                  ? <button type="button" onClick={() => openFeeHistory(m)}
+                      className="flex-1 min-w-0 text-left rounded-lg -mx-1 px-1 py-1 transition active:scale-[0.99] hover:bg-white/[0.03]">
+                      {Inner}
+                    </button>
+                  : Inner
+              })()}
               {canManage && (
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <button onClick={() => setQuickHcMember(m)} title={ko ? '핸디 수정' : 'Edit handicap'}
-                    className="text-gray-500 hover:text-green-400 transition">
-                    <GaugeCircle size={16} />
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <button onClick={() => setQuickHcMember(m)} title={ko ? '핸디 수정' : 'Edit HC'}
+                    className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 transition"
+                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--gold-l)'; (e.currentTarget as HTMLButtonElement).style.background = 'rgba(201,168,76,0.12)' }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = ''; (e.currentTarget as HTMLButtonElement).style.background = '' }}>
+                    <GaugeCircle size={15} />
                   </button>
-                  <button onClick={() => setEditMember(m)} title={ko ? '전체 수정' : 'Edit'}
-                    className="text-gray-500 hover:text-green-400 transition">
-                    <Edit2 size={16} />
+                  <button onClick={() => setEditMember(m)} title={ko ? '정보 수정' : 'Edit'}
+                    className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 transition"
+                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--gold-l)'; (e.currentTarget as HTMLButtonElement).style.background = 'rgba(201,168,76,0.12)' }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = ''; (e.currentTarget as HTMLButtonElement).style.background = '' }}>
+                    <Edit2 size={15} />
                   </button>
+                  {/* 탈퇴 처리: 본인 제외 */}
+                  {m.user_id !== user?.id && (
+                    <button onClick={() => setWithdrawTarget(m)} title={ko ? '탈퇴 처리' : 'Withdraw'}
+                      className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-400 hover:bg-red-900/20 transition">
+                      <UserMinus size={15} />
+                    </button>
+                  )}
                 </div>
               )}
             </div>
-          ))}
-          {members.length === 0 && <p className="text-center text-gray-600 py-8">{ko ? '회원이 없습니다' : 'No members'}</p>}
+          )})}
+          {members.length === 0 && (
+            <div className="glass-card rounded-2xl p-8 text-center">
+              <p className="text-gray-400">{ko ? '회원이 없습니다' : 'No members'}</p>
+            </div>
+          )}
         </div>
-      ) : (
+
+      ) : tab === 'pending' ? (
+
+        /* ── 가입 대기 ── */
         <div className="space-y-2">
-          {pending.map((m) => (
-            <div key={m.id} className="glass-card rounded-xl px-4 py-3">
+          {pending.map(m => (
+            <div key={m.id} className="glass-card rounded-2xl px-4 py-3">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center text-lg">👤</div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-white font-medium text-sm">{lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}</p>
-                  {m.users?.phone && <p className="text-gray-500 text-xs">{m.users.phone}</p>}
+                  <p className="text-white font-medium text-sm">
+                    {lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}
+                  </p>
+                  {m.users?.phone && <p className="text-gray-400 text-xs mt-0.5">{m.users.phone}</p>}
+                  <p className="text-[10px] text-gray-400 mt-0.5">
+                    {ko ? '가입 신청일:' : 'Applied:'} {new Date(m.created_at).toLocaleDateString(ko ? 'ko-KR' : 'en-US')}
+                  </p>
                 </div>
                 {canManage && (
                   <div className="flex gap-2 flex-shrink-0">
-                    <button onClick={() => approve(m.id)} className="bg-green-700 hover:bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg transition">
-                      {ko ? '승인' : 'Approve'}
+                    <button onClick={() => approve(m)}
+                      className="flex items-center gap-1 text-white text-xs px-3 py-1.5 rounded-lg transition"
+                      style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)' }}>
+                      <UserCheck size={12} />{ko ? '승인' : 'Approve'}
                     </button>
-                    <button onClick={() => reject(m.id)} className="bg-gray-800 hover:bg-red-900/50 text-gray-300 text-xs px-3 py-1.5 rounded-lg transition">
-                      {ko ? '거부' : 'Reject'}
+                    <button onClick={() => reject(m)}
+                      className="flex items-center gap-1 bg-gray-800 hover:bg-red-900/50 text-gray-300 hover:text-red-400 text-xs px-3 py-1.5 rounded-lg transition">
+                      <UserX size={12} />{ko ? '거부' : 'Reject'}
                     </button>
                   </div>
                 )}
               </div>
             </div>
           ))}
-          {pending.length === 0 && <p className="text-center text-gray-600 py-8">{ko ? '대기 중인 가입 신청이 없습니다' : 'No pending requests'}</p>}
+          {pending.length === 0 && (
+            <div className="glass-card rounded-2xl p-8 text-center">
+              <Clock size={28} className="mx-auto text-gray-400 mb-2" />
+              <p className="text-gray-400 text-sm">{ko ? '대기 중인 가입 신청이 없습니다' : 'No pending requests'}</p>
+            </div>
+          )}
+        </div>
+
+      ) : tab === 'withdrawn' ? (
+
+        /* ── 탈퇴 회원 (아카이브) ── */
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-900/15 border border-amber-700/20 mb-3">
+            <AlertTriangle size={13} className="text-amber-400 flex-shrink-0" />
+            <p className="text-[11px] text-amber-300">
+              {ko ? '탈퇴 회원의 모든 기록(스코어, 출석 등)은 보존됩니다.' : 'All records of withdrawn members are preserved.'}
+            </p>
+          </div>
+          {withdrawn.map(m => (
+            <div key={m.id} className="glass-card rounded-2xl px-4 py-3 opacity-75">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center text-lg flex-shrink-0">
+                  <UserX size={18} className="text-gray-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-gray-300 font-medium text-sm">
+                    {lang === 'ko' ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)}
+                    <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-gray-800 text-gray-400">{ko ? '탈퇴' : 'Withdrawn'}</span>
+                  </p>
+                  {m.withdrawn_at && (
+                    <p className="text-[10px] text-gray-400 mt-0.5">
+                      {ko ? '탈퇴일:' : 'Date:'} {new Date(m.withdrawn_at).toLocaleDateString(ko ? 'ko-KR' : 'en-US')}
+                    </p>
+                  )}
+                  {m.withdrawal_reason && (
+                    <p className="text-[10px] text-gray-400 mt-0.5">
+                      {ko ? '사유:' : 'Reason:'} {m.withdrawal_reason}
+                    </p>
+                  )}
+                </div>
+                {canManage && (
+                  <button onClick={() => {
+                    if (confirm(ko ? `${m.users?.full_name}님을 복권(재가입)하시겠습니까?` : `Reinstate ${m.users?.full_name}?`)) {
+                      reinstateMember(m)
+                    }
+                  }} title={ko ? '복권 (재가입)' : 'Reinstate'}
+                    className="flex items-center gap-1 text-xs text-teal-400 border border-teal-800/50 rounded-lg px-2 py-1.5 hover:bg-teal-900/20 transition flex-shrink-0">
+                    <RotateCcw size={12} />{ko ? '복권' : 'Reinstate'}
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+          {withdrawn.length === 0 && (
+            <div className="glass-card rounded-2xl p-8 text-center">
+              <p className="text-gray-400 text-sm">{ko ? '탈퇴한 회원이 없습니다' : 'No withdrawn members'}</p>
+            </div>
+          )}
+        </div>
+
+      ) : (
+
+        /* ── 활동 기록 (임원 전용) ── */
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-900/15 border border-blue-700/20 mb-3">
+            <History size={13} className="text-blue-400 flex-shrink-0" />
+            <p className="text-[11px] text-blue-300">
+              {ko ? '모든 역할 변경, 탈퇴, 승인 내역이 기록됩니다.' : 'All role changes, withdrawals, and approvals are logged.'}
+            </p>
+          </div>
+          {activityLog.map((log: any) => {
+            const actionEntry = ACTION_LABELS[log.action]
+            const actionLabel = actionEntry ? (ko ? actionEntry[0] : actionEntry[1]) : log.action
+            const oldLabel    = log.old_value ? (ROLE_MAP[log.old_value]?.[ko ? 0 : 1] ?? log.old_value) : null
+            const newLabel    = log.new_value ? (ROLE_MAP[log.new_value]?.[ko ? 0 : 1] ?? log.new_value) : null
+            return (
+              <div key={log.id} className="glass-card rounded-xl px-4 py-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-white font-medium">{log.users?.full_name ?? '—'}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {actionLabel}
+                      {oldLabel && newLabel ? ` · ${oldLabel} → ${newLabel}` : ''}
+                    </p>
+                    {log.note && <p className="text-[10px] text-gray-400 mt-0.5">{log.note}</p>}
+                    <p className="text-[10px] text-gray-400 mt-0.5">
+                      {ko ? '처리자:' : 'By:'} {log.actor?.full_name ?? '—'}
+                    </p>
+                  </div>
+                  <p className="text-[10px] text-gray-400 flex-shrink-0 mt-0.5">
+                    {new Date(log.created_at).toLocaleDateString(ko ? 'ko-KR' : 'en-US', { month: 'short', day: 'numeric' })}
+                  </p>
+                </div>
+              </div>
+            )
+          })}
+          {activityLog.length === 0 && (
+            <div className="glass-card rounded-2xl p-8 text-center">
+              <p className="text-gray-400 text-sm">{ko ? '활동 기록이 없습니다' : 'No activity yet'}</p>
+            </div>
+          )}
         </div>
       )}
 
+      {/* ── Modals ── */}
       {quickHcMember && (
-        <QuickHcModal
-          member={quickHcMember}
-          ko={ko}
-          onClose={() => setQuickHcMember(null)}
-          onSave={updateHc}
-        />
+        <QuickHcModal member={quickHcMember} ko={ko} onClose={() => setQuickHcMember(null)} onSave={updateHc} />
       )}
-
       {editMember && (
         <EditMemberModal
           member={editMember}
           ko={ko}
           myRole={myRole}
-          myMembershipId={myClubs.find((c) => c.id === currentClubId) as any}
           members={members}
           onClose={() => setEditMember(null)}
           onSave={updateMember}
           onDelegate={delegateRole}
         />
       )}
+      {withdrawTarget && (
+        <WithdrawModal
+          member={withdrawTarget}
+          ko={ko}
+          onClose={() => setWithdrawTarget(null)}
+          onConfirm={(reason: string) => withdrawMember(withdrawTarget, reason)}
+        />
+      )}
+      {showAddMember && currentClubId && (
+        <AddMemberModal
+          ko={ko}
+          clubId={currentClubId}
+          onClose={() => setShowAddMember(false)}
+          onSuccess={(result) => {
+            setAddSuccess(result)
+            setShowAddMember(false)
+            load()
+          }}
+        />
+      )}
+
+      {/* ━━ 개인 회비 내역 모달 — createPortal 로 body 직속 ━━━━━━━━━━━━━━━━ */}
+      {feeHistoryMember && typeof window !== 'undefined' && createPortal((() => {
+        const m = feeHistoryMember
+        const sym = clubFees.currency === 'VND' ? '₫' : clubFees.currency === 'IDR' ? 'Rp' : '₩'
+        const memberName = ko ? m.users?.full_name : (m.users?.full_name_en || m.users?.full_name)
+        const totalPaid = feeHistoryTxns.reduce((s, t) => s + Number(t.amount ?? 0), 0)
+        const status = feeStatusByUser[m.user_id]
+        const enteredAmt = parseInt((addPayForm.amount || '0').replace(/[^\d]/g,'')) || 0
+        return (
+          <div className="fixed inset-0 z-[9999] flex items-end justify-center"
+            style={{ background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(6px)' }}
+            onClick={() => setFeeHistoryMember(null)}>
+            <div className="w-full max-w-md rounded-t-2xl overflow-hidden flex flex-col"
+              style={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderBottom: 'none', maxHeight: '92dvh' }}
+              onClick={e => e.stopPropagation()}>
+
+              {/* 헤더 */}
+              <div className="flex items-center justify-between px-5 py-3 flex-shrink-0"
+                style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <Wallet size={16} className="text-green-400 flex-shrink-0" />
+                  <h3 className="text-base font-bold text-white truncate">
+                    {memberName} {ko ? '회비 내역' : 'Fee History'}
+                  </h3>
+                </div>
+                <button onClick={() => setFeeHistoryMember(null)}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 flex-shrink-0"
+                  style={{ background: 'rgba(255,255,255,0.05)' }}>
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* 본문 (스크롤) */}
+              <div className="flex-1 overflow-y-auto px-5 py-3 space-y-3 min-h-0">
+                {/* 요약 카드 */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-xl p-3" style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)' }}>
+                    <p className="text-[10px]" style={{ color: '#86efac' }}>{ko ? '올해 총 납부' : 'Paid YTD'}</p>
+                    <p className="text-base font-bold text-green-400 mt-0.5">{sym}{totalPaid.toLocaleString()}</p>
+                  </div>
+                  <div className="rounded-xl p-3" style={{ background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.25)' }}>
+                    <p className="text-[10px]" style={{ color: '#93c5fd' }}>{ko ? '회비 종류' : 'Fee Type'}</p>
+                    <p className="text-sm font-bold text-blue-300 mt-0.5">
+                      {m.fee_type === 'annual' ? (ko ? '년회비' : 'Annual')
+                       : m.fee_type === 'monthly' ? (ko ? '월회비' : 'Monthly')
+                       : (ko ? '면제' : 'Exempt')}
+                      {m.fee_type === 'monthly' && clubFees.monthly > 0 && (
+                        <span className="text-[10px] font-normal ml-1" style={{ color: '#94a3b8' }}>
+                          {sym}{clubFees.monthly.toLocaleString()}/{ko ? '월' : 'mo'}
+                        </span>
+                      )}
+                      {m.fee_type === 'annual' && clubFees.annual > 0 && (
+                        <span className="text-[10px] font-normal ml-1" style={{ color: '#94a3b8' }}>
+                          {sym}{clubFees.annual.toLocaleString()}/{ko ? '년' : 'yr'}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                {/* 미납 안내 (월회비) */}
+                {status && !status.paid && status.feeType === 'monthly' && status.unpaidMonths.length > 0 && (
+                  <div className="rounded-xl px-3 py-2" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)' }}>
+                    <p className="text-[11px] font-bold" style={{ color: '#fca5a5' }}>
+                      ❌ {ko ? '미납' : 'Unpaid'} :
+                      <span className="font-mono ml-1">{status.unpaidMonths.map(mm => `${mm}${ko ? '월' : ''}`).join(', ')}</span>
+                    </p>
+                  </div>
+                )}
+
+                {/* 거래 내역 */}
+                <div>
+                  <p className="text-[11px] font-bold mb-1.5" style={{ color: '#9ca3af' }}>
+                    {ko ? `납부 거래 (${feeHistoryTxns.length}건)` : `Transactions (${feeHistoryTxns.length})`}
+                  </p>
+                  {feeHistoryLoading ? (
+                    <p className="text-xs text-center py-4" style={{ color: '#94a3b8' }}>{ko ? '불러오는 중…' : 'Loading…'}</p>
+                  ) : feeHistoryTxns.length === 0 ? (
+                    <p className="text-xs text-center py-4" style={{ color: '#94a3b8' }}>{ko ? '아직 납부 기록이 없습니다.' : 'No payments yet.'}</p>
+                  ) : (
+                    <div className="rounded-xl overflow-hidden"
+                      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                      {feeHistoryTxns.map((t: any, i: number) => (
+                        <div key={t.id}
+                          className="px-3 py-2 flex items-center gap-2"
+                          style={{ borderTop: i > 0 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs text-white truncate">{t.description}</p>
+                            <p className="text-[10px]" style={{ color: '#94a3b8' }}>
+                              {t.transaction_date}
+                              {t.recorder?.full_name && <> · {ko ? '기록' : 'rec'}: {t.recorder.full_name}</>}
+                            </p>
+                          </div>
+                          <span className="text-xs font-bold text-green-400 flex-shrink-0">
+                            +{sym}{Number(t.amount).toLocaleString()}
+                          </span>
+                          {canManage && (
+                            <button onClick={() => deleteFeeTxn(t.id)}
+                              title={ko ? '삭제' : 'Delete'}
+                              className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                              style={{ background: 'rgba(239,68,68,0.10)', color: '#fca5a5' }}>
+                              <Trash2 size={12} />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 납부 추가 폼 — canManage 전용 */}
+                {canManage && (
+                  <div className="rounded-xl p-3 space-y-2.5"
+                    style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.25)' }}>
+                    <p className="text-xs font-bold flex items-center gap-1.5" style={{ color: '#86efac' }}>
+                      <Plus size={12} />{ko ? '회비 추가 납부' : 'Add Payment'}
+                    </p>
+                    {/* 빠른 금액 칩 */}
+                    {(clubFees.monthly > 0 || clubFees.annual > 0) && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {clubFees.monthly > 0 && [1,2,3,6].map(n => (
+                          <button key={`m${n}`} type="button"
+                            onClick={() => setAddPayForm(f => ({...f, amount: String(clubFees.monthly * n)}))}
+                            className="text-[10px] font-bold px-2 py-1 rounded-md active:scale-95"
+                            style={{ background: 'rgba(96,165,250,0.15)', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.35)' }}>
+                            {n}{ko ? '개월' : 'mo'} ({sym}{(clubFees.monthly*n/1000).toFixed(0)}K)
+                          </button>
+                        ))}
+                        {clubFees.annual > 0 && (
+                          <button type="button"
+                            onClick={() => setAddPayForm(f => ({...f, amount: String(clubFees.annual)}))}
+                            className="text-[10px] font-bold px-2 py-1 rounded-md active:scale-95"
+                            style={{ background: 'rgba(251,191,36,0.15)', color: '#fcd34d', border: '1px solid rgba(251,191,36,0.35)' }}>
+                            {ko ? '년회비' : 'Annual'}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px]" style={{ color: '#94a3b8' }}>{ko ? '금액' : 'Amount'} ({sym})</label>
+                        <input type="text" inputMode="numeric"
+                          value={addPayForm.amount ? Number((addPayForm.amount || '').replace(/[^\d]/g,'') || '0').toLocaleString() : ''}
+                          onChange={e => setAddPayForm(f => ({...f, amount: e.target.value.replace(/[^\d]/g,'')}))}
+                          placeholder="0"
+                          className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-2 text-white text-sm font-bold focus:outline-none focus:border-green-500" />
+                      </div>
+                      <div>
+                        <label className="text-[10px]" style={{ color: '#94a3b8' }}>{ko ? '날짜' : 'Date'}</label>
+                        <input type="date"
+                          value={addPayForm.date}
+                          onChange={e => setAddPayForm(f => ({...f, date: e.target.value}))}
+                          className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-2 text-white text-xs focus:outline-none focus:border-green-500" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[10px]" style={{ color: '#94a3b8' }}>{ko ? '메모 (선택)' : 'Note (optional)'}</label>
+                      <input type="text"
+                        value={addPayForm.note}
+                        onChange={e => setAddPayForm(f => ({...f, note: e.target.value}))}
+                        placeholder={m.fee_type === 'monthly' ? `${memberName} ${Number(addPayForm.date.slice(5,7))}월 회비 납부` : ''}
+                        className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-2 text-white text-xs focus:outline-none focus:border-green-500" />
+                    </div>
+                    {addPayError && (
+                      <p className="text-[11px]" style={{ color: '#fca5a5' }}>{addPayError}</p>
+                    )}
+                    <button onClick={addFeePayment}
+                      disabled={addPaySaving || enteredAmt <= 0}
+                      className="w-full py-2 rounded-lg text-xs font-bold disabled:opacity-50 active:scale-95"
+                      style={{ background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.5)', color: '#86efac' }}>
+                      {addPaySaving ? '...' : (ko ? `+ ${sym}${enteredAmt.toLocaleString()} 등록` : `+ Add ${sym}${enteredAmt.toLocaleString()}`)}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* 푸터 */}
+              <div className="px-5 py-3 flex-shrink-0"
+                style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
+                <button onClick={() => setFeeHistoryMember(null)}
+                  className="w-full py-2.5 rounded-xl text-sm"
+                  style={{ background: 'rgba(255,255,255,0.05)', color: '#9ca3af' }}>
+                  {ko ? '닫기' : 'Close'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })(), document.body)}
     </div>
   )
 }
 
-function QuickHcModal({ member, ko, onClose, onSave }: any) {
-  const [clubHc, setClubHc]       = useState(member.club_handicap     != null ? String(member.club_handicap)     : '')
-  const [personalHc, setPersonalHc] = useState(member.personal_handicap != null ? String(member.personal_handicap) : '')
+// ── CopyButton ─────────────────────────────────────────────────────────────
+function CopyButton({ text, ko }: { text: string; ko: boolean }) {
+  const [copied, setCopied] = useState(false)
+  async function doCopy() {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch { /* ignore */ }
+  }
+  return (
+    <button onClick={doCopy} title={ko ? '복사' : 'Copy'}
+      className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 transition">
+      {copied ? <CheckIcon size={12} className="text-green-400" /> : <Copy size={12} />}
+      {copied ? (ko ? '복사됨' : 'Copied') : (ko ? '복사' : 'Copy')}
+    </button>
+  )
+}
 
-  function handleSave() {
-    const c = clubHc.trim()     !== '' ? parseFloat(clubHc)     : null
-    const p = personalHc.trim() !== '' ? parseFloat(personalHc) : null
-    onSave(member.id, c, p)
+// ── AddMemberModal ─────────────────────────────────────────────────────────
+function generateTempPw() {
+  return `Golf@${Math.floor(1000 + Math.random() * 9000)}`
+}
+
+function AddMemberModal({ ko, clubId, onClose, onSuccess }: {
+  ko: boolean
+  clubId: string
+  onClose: () => void
+  onSuccess: (result: { email: string; tempPassword: string; full_name: string }) => void
+}) {
+  const [form, setForm] = useState({
+    full_name:    '',
+    full_name_en: '',
+    name_abbr:    '',
+    email:        '',
+    role:         'member',
+    tempPassword: generateTempPw(),
+  })
+  const [submitting, setSubmitting] = useState(false)
+  const [error,      setError]      = useState<string | null>(null)
+  const [pwCopied,   setPwCopied]   = useState(false)
+
+  async function copyPw() {
+    try { await navigator.clipboard.writeText(form.tempPassword); setPwCopied(true); setTimeout(() => setPwCopied(false), 2000) } catch { /* ignore */ }
   }
 
+  async function submit() {
+    setError(null)
+    if (!form.full_name.trim() || !form.email.trim()) {
+      setError(ko ? '이름과 이메일은 필수입니다' : 'Name and email are required')
+      return
+    }
+    if (!form.email.includes('@')) {
+      setError(ko ? '유효한 이메일을 입력하세요' : 'Enter a valid email')
+      return
+    }
+    setSubmitting(true)
+    try {
+      const res = await fetch('/api/admin/create-member', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...form, club_id: clubId }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error ?? (ko ? '오류가 발생했습니다' : 'An error occurred'))
+      } else {
+        onSuccess({ email: data.email, tempPassword: data.tempPassword, full_name: data.full_name })
+      }
+    } catch {
+      setError(ko ? '네트워크 오류' : 'Network error')
+    }
+    setSubmitting(false)
+  }
+
+  const roles = [
+    { v: 'president',      label: ko ? '회장'   : 'President' },
+    { v: 'vice_president', label: ko ? '부회장' : 'Vice Pres.' },
+    { v: 'secretary',      label: ko ? '총무'   : 'Secretary' },
+    { v: 'auditor',        label: ko ? '감사'   : 'Auditor' },
+    { v: 'advisor',        label: ko ? '고문'   : 'Advisor' },
+    { v: 'officer',        label: ko ? '임원'   : 'Officer' },
+    { v: 'member',         label: ko ? '회원'   : 'Member' },
+  ]
+
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-end z-[200]" onClick={onClose}>
-      <div className="bg-gray-900 rounded-t-3xl px-5 pt-4 pb-8 w-full" onClick={e => e.stopPropagation()}>
-        {/* handle */}
-        <div className="flex justify-center mb-4"><div className="w-10 h-1 bg-gray-700 rounded-full" /></div>
-        <div className="flex items-center gap-2 mb-4">
-          <GaugeCircle size={18} className="text-green-400" />
-          <h3 className="text-base font-bold text-white flex-1">
-            {ko ? '핸디캡 설정' : 'Set Handicap'}
-          </h3>
-          <span className="text-sm text-gray-400">{member.users?.full_name}</span>
+    <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-[300] px-4" onClick={onClose}>
+      <div className="bg-gray-900 rounded-3xl w-full max-w-md max-h-[92vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
+        {/* 헤더 */}
+        <div className="flex items-center gap-3 px-5 pt-5 pb-4 border-b border-gray-800">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)' }}>
+            <UserPlus size={16} className="text-white" />
+          </div>
+          <h2 className="text-base font-bold text-white flex-1">{ko ? '회원 추가' : 'Add Member'}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-white transition"><X size={18} /></button>
         </div>
 
-        <div className="space-y-3">
-          {/* Club HC */}
+        <div className="px-5 py-4 space-y-4">
+          {/* 한글 이름 (필수) */}
           <div>
-            <label className="text-xs text-gray-400 block mb-1.5">
-              {ko ? '클럽 핸디 (원례회 전용)' : 'Club Handicap (for this club)'}
-            </label>
-            <div className="flex items-center gap-2">
-              <button onClick={() => setClubHc(v => v === '' ? '' : String(Math.max(0, parseFloat(v||'0') - 1)))}
-                className="w-10 h-10 rounded-xl bg-gray-800 text-white text-lg font-bold hover:bg-gray-700 transition flex-shrink-0">−</button>
-              <input
-                type="number" step="1" min="0" max="54" value={clubHc}
-                onChange={e => setClubHc(e.target.value)}
-                placeholder="0"
-                className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-center text-xl font-bold"
-              />
-              <button onClick={() => setClubHc(v => String(parseFloat(v||'0') + 1))}
-                className="w-10 h-10 rounded-xl bg-gray-800 text-white text-lg font-bold hover:bg-gray-700 transition flex-shrink-0">+</button>
-            </div>
-            {/* Quick presets */}
-            <div className="flex gap-1.5 mt-2 flex-wrap">
-              {[0,5,9,12,15,18,21,24,27,36].map(n => (
-                <button key={n} onClick={() => setClubHc(String(n))}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${clubHc === String(n) ? 'bg-green-700 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
-                  {n}
-                </button>
-              ))}
-            </div>
+            <label className="text-xs text-gray-400 block mb-1.5">{ko ? '한글 이름 *' : 'Korean Name *'}</label>
+            <input
+              type="text"
+              value={form.full_name}
+              onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))}
+              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-yellow-600/60"
+              placeholder={ko ? '예: 홍길동' : 'e.g. 홍길동'}
+              autoFocus
+            />
           </div>
 
-          {/* Personal HC */}
+          {/* 영문 이름 */}
           <div>
-            <label className="text-xs text-gray-400 block mb-1.5">
-              {ko ? '공식 핸디 (WHS/국제)' : 'Official Handicap Index (WHS)'}
-            </label>
-            <div className="flex items-center gap-2">
-              <button onClick={() => setPersonalHc(v => v === '' ? '' : String(Math.max(0, parseFloat(v||'0') - 1)))}
-                className="w-10 h-10 rounded-xl bg-gray-800 text-white text-lg font-bold hover:bg-gray-700 transition flex-shrink-0">−</button>
-              <input
-                type="number" step="0.1" min="0" max="54" value={personalHc}
-                onChange={e => setPersonalHc(e.target.value)}
-                placeholder="0.0"
-                className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-center text-xl font-bold"
-              />
-              <button onClick={() => setPersonalHc(v => String((parseFloat(v||'0') + 0.1).toFixed(1)))}
-                className="w-10 h-10 rounded-xl bg-gray-800 text-white text-lg font-bold hover:bg-gray-700 transition flex-shrink-0">+</button>
-            </div>
+            <label className="text-xs text-gray-400 block mb-1.5">{ko ? '영문 이름' : 'English Name'}</label>
+            <input
+              type="text"
+              value={form.full_name_en}
+              onChange={e => setForm(f => ({ ...f, full_name_en: e.target.value }))}
+              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-yellow-600/60"
+              placeholder="Hong Gil-dong"
+            />
           </div>
 
+          {/* 약자 */}
+          <div>
+            <label className="text-xs text-gray-400 block mb-1.5">{ko ? '약자 · 이니셜' : 'Abbreviation'}</label>
+            <input
+              type="text"
+              value={form.name_abbr}
+              onChange={e => setForm(f => ({ ...f, name_abbr: e.target.value }))}
+              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-yellow-600/60"
+              placeholder={ko ? '예: 홍GD' : 'e.g. HGD'}
+            />
+          </div>
+
+          {/* 이메일 (필수) */}
+          <div>
+            <label className="text-xs text-gray-400 block mb-1.5">{ko ? '이메일 *' : 'Email *'}</label>
+            <input
+              type="email"
+              value={form.email}
+              onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-yellow-600/60"
+              placeholder="member@example.com"
+              autoComplete="off"
+            />
+          </div>
+
+          {/* 역할 */}
+          <div>
+            <label className="text-xs text-gray-400 block mb-1.5">{ko ? '역할' : 'Role'}</label>
+            <select
+              value={form.role}
+              onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
+              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm outline-none"
+              style={{ colorScheme: 'dark' }}
+            >
+              {roles.map(r => <option key={r.v} value={r.v}>{r.label}</option>)}
+            </select>
+          </div>
+
+          {/* 임시 비밀번호 */}
+          <div>
+            <label className="text-xs text-gray-400 block mb-1.5">{ko ? '임시 비밀번호' : 'Temp Password'}</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={form.tempPassword}
+                onChange={e => setForm(f => ({ ...f, tempPassword: e.target.value }))}
+                className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm font-mono outline-none focus:border-yellow-600/60"
+              />
+              <button
+                type="button"
+                onClick={copyPw}
+                title={ko ? '복사' : 'Copy'}
+                className="px-3 rounded-xl bg-gray-800 border border-gray-700 text-gray-400 hover:text-white transition flex-shrink-0"
+              >
+                {pwCopied ? <CheckIcon size={15} className="text-green-400" /> : <Copy size={15} />}
+              </button>
+              <button
+                type="button"
+                onClick={() => setForm(f => ({ ...f, tempPassword: generateTempPw() }))}
+                title={ko ? '새로 생성' : 'Regenerate'}
+                className="px-3 rounded-xl bg-gray-800 border border-gray-700 text-gray-400 hover:text-white transition text-xs flex-shrink-0"
+              >
+                {ko ? '새로' : 'New'}
+              </button>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-1">{ko ? '회원이 처음 로그인 후 변경할 수 있습니다' : 'Member can change this after first login'}</p>
+          </div>
+
+          {/* 에러 */}
+          {error && (
+            <div className="rounded-xl bg-red-900/30 border border-red-700/40 px-3 py-2.5 text-xs text-red-300">
+              {error}
+            </div>
+          )}
+
+          {/* 버튼 */}
           <div className="flex gap-3 pt-1">
-            <button onClick={onClose} className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 font-medium">
+            <button onClick={onClose} className="flex-1 py-3.5 rounded-xl bg-gray-800 text-gray-300 font-medium text-sm">
               {ko ? '취소' : 'Cancel'}
             </button>
-            <button onClick={handleSave} className="flex-1 py-3 rounded-xl bg-green-700 text-white font-bold">
-              {ko ? '저장' : 'Save'}
+            <button
+              onClick={submit}
+              disabled={submitting}
+              className="flex-1 py-3.5 rounded-xl text-white font-bold text-sm transition active:scale-95 disabled:opacity-50"
+              style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)' }}
+            >
+              {submitting ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin inline-block" />
+                  {ko ? '생성 중...' : 'Creating...'}
+                </span>
+              ) : (ko ? '계정 생성' : 'Create Account')}
             </button>
           </div>
         </div>
@@ -300,103 +1151,178 @@ function QuickHcModal({ member, ko, onClose, onSave }: any) {
   )
 }
 
-function EditMemberModal({ member, ko, myRole, members, onClose, onSave, onDelegate }: any) {
-  const [clubHc, setClubHc] = useState(member.club_handicap ?? '')
-  const [personalHc, setPersonalHc] = useState(member.personal_handicap ?? '')
-  const [role, setRole] = useState(member.role)
-  const [feeType, setFeeType] = useState<string>(member.fee_type ?? '')
-  const [showDelegate, setShowDelegate] = useState(false)
-  const [delegateRole, setDelegateRole] = useState(myRole)
-  const { currentClubId, myClubs } = useAuthStore()
-  const myMembershipId = myClubs.find((c) => c.id === currentClubId)
-
-  const isSelf = member.user_id === useAuthStore.getState().user?.id
-  const canDelegate = ['president', 'secretary'].includes(myRole) && !isSelf
-
-  const roles = Object.entries(ROLE_MAP).map(([value, [ko, en]]) => ({ value, ko, en }))
+// ── QuickHcModal ───────────────────────────────────────────────────────────
+function QuickHcModal({ member, ko, onClose, onSave }: any) {
+  const [clubHc,     setClubHc]     = useState(member.club_handicap     != null ? String(member.club_handicap)     : '')
+  const [personalHc, setPersonalHc] = useState(member.personal_handicap != null ? String(member.personal_handicap) : '')
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-end z-[200]" onClick={onClose}>
-      <div className="bg-gray-900 rounded-t-3xl p-6 w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-bold text-white mb-4">
-          {member.users?.full_name} {ko ? '수정' : 'Edit'}
-        </h3>
-        <div className="space-y-4">
-          {/* 역할 */}
+      <div className="bg-gray-900 rounded-t-3xl px-5 pt-4 pb-8 w-full" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-center mb-4"><div className="w-10 h-1 bg-gray-700 rounded-full" /></div>
+        <div className="flex items-center gap-2 mb-4">
+          <GaugeCircle size={18} style={{ color: 'var(--gold-l)' }} />
+          <h3 className="text-base font-bold text-white flex-1">{ko ? '핸디캡 설정' : 'Set Handicap'}</h3>
+          <span className="text-sm text-gray-400">{member.users?.full_name}</span>
+        </div>
+        <div className="space-y-3">
           <div>
-            <label className="text-sm text-gray-400 block mb-1">{ko ? '역할' : 'Role'}</label>
-            <select value={role} onChange={(e) => setRole(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white">
-              {roles.map((r) => <option key={r.value} value={r.value}>{ko ? r.ko : r.en}</option>)}
-            </select>
-          </div>
-
-          {/* 회비 유형 */}
-          <div>
-            <label className="text-sm text-gray-400 block mb-2">{ko ? '회비 유형' : 'Fee Type'}</label>
-            <div className="flex gap-2">
-              {[
-                { v: '', label: ko ? '미지정' : 'Not Set' },
-                { v: 'annual', label: ko ? '년회비' : 'Annual' },
-                { v: 'monthly', label: ko ? '월회비' : 'Monthly' },
-              ].map(({ v, label }) => (
-                <button key={v} type="button" onClick={() => setFeeType(v)}
-                  className={`flex-1 py-2 rounded-xl text-sm transition ${
-                    feeType === v
-                      ? v === 'annual' ? 'bg-yellow-700 text-white'
-                        : v === 'monthly' ? 'bg-blue-700 text-white'
-                        : 'bg-gray-600 text-white'
-                      : 'bg-gray-800 text-gray-400'
-                  }`}>
-                  {label}
+            <label className="text-xs text-gray-400 block mb-1.5">{ko ? '클럽 핸디 (원례회 전용)' : 'Club Handicap'}</label>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setClubHc(v => v === '' ? '0' : String(Math.max(0, parseFloat(v) - 1)))}
+                className="w-10 h-10 rounded-xl bg-gray-800 text-white text-lg font-bold hover:bg-gray-700 transition flex-shrink-0">−</button>
+              <input type="number" step="1" min="0" max="54" value={clubHc} onChange={e => setClubHc(e.target.value)} placeholder="0"
+                className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-center text-xl font-bold" />
+              <button onClick={() => setClubHc(v => String(parseFloat(v || '0') + 1))}
+                className="w-10 h-10 rounded-xl bg-gray-800 text-white text-lg font-bold hover:bg-gray-700 transition flex-shrink-0">+</button>
+            </div>
+            <div className="flex gap-1.5 mt-2 flex-wrap">
+              {[0, 5, 9, 12, 15, 18, 21, 24, 27, 36].map(n => (
+                <button key={n} onClick={() => setClubHc(String(n))}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${clubHc === String(n) ? 'text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
+                  style={clubHc === String(n) ? { background: 'linear-gradient(135deg,#c9a84c,#a07830)' } : undefined}>
+                  {n}
                 </button>
               ))}
             </div>
           </div>
-
-          {/* 핸디캡 */}
           <div>
-            <label className="text-sm text-gray-400 block mb-1">{ko ? '클럽 핸디' : 'Club Handicap'}</label>
-            <input type="number" step="0.1" value={clubHc} onChange={(e) => setClubHc(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white" placeholder="0.0" />
+            <label className="text-xs text-gray-400 block mb-1.5">{ko ? '공식 핸디 (WHS/국제)' : 'Official Handicap (WHS)'}</label>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setPersonalHc(v => v === '' ? '0' : String(Math.max(0, parseFloat(v) - 1).toFixed(1)))}
+                className="w-10 h-10 rounded-xl bg-gray-800 text-white text-lg font-bold hover:bg-gray-700 transition flex-shrink-0">−</button>
+              <input type="number" step="0.1" min="0" max="54" value={personalHc} onChange={e => setPersonalHc(e.target.value)} placeholder="0.0"
+                className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-center text-xl font-bold" />
+              <button onClick={() => setPersonalHc(v => (parseFloat(v || '0') + 0.1).toFixed(1))}
+                className="w-10 h-10 rounded-xl bg-gray-800 text-white text-lg font-bold hover:bg-gray-700 transition flex-shrink-0">+</button>
+            </div>
           </div>
+          <div className="flex gap-3 pt-1">
+            <button onClick={onClose} className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 font-medium">{ko ? '취소' : 'Cancel'}</button>
+            <button onClick={() => onSave(member.id, clubHc !== '' ? parseFloat(clubHc) : null, personalHc !== '' ? parseFloat(personalHc) : null)}
+              className="flex-1 py-3 rounded-xl text-white font-bold" style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)' }}>{ko ? '저장' : 'Save'}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── EditMemberModal ────────────────────────────────────────────────────────
+function EditMemberModal({ member, ko, myRole, members, onClose, onSave, onDelegate }: any) {
+  const [clubHc,       setClubHc]       = useState(member.club_handicap     != null ? String(member.club_handicap)     : '')
+  const [personalHc,   setPersonalHc]   = useState(member.personal_handicap != null ? String(member.personal_handicap) : '')
+  const [role,         setRole]         = useState(member.role)
+  const [feeType,      setFeeType]      = useState<string>(member.fee_type ?? '')
+  const [showDelegate, setShowDelegate] = useState(false)
+  const [delegateRole, setDelegateRoleVal] = useState<string>(myRole)
+
+  const { currentClubId, myClubs } = useAuthStore()
+  const isSelf      = member.user_id === useAuthStore.getState().user?.id
+  const canDelegate = ['president', 'secretary'].includes(myRole) && !isSelf
+
+  // Role change buttons
+  const officerRoles = [
+    { v: 'member',         label: ko ? '회원'   : 'Member',     color: 'bg-gray-700 text-gray-300'          },
+    { v: 'associate',      label: ko ? '준회원' : 'Associate',  color: 'bg-cyan-800 text-cyan-300'          },
+    { v: 'guest',          label: ko ? '게스트' : 'Guest',      color: 'bg-slate-700 text-slate-300'        },
+    { v: 'officer',        label: ko ? '임원'   : 'Officer',    color: 'bg-purple-800 text-purple-300'      },
+    { v: 'auditor',        label: ko ? '감사'   : 'Auditor',    color: 'bg-red-800 text-red-300'            },
+    { v: 'advisor',        label: ko ? '고문'   : 'Advisor',    color: 'bg-teal-800 text-teal-300'          },
+    { v: 'vice_president', label: ko ? '부회장' : 'Vice Pres.', color: 'bg-orange-800 text-orange-300'      },
+  ]
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-end z-[200]" onClick={onClose}>
+      <div className="bg-gray-900 rounded-t-3xl px-6 pt-6 modal-sheet-pb w-full max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-center mb-4"><div className="w-10 h-1 bg-gray-700 rounded-full" /></div>
+        <div className="flex items-center gap-2 mb-5">
+          <Shield size={16} style={{ color: 'var(--gold-l)' }} />
+          <h3 className="text-base font-bold text-white flex-1">{member.users?.full_name} {ko ? '수정' : '— Edit'}</h3>
+        </div>
+
+        <div className="space-y-5">
+          {/* ── 역할 지정 ── */}
           <div>
-            <label className="text-sm text-gray-400 block mb-1">{ko ? '개인 핸디' : 'Personal Handicap'}</label>
-            <input type="number" step="0.1" value={personalHc} onChange={(e) => setPersonalHc(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white" placeholder="0.0" />
+            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider block mb-2">
+              {ko ? '역할 지정' : 'Assign Role'}
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {officerRoles.map(r => (
+                <button key={r.v} type="button" onClick={() => setRole(r.v)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition border ${
+                    role === r.v
+                      ? `${r.color} border-current opacity-100 ring-1 ring-white/20`
+                      : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-gray-300'
+                  }`}>
+                  {r.label}
+                </button>
+              ))}
+            </div>
+            {role !== member.role && (
+              <p className="text-[10px] text-amber-400 mt-1.5">
+                ⚠ {ko ? `역할이 변경됩니다: ${ROLE_MAP[member.role]?.[0] ?? member.role} → ${ROLE_MAP[role]?.[0] ?? role}` : `Role will change: ${ROLE_MAP[member.role]?.[1] ?? member.role} → ${ROLE_MAP[role]?.[1] ?? role}`}
+              </p>
+            )}
           </div>
 
-          {/* 저장/취소 */}
-          <div className="flex gap-3 pt-2">
-            <button onClick={onClose} className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300">{ko ? '취소' : 'Cancel'}</button>
-            <button onClick={() => onSave(member.id, parseFloat(clubHc) || 0, parseFloat(personalHc) || 0, role, feeType || null)}
-              className="flex-1 py-3 rounded-xl bg-green-700 text-white font-semibold">{ko ? '저장' : 'Save'}</button>
+          {/* ── 회비 유형 ── */}
+          <div>
+            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider block mb-2">{ko ? '회비 유형' : 'Fee Type'}</label>
+            <div className="flex gap-2">
+              {[{ v: '', label: ko ? '미지정' : 'Not Set' }, { v: 'annual', label: ko ? '년회비' : 'Annual' }, { v: 'monthly', label: ko ? '월회비' : 'Monthly' }].map(({ v, label }) => (
+                <button key={v} type="button" onClick={() => setFeeType(v)}
+                  className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition ${
+                    feeType === v
+                      ? v === 'annual' ? 'bg-yellow-700 text-white' : v === 'monthly' ? 'bg-blue-700 text-white' : 'bg-gray-600 text-white'
+                      : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                  }`}>{label}</button>
+              ))}
+            </div>
           </div>
 
-          {/* 역할 위임 섹션 */}
+          {/* ── 핸디캡 ── */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-gray-400 block mb-1.5">{ko ? '클럽 핸디' : 'Club HC'}</label>
+              <input type="number" step="0.1" value={clubHc} onChange={e => setClubHc(e.target.value)} placeholder="0.0"
+                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-center font-bold" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 block mb-1.5">{ko ? '개인 핸디 (WHS)' : 'Personal HC'}</label>
+              <input type="number" step="0.1" value={personalHc} onChange={e => setPersonalHc(e.target.value)} placeholder="0.0"
+                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white text-center font-bold" />
+            </div>
+          </div>
+
+          {/* ── 저장/취소 ── */}
+          <div className="flex gap-3">
+            <button onClick={onClose} className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 font-medium">{ko ? '취소' : 'Cancel'}</button>
+            <button onClick={() => onSave(member.id, clubHc !== '' ? parseFloat(clubHc) : null, personalHc !== '' ? parseFloat(personalHc) : null, role, feeType || null)}
+              className="flex-1 py-3 rounded-xl text-white font-bold" style={{ background: 'linear-gradient(135deg,#c9a84c,#a07830)' }}>{ko ? '저장' : 'Save'}</button>
+          </div>
+
+          {/* ── 역할 위임 (회장/총무 → 다른 회원) ── */}
           {canDelegate && (
             <div className="border-t border-gray-800 pt-4">
               {!showDelegate ? (
                 <button onClick={() => setShowDelegate(true)}
                   className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-orange-800/60 text-orange-400 text-sm hover:bg-orange-900/20 transition">
-                  <ShieldCheck size={15} />
-                  {ko ? '역할 위임' : 'Delegate Role'}
+                  <ShieldCheck size={15} />{ko ? '회장/총무 직책 위임' : 'Delegate President/Secretary'}
                 </button>
               ) : (
                 <div className="space-y-3 bg-orange-900/10 border border-orange-800/40 rounded-xl p-4">
-                  <p className="text-sm font-semibold text-orange-300">
-                    {ko ? '역할 위임' : 'Delegate Role'}
-                  </p>
+                  <p className="text-sm font-semibold text-orange-300">{ko ? '직책 위임' : 'Delegate Role'}</p>
                   <p className="text-xs text-gray-400">
                     {ko
                       ? `${member.users?.full_name}님에게 내 역할을 위임합니다. 나의 역할은 임원으로 변경됩니다.`
-                      : `Delegate your role to ${member.users?.full_name}. Your role will change to Officer.`}
+                      : `Delegate your role to ${member.users?.full_name}. Your role will become Officer.`}
                   </p>
                   <div>
                     <label className="text-xs text-gray-400 block mb-1">{ko ? '위임할 역할' : 'Role to delegate'}</label>
-                    <select value={delegateRole} onChange={(e) => setDelegateRole(e.target.value)}
+                    <select value={delegateRole} onChange={e => setDelegateRoleVal(e.target.value)}
                       className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-white text-sm">
-                      {['president', 'secretary'].map((r) => (
+                      {['president', 'secretary'].map(r => (
                         <option key={r} value={r}>{ko ? ROLE_MAP[r][0] : ROLE_MAP[r][1]}</option>
                       ))}
                     </select>
@@ -404,17 +1330,14 @@ function EditMemberModal({ member, ko, myRole, members, onClose, onSave, onDeleg
                   <div className="flex gap-2">
                     <button onClick={() => setShowDelegate(false)}
                       className="flex-1 py-2 rounded-xl bg-gray-800 text-gray-300 text-sm">{ko ? '취소' : 'Cancel'}</button>
-                    <button
-                      onClick={() => {
-                        if (confirm(ko
-                          ? `정말로 ${member.users?.full_name}님에게 ${ROLE_MAP[delegateRole][0]} 역할을 위임하시겠습니까?`
-                          : `Delegate ${ROLE_MAP[delegateRole][1]} to ${member.users?.full_name}?`
-                        )) {
-                          const myM = members.find((m: any) => m.user_id === useAuthStore.getState().user?.id)
-                          if (myM) onDelegate(member.id, delegateRole, myM.id)
-                        }
-                      }}
-                      className="flex-1 py-2 rounded-xl bg-orange-700 text-white text-sm font-semibold">
+                    <button onClick={() => {
+                      if (confirm(ko
+                        ? `정말로 ${member.users?.full_name}님에게 ${ROLE_MAP[delegateRole][0]} 직책을 위임하시겠습니까?`
+                        : `Delegate ${ROLE_MAP[delegateRole][1]} to ${member.users?.full_name}?`)) {
+                        const myM = members.find((m: any) => m.user_id === useAuthStore.getState().user?.id)
+                        if (myM) onDelegate(member.id, delegateRole, myM.id)
+                      }
+                    }} className="flex-1 py-2 rounded-xl bg-orange-700 text-white text-sm font-semibold">
                       {ko ? '위임 확정' : 'Confirm'}
                     </button>
                   </div>
@@ -423,6 +1346,82 @@ function EditMemberModal({ member, ko, myRole, members, onClose, onSave, onDeleg
             </div>
           )}
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ── WithdrawModal ──────────────────────────────────────────────────────────
+function WithdrawModal({ member, ko, onClose, onConfirm }: any) {
+  const [reason,   setReason]   = useState('')
+  const [step,     setStep]     = useState<1 | 2>(1)   // 2-step confirmation
+
+  const name = member.users?.full_name ?? '—'
+
+  return (
+    <div className="fixed inset-0 bg-black/80 flex items-end z-[200]" onClick={onClose}>
+      <div className="bg-gray-900 rounded-t-3xl px-6 pt-5 pb-8 w-full" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-center mb-4"><div className="w-10 h-1 bg-gray-700 rounded-full" /></div>
+
+        {/* 경고 아이콘 */}
+        <div className="flex flex-col items-center gap-2 mb-5">
+          <div className="w-14 h-14 rounded-full bg-red-900/30 border border-red-700/40 flex items-center justify-center">
+            <UserMinus size={24} className="text-red-400" />
+          </div>
+          <h3 className="text-base font-bold text-white">{ko ? '회원 탈퇴 처리' : 'Withdraw Member'}</h3>
+          <p className="text-sm text-red-400 font-semibold">{name}</p>
+        </div>
+
+        {step === 1 ? (
+          <div className="space-y-4">
+            {/* 안내 */}
+            <div className="bg-green-900/15 border border-green-800/30 rounded-xl px-4 py-3">
+              <p className="text-xs text-green-300 font-semibold mb-1">✅ {ko ? '데이터 보전 정책' : 'Data Preservation Policy'}</p>
+              <p className="text-[11px] text-gray-400 leading-relaxed">
+                {ko
+                  ? '탈퇴 처리 후에도 해당 회원의 스코어 기록, 모임 참석 기록, 재무 내역 등 모든 과거 데이터는 영구 보존됩니다. 탈퇴는 클럽 접근을 차단하며 기록은 삭제되지 않습니다.'
+                  : 'All historical data (scores, attendance, finances) will be permanently preserved after withdrawal. Withdrawal only revokes club access — records are never deleted.'}
+              </p>
+            </div>
+
+            {/* 사유 입력 */}
+            <div>
+              <label className="text-xs text-gray-400 block mb-1.5">{ko ? '탈퇴 사유 (선택)' : 'Withdrawal reason (optional)'}</label>
+              <textarea value={reason} onChange={e => setReason(e.target.value)} rows={2}
+                placeholder={ko ? '예: 본인 요청, 장기 미활동 등' : 'e.g. Personal request, long inactivity'}
+                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm resize-none" />
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={onClose} className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 font-medium">{ko ? '취소' : 'Cancel'}</button>
+              <button onClick={() => setStep(2)} className="flex-1 py-3 rounded-xl bg-red-800 text-white font-bold">
+                {ko ? '다음 →' : 'Next →'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* 최종 확인 */}
+            <div className="bg-red-900/20 border border-red-700/40 rounded-xl px-4 py-4 text-center">
+              <p className="text-red-300 font-bold text-sm mb-1">
+                {ko ? '최종 확인' : 'Final Confirmation'}
+              </p>
+              <p className="text-gray-300 text-sm">
+                {ko ? `"${name}" 회원을 탈퇴 처리하시겠습니까?` : `Withdraw "${name}" from the club?`}
+              </p>
+              {reason && (
+                <p className="text-[11px] text-gray-400 mt-2">{ko ? '사유:' : 'Reason:'} {reason}</p>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setStep(1)} className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 font-medium">← {ko ? '이전' : 'Back'}</button>
+              <button onClick={() => onConfirm(reason)}
+                className="flex-1 py-3 rounded-xl bg-red-700 hover:bg-red-600 text-white font-bold transition">
+                {ko ? '탈퇴 확정' : 'Confirm Withdraw'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

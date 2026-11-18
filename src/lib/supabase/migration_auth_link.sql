@@ -17,7 +17,8 @@ begin
   on conflict (id) do nothing;
   return new;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer
+set search_path = pg_catalog, public, pg_temp;
 
 create trigger on_auth_user_created
   after insert on auth.users
@@ -30,7 +31,8 @@ begin
   values (new.id, '전체 채팅', 'Club Chat', 'club_wide');
   return new;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer
+set search_path = pg_catalog, public, pg_temp;
 
 create trigger on_club_created
   after insert on public.clubs

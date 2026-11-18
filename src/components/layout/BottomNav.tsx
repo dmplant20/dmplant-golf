@@ -1,8 +1,8 @@
 'use client'
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { Home, Users, Wallet, CalendarDays, MessageCircle, MoreHorizontal } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
+import { useChatNotify } from '@/lib/chatNotifications'
 
 const NAV = [
   { href: '/dashboard', icon: Home,          ko: '홈',    en: 'Home' },
@@ -13,35 +13,86 @@ const NAV = [
   { href: '/more',      icon: MoreHorizontal, ko: '더보기', en: 'More' },
 ]
 
+// 게스트가 접근 가능한 경로 — 홈 / 회원 / 모임 / 채팅 / 더보기 (재무만 제외)
+const GUEST_NAV_HREFS = new Set(['/dashboard', '/members', '/meetings', '/chat', '/more'])
+
 export default function BottomNav() {
   const pathname = usePathname()
-  const lang = useAuthStore(s => s.lang)
+  const router   = useRouter()
+  const lang     = useAuthStore(s => s.lang)
+  const { myClubs, currentClubId } = useAuthStore()
+  const myRole   = myClubs.find(c => c.id === currentClubId)?.role ?? 'member'
+  const isGuest  = myRole === 'guest'
+  const items    = isGuest ? NAV.filter(n => GUEST_NAV_HREFS.has(n.href)) : NAV
+  const chatUnread = useChatNotify(s => s.totalUnread)
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bottom-nav px-3 pb-2">
-      <div className="rounded-2xl px-2 py-1.5 flex items-center justify-around"
+      <div
+        className="rounded-2xl px-2 py-2 flex items-center justify-around"
         style={{
-          background: 'rgba(10,18,10,0.94)',
-          backdropFilter: 'blur(24px)',
-          border: '1px solid rgba(34,197,94,0.14)',
-          boxShadow: '0 -4px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(34,197,94,0.04)',
-        }}>
-        {NAV.map(({ href, icon: Icon, ko, en }) => {
+          background: 'var(--bg-2)',
+          border: '1px solid var(--border)',
+          boxShadow: '0 -1px 0 rgba(201,168,76,0.08), 0 -8px 32px rgba(0,0,0,0.6)',
+        }}
+      >
+        {items.map(({ href, icon: Icon, ko, en }) => {
           const active = pathname.startsWith(href)
           return (
-            <Link key={href} href={href}
-              className="flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-xl transition-all duration-150"
-              style={active ? { background: 'rgba(22,163,74,0.18)' } : {}}>
-              <Icon
-                size={21}
-                strokeWidth={active ? 2.5 : 1.6}
-                style={{ color: active ? '#22c55e' : '#4a6a4a', transition: 'color 0.15s' }}
-              />
-              <span className="text-[9.5px] font-semibold transition-colors duration-150"
-                style={{ color: active ? '#22c55e' : '#4a6a4a' }}>
+            <button
+              key={href}
+              onClick={() => router.push(href)}
+              className="relative flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-all duration-150"
+              style={active ? { background: 'rgba(201,168,76,0.10)' } : undefined}
+            >
+              {/* 활성 인디케이터 라인 — 골드 */}
+              {active && (
+                <span
+                  className="absolute top-0 left-1/2"
+                  style={{
+                    width: 22,
+                    height: 2,
+                    borderRadius: 1,
+                    background: 'linear-gradient(90deg, transparent, #e8c96d, transparent)',
+                    transform: 'translateX(-50%)',
+                  }}
+                />
+              )}
+
+              <div className="relative">
+                <Icon
+                  size={22}
+                  strokeWidth={active ? 2.5 : 1.6}
+                  style={{
+                    color: active ? '#e8c96d' : '#9090a8',
+                    transition: 'color 0.15s',
+                  }}
+                />
+                {/* 채팅 미확인 카운트 배지 */}
+                {href === '/chat' && chatUnread > 0 && (
+                  <span
+                    className="absolute -top-1.5 -right-2 text-[9px] font-bold rounded-full flex items-center justify-center"
+                    style={{
+                      background: '#dc2626',
+                      color: 'white',
+                      minWidth: 16,
+                      height: 16,
+                      padding: '0 4px',
+                      border: '1.5px solid var(--bg-2)',
+                    }}
+                  >
+                    {chatUnread > 99 ? '99+' : chatUnread}
+                  </span>
+                )}
+              </div>
+
+              <span
+                className="text-[10px] font-semibold transition-colors duration-150"
+                style={{ color: active ? '#e8c96d' : '#9090a8' }}
+              >
                 {lang === 'ko' ? ko : en}
               </span>
-            </Link>
+            </button>
           )
         })}
       </div>

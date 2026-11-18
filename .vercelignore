@@ -1,0 +1,5 @@
+# Vercel(Next.js) 빌드는 네이티브 폴더가 필요 없음 — 제외해 빌드 가볍게/안전하게
+android/
+ios/
+assets/
+capacitor.config.ts

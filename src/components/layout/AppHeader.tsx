@@ -1,56 +1,123 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuthStore } from '@/stores/authStore'
 import { ChevronDown, Bell, Globe, Check } from 'lucide-react'
+import NotificationsPanel from './NotificationsPanel'
+import { createClient } from '@/lib/supabase/client'
 
 const ROLE_KO: Record<string, string> = {
   president: '회장', vice_president: '부회장', secretary: '총무',
   auditor: '감사', advisor: '고문', officer: '임원', member: '회원',
 }
 const ROLE_COLOR: Record<string, string> = {
-  president: 'text-amber-400 bg-amber-900/40',
-  vice_president: 'text-orange-400 bg-orange-900/40',
-  secretary: 'text-blue-400 bg-blue-900/40',
-  auditor: 'text-red-400 bg-red-900/40',
-  advisor: 'text-teal-400 bg-teal-900/40',
-  officer: 'text-purple-400 bg-purple-900/40',
-  member: 'text-gray-400 bg-gray-800/60',
+  president:      'text-amber-300 bg-amber-900/30',
+  vice_president: 'text-orange-300 bg-orange-900/30',
+  secretary:      'text-blue-300 bg-blue-900/30',
+  auditor:        'text-red-300 bg-red-900/30',
+  advisor:        'text-teal-300 bg-teal-900/30',
+  officer:        'text-purple-300 bg-purple-900/30',
+  member:         'text-gray-400 bg-white/5',
 }
 
 export default function AppHeader() {
-  const { myClubs, currentClubId, setCurrentClub, lang, setLang } = useAuthStore()
+  const { myClubs, currentClubId, setCurrentClub, lang, setLang, user } = useAuthStore()
   const [open, setOpen] = useState(false)
+  const [notifOpen, setNotifOpen] = useState(false)
+  const [hasUnread, setHasUnread] = useState(false)
   const currentClub = myClubs.find(c => c.id === currentClubId)
 
+  // 알림 점 표시 — 본인 미납·미응답 정기모임 또는 최근 14일 신규 공지·경조사가 있으면 점 노출
+  useEffect(() => {
+    if (!user?.id || !currentClubId) { setHasUnread(false); return }
+    let cancelled = false
+    async function check() {
+      try {
+        const supabase = createClient()
+        const sinceDate = new Date(Date.now() - 14 * 86400_000).toISOString()
+        const [n, e, al, sp, unpaid, pend] = await Promise.all([
+          supabase.from('announcements').select('id', { head: true, count: 'exact' })
+            .eq('club_id', currentClubId)
+            .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
+            .gt('created_at', sinceDate),
+          supabase.from('events').select('id', { head: true, count: 'exact' })
+            .eq('club_id', currentClubId).gt('created_at', sinceDate),
+          supabase.from('albums').select('id', { head: true, count: 'exact' })
+            .eq('club_id', currentClubId).gt('created_at', sinceDate),
+          supabase.from('sponsorships').select('id', { head: true, count: 'exact' })
+            .eq('club_id', currentClubId).gt('created_at', sinceDate),
+          fetch('/api/finance/my-unpaid').then(r => r.ok ? r.json() : null).catch(() => null),
+          fetch('/api/notifications/pending').then(r => r.ok ? r.json() : null).catch(() => null),
+        ])
+        if (cancelled) return
+        const total = (n.count ?? 0) + (e.count ?? 0) + (al.count ?? 0) + (sp.count ?? 0)
+          + (unpaid?.has_any ? 1 : 0)
+          + (pend?.meeting ? 1 : 0)
+        setHasUnread(total > 0)
+      } catch { /* ignore */ }
+    }
+    check()
+    const id = setInterval(() => { if (document.visibilityState === 'visible') check() }, 60_000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [user?.id, currentClubId])
+
   return (
-    <header className="sticky top-0 z-50 safe-top" style={{ background: 'rgba(6,13,6,0.96)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(34,197,94,0.12)' }}>
+    <header
+      className="sticky top-0 z-50 safe-top"
+      style={{
+        background: 'var(--bg-2)',
+        borderBottom: '1px solid var(--border)',
+        boxShadow: '0 1px 0 rgba(0,0,0,0.4)',
+      }}
+    >
       <div className="flex items-center justify-between px-4 h-14">
 
         {/* ── 클럽 셀렉터 ───────────────────────────────────────── */}
         <div className="relative flex-1 min-w-0">
-          <button onClick={() => setOpen(v => !v)} className="flex items-center gap-2.5 min-w-0 max-w-[240px]">
-            {/* 로고 글로우 */}
-            <div className="relative flex-shrink-0">
-              <div className="absolute inset-0 rounded-full blur-md" style={{ background: 'rgba(22,163,74,0.35)' }} />
-              <div className="relative w-8 h-8 rounded-full flex items-center justify-center text-base" style={{ background: 'linear-gradient(135deg,#16a34a,#14532d)' }}>
-                ⛳
-              </div>
+          <button onClick={() => setOpen(v => !v)} className="flex items-center gap-2.5 min-w-0 max-w-[270px]">
+            {/* 로고 */}
+            <div
+              className="relative w-9 h-9 rounded-full flex items-center justify-center text-base font-bold flex-shrink-0"
+              style={{
+                background: 'linear-gradient(135deg, #c9a84c 0%, #6b4c1a 100%)',
+                border: '1px solid rgba(201,168,76,0.4)',
+                boxShadow: '0 0 10px rgba(201,168,76,0.15)',
+              }}
+            >
+              ⛳
             </div>
+
             {/* 텍스트 */}
             <div className="text-left min-w-0">
-              <p className="text-[10px] font-semibold tracking-widest" style={{ color: '#22c55e' }}>INTER STELLAR GOLF</p>
-              <p className="text-sm font-bold text-white truncate leading-tight">
-                {currentClub ? (lang === 'ko' ? currentClub.name : (currentClub.name_en || currentClub.name)) : (lang === 'ko' ? '클럽 선택' : 'Select Club')}
+              <p className="text-[9px] font-bold tracking-widest uppercase"
+                style={{ color: 'var(--gold)', letterSpacing: '0.18em' }}>
+                INTER STELLAR GOLF
+              </p>
+              <p className="text-[15px] font-bold leading-tight truncate" style={{ color: 'var(--text)' }}>
+                {currentClub
+                  ? (lang === 'ko' ? currentClub.name : (currentClub.name_en || currentClub.name))
+                  : (lang === 'ko' ? '클럽 선택' : 'Select Club')}
               </p>
             </div>
-            <ChevronDown size={14} className={`flex-shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} style={{ color: '#22c55e' }} />
+            <ChevronDown
+              size={15}
+              className={`flex-shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+              style={{ color: 'var(--gold)' }}
+            />
           </button>
 
-          {/* 드롭다운 */}
+          {/* ── 드롭다운 ─────────────────────────────────────────── */}
           {open && (
-            <div className="absolute top-full left-0 mt-2 w-72 rounded-2xl overflow-hidden animate-fade-in"
-              style={{ background: '#0c160c', border: '1px solid rgba(34,197,94,0.2)', boxShadow: '0 20px 60px rgba(0,0,0,0.7)', zIndex: 100 }}>
-              <p className="px-4 pt-3.5 pb-1.5 text-[10px] font-semibold tracking-widest" style={{ color: '#5a7a5a' }}>
+            <div
+              className="absolute top-full left-0 mt-2 w-72 rounded-2xl overflow-hidden animate-fade-in"
+              style={{
+                background: 'var(--surface)',
+                border: '1px solid var(--border-2)',
+                boxShadow: '0 16px 48px rgba(0,0,0,0.85)',
+                zIndex: 100,
+              }}
+            >
+              <p className="px-4 pt-4 pb-1.5 section-title"
+                style={{ color: 'var(--gold)', letterSpacing: '0.16em' }}>
                 {lang === 'ko' ? '내 클럽' : 'MY CLUBS'}
               </p>
               <div className="max-h-64 overflow-y-auto scroll-hide">
@@ -58,29 +125,46 @@ export default function AppHeader() {
                   const isActive = club.id === currentClubId
                   const rc = ROLE_COLOR[club.role] ?? ROLE_COLOR.member
                   return (
-                    <button key={club.id}
+                    <button
+                      key={club.id}
                       onClick={() => { setCurrentClub(club.id); setOpen(false) }}
-                      className={`w-full flex items-center gap-3 px-4 py-3 transition-colors text-left ${isActive ? 'bg-green-900/20' : 'hover:bg-green-900/10'}`}>
-                      <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-sm"
-                        style={{ background: 'linear-gradient(135deg,#16a34a22,#16a34a44)', border: '1px solid rgba(34,197,94,0.25)' }}>
+                      className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors"
+                      style={isActive ? { background: 'rgba(201,168,76,0.10)' } : undefined}
+                      onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface-2)' }}
+                      onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = '' }}
+                    >
+                      <div
+                        className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold"
+                        style={{
+                          background: isActive
+                            ? 'linear-gradient(135deg, rgba(201,168,76,0.25), rgba(160,120,48,0.35))'
+                            : 'var(--surface-2)',
+                          border: `1px solid ${isActive ? 'rgba(201,168,76,0.45)' : 'var(--border)'}`,
+                        }}
+                      >
                         ⛳
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-white truncate">
+                        <p className="text-sm font-semibold truncate" style={{ color: 'var(--text)' }}>
                           {lang === 'ko' ? club.name : (club.name_en || club.name)}
                         </p>
                         <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full mt-0.5 inline-block ${rc}`}>
                           {lang === 'ko' ? ROLE_KO[club.role] : club.role}
                         </span>
                       </div>
-                      {isActive && <Check size={15} className="text-green-400 flex-shrink-0" />}
+                      {isActive && <Check size={15} style={{ color: 'var(--gold-l)', flexShrink: 0 }} />}
                     </button>
                   )
                 })}
               </div>
-              <div style={{ borderTop: '1px solid rgba(34,197,94,0.1)' }} className="p-2">
-                <button onClick={() => { setOpen(false); window.location.href = '/club-register' }}
-                  className="w-full text-center text-xs py-2 rounded-xl transition-colors hover:bg-green-900/20" style={{ color: '#22c55e' }}>
+              <div style={{ borderTop: '1px solid var(--border)' }} className="p-2">
+                <button
+                  onClick={() => { setOpen(false); window.location.href = '/club-register' }}
+                  className="w-full text-center text-xs py-2.5 rounded-xl transition-colors font-semibold"
+                  style={{ color: 'var(--gold-l)' }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(201,168,76,0.08)' }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = '' }}
+                >
                   + {lang === 'ko' ? '새 클럽 등록' : 'Register New Club'}
                 </button>
               </div>
@@ -90,17 +174,42 @@ export default function AppHeader() {
 
         {/* ── 우측 아이콘 ───────────────────────────────────────── */}
         <div className="flex items-center gap-1 flex-shrink-0">
-          <button onClick={() => setLang(lang === 'ko' ? 'en' : 'ko')}
-            className="w-9 h-9 rounded-xl flex items-center justify-center transition-colors hover:bg-green-900/20" style={{ color: '#5a7a5a' }}>
+          <button
+            onClick={() => setLang(lang === 'ko' ? 'en' : 'ko')}
+            className="w-9 h-9 rounded-xl flex items-center justify-center transition-colors"
+            style={{ color: 'var(--silver)' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = '' }}
+          >
             <Globe size={18} />
           </button>
-          <button className="w-9 h-9 rounded-xl flex items-center justify-center transition-colors hover:bg-green-900/20" style={{ color: '#5a7a5a' }}>
+          <button
+            onClick={() => setNotifOpen(true)}
+            className="relative w-9 h-9 rounded-xl flex items-center justify-center transition-colors"
+            style={{ color: 'var(--silver)' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = '' }}
+            aria-label="알림"
+          >
             <Bell size={18} />
+            {hasUnread && (
+              <span
+                className="absolute"
+                style={{
+                  top: 7, right: 7,
+                  width: 7, height: 7,
+                  borderRadius: '50%',
+                  background: '#f59e0b',
+                  border: '1.5px solid var(--bg-2)',
+                }}
+              />
+            )}
           </button>
         </div>
       </div>
 
       {open && <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />}
+      <NotificationsPanel open={notifOpen} onClose={() => setNotifOpen(false)} />
     </header>
   )
 }
