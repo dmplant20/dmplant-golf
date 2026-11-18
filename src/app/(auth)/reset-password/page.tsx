@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { rememberEmail } from '@/lib/auth/rememberedEmail'
 import { useAuthStore } from '@/stores/authStore'
 
 export default function ResetPasswordPage() {
@@ -56,11 +57,8 @@ export default function ResetPasswordPage() {
         await supabase.from('users').update({ password_set: true }).eq('id', user.id)
       }
     } catch { /* ignore — 다음 로그인 시 자동 복구 */ }
-    // 저장된 자격증명도 갱신 (자동 채우기 호환)
-    try {
-      if (email) localStorage.setItem('isgolf-saved-email', email)
-      localStorage.setItem('isgolf-saved-pw', btoa(password))
-    } catch { /* ignore */ }
+    // Keep the refreshed Supabase session, not a copy of the new password.
+    rememberEmail(email)
     router.push('/dashboard')
   }
 

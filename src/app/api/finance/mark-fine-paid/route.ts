@@ -26,7 +26,7 @@ async function getAuthUser() {
 function getDb() {
   const svcKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (svcKey) return createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, svcKey, { auth: { persistSession: false } })
-  return createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { cookies: { getAll: () => [], setAll: () => {} } })
+  return null // Never silently downgrade privileged writes to an anonymous client.
 }
 
 export async function POST(req: NextRequest) {
@@ -39,6 +39,7 @@ export async function POST(req: NextRequest) {
   if (!id) return NextResponse.json({ error: '필수값 누락 (id)' }, { status: 400 })
 
   const db = getDb()
+  if (!db) return NextResponse.json({ error: '서버 데이터베이스 설정을 확인해 주세요' }, { status: 503 })
   const admin = isSuperAdmin(user)
 
   // 대상 벌금 조회 — club_id 로 권한 검증

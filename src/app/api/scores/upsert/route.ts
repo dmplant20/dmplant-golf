@@ -27,7 +27,7 @@ async function getAuthUser() {
 function getDb() {
   const svcKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (svcKey) return createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, svcKey, { auth: { persistSession: false } })
-  return createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { cookies: { getAll: () => [], setAll: () => {} } })
+  return null // Never silently downgrade privileged writes to an anonymous client.
 }
 
 interface ScoreItem {
@@ -76,6 +76,7 @@ export async function POST(req: NextRequest) {
   }
 
   const db = getDb()
+  if (!db) return NextResponse.json({ error: '서버 데이터베이스 설정을 확인해 주세요' }, { status: 503 })
   const admin = isSuperAdmin(user)
 
   // 권한 체크 — admin 외에는 클럽 멤버여야 함
