@@ -14,6 +14,16 @@ function detectApp(ua: string): 'kakao' | 'instagram' | 'facebook' | 'naver' | '
   return 'other'
 }
 
+// Escape untrusted request URLs for the exact output context.
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, char => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[char]!)
+}
+function scriptString(value: string): string {
+  return JSON.stringify(value).replace(/</g, '\\u003c')
+}
+
 function makeRedirectPage(targetUrl: string, ua: string): string {
   const encoded    = encodeURIComponent(targetUrl)
   const host       = targetUrl.replace(/^https?:\/\//, '')
@@ -74,13 +84,13 @@ function makeRedirectPage(targetUrl: string, ua: string): string {
     .map((s, i) => `<div class="step"><div class="step-num">${i + 1}</div><div>${s}</div></div>`)
     .join('')
 
-  // QR코드 URL (qrserver.com 무료 API)
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&bgcolor=060d06&color=22c55e&data=${encoded}`
+  // Never send full URLs (which can contain recovery codes) to a QR service.
 
   return `<!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="utf-8">
+  <meta name="referrer" content="no-referrer">
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
   <title>앱 외부 브라우저로 열기</title>
   <style>
@@ -176,39 +186,30 @@ function makeRedirectPage(targetUrl: string, ua: string): string {
   <!-- 방법 2: Chrome 직접 열기 버튼 -->
   <div class="divider">또는</div>
 
-  <a href="${chromeIntent}" class="btn" id="chromeBtn">
+  <a href="${escapeHtml(chromeIntent)}" class="btn" id="chromeBtn">
     🌐 Chrome으로 바로 열기
   </a>
-  <a href="${samsungIntent}" class="btn secondary" style="margin-bottom:14px">
+  <a href="${escapeHtml(samsungIntent)}" class="btn secondary" style="margin-bottom:14px">
     Samsung Internet으로 열기
   </a>
 
   <!-- 방법 3: URL 복사 → 브라우저에서 붙여넣기 -->
   <div class="divider">또는</div>
 
-  <div class="url-box" id="urlBox">${targetUrl}</div>
+  <div class="url-box" id="urlBox">${escapeHtml(targetUrl)}</div>
   <button class="btn copy-btn" id="copyBtn" onclick="copyUrl()">
     📋 URL 복사 → 브라우저 주소창에 붙여넣기
   </button>
 
-  <!-- 방법 4: QR 코드 스캔 -->
-  <div class="divider">또는</div>
-
-  <div class="qr-section">
-    <div class="qr-title">📷 카메라로 QR 스캔하기</div>
-    <img src="${qrUrl}" alt="QR Code" class="qr-img" />
-    <p class="qr-desc">기기 카메라 앱으로 스캔하면<br>바로 브라우저에서 열립니다</p>
-  </div>
-
   <script>
     // 자동으로 Chrome intent 실행 시도
     setTimeout(function(){
-      try{ window.location.replace(${JSON.stringify(chromeIntent)}); }catch(e){}
+      try{ window.location.replace(${scriptString(chromeIntent)}); }catch(e){}
     }, 600);
 
     // URL 복사
     function copyUrl(){
-      var url = ${JSON.stringify(targetUrl)};
+      var url = ${scriptString(targetUrl)};
       var btn = document.getElementById('copyBtn');
       if(navigator.clipboard){
         navigator.clipboard.writeText(url).then(function(){
@@ -254,7 +255,11 @@ export function middleware(request: NextRequest) {
   // 일반 브라우저·인앱브라우저엔 토큰이 없어 웹 동작은 불변.
   const isOfficialApp = isNativeUA(ua)
 
-  if ((isAndroid || isIOS) && isWebView && !isOfficialApp) {
+  // Consume recovery/auth callbacks in their current browser so PKCE storage
+  // and one-time codes are not lost to an external-browser handoff.
+  const isAuthCallback = pathname === '/reset-password' || pathname.startsWith('/auth/') ||
+    ['code', 'token_hash', 'access_token', 'refresh_token'].some(key => request.nextUrl.searchParams.has(key))
+  if ((isAndroid || isIOS) && isWebView && !isOfficialApp && !isAuthCallback) {
     const targetUrl = request.url
     return new NextResponse(makeRedirectPage(targetUrl, ua), {
       status: 200,
@@ -262,6 +267,7 @@ export function middleware(request: NextRequest) {
         'Content-Type': 'text/html; charset=utf-8',
         'Cache-Control': 'no-store, no-cache',
         'X-Robots-Tag': 'noindex',
+        'Referrer-Policy': 'no-referrer',
       },
     })
   }
@@ -270,6 +276,7 @@ export function middleware(request: NextRequest) {
   // (_next/static 같은 해시 자산은 위 matcher 에서 이미 제외됨)
   const res = NextResponse.next()
   res.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0')
+  res.headers.set('Referrer-Policy', 'no-referrer')
   res.headers.set('Pragma', 'no-cache')
   res.headers.set('Expires', '0')
   return res
