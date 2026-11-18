@@ -4,10 +4,8 @@ import PwaInstallPrompt from '@/components/PwaInstallPrompt'
 import PushToastListener from '@/components/PushToastListener'
 import BuildStamp from '@/components/BuildStamp'
 import NativeBootstrap from '@/components/NativeBootstrap'
-import { autoMigrate } from '@/lib/db-migrate'
 
-// 앱 시작 시 DB 스키마 자동 최신화 (누락 컬럼 자동 추가)
-autoMigrate().catch(() => {/* 조용히 스킵 */})
+// Schema changes belong to reviewed, versioned migrations, never page rendering.
 
 export const metadata: Metadata = {
   title: 'Inter Stellar GOLF',
