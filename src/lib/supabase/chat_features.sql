@@ -62,7 +62,8 @@ BEGIN
    WHERE id = NEW.room_id;
   RETURN NEW;
 END
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = pg_catalog, public, pg_temp;
 
 DROP TRIGGER IF EXISTS trg_chat_room_touch ON chat_messages;
 CREATE TRIGGER trg_chat_room_touch
