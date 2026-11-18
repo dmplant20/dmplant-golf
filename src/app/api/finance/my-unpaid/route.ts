@@ -34,6 +34,10 @@ interface UnpaidFineItem {
   currency: string
 }
 
+function unavailable() {
+  return NextResponse.json({ error: '미납 내역을 확인할 수 없습니다. 잠시 후 다시 시도해 주세요' }, { status: 503 })
+}
+
 export async function GET(_req: NextRequest) {
   const supabase = await makeSupabase()
   const { data: { user } } = await supabase.auth.getUser()
@@ -44,18 +48,20 @@ export async function GET(_req: NextRequest) {
   const currentMonth = now.getUTCMonth() + 1
 
   // ── 1. 내 모든 클럽 + fee_type 조회 ─────────────────────────────────────
-  const { data: memberships } = await supabase
+  const { data: memberships, error: membershipsError } = await supabase
     .from('club_memberships')
     .select('club_id, fee_type, joined_at, clubs(id, name, annual_fee, monthly_fee, currency)')
     .eq('user_id', user.id)
     .eq('status', 'approved')
+
+  if (membershipsError) return unavailable()
 
   const unpaidFees: UnpaidItem[] = []
   const unpaidFines: UnpaidFineItem[] = []
 
   for (const m of (memberships ?? [])) {
     const club = Array.isArray(m.clubs) ? m.clubs[0] : m.clubs
-    if (!club) continue
+    if (!club) return unavailable() // An inaccessible embedded club is not zero debt.
     const feeType: 'annual' | 'monthly' | null = (m as any).fee_type ?? null
     const currency = club.currency ?? 'KRW'
 
@@ -65,13 +71,15 @@ export async function GET(_req: NextRequest) {
       if (feeAmount > 0) {
         const yearStart = `${year}-01-01`
         const yearEnd = `${year + 1}-01-01`
-        const { data: payments } = await supabase
+        const { data: payments, error: paymentsError } = await supabase
           .from('finance_transactions')
           .select('transaction_date')
           .eq('club_id', m.club_id)
           .eq('member_id', user.id)
           .eq('type', 'fee')
           .gte('transaction_date', yearStart).lt('transaction_date', yearEnd)
+
+        if (paymentsError) return unavailable()
 
         if (feeType === 'annual') {
           if (!payments || payments.length === 0) {
@@ -85,16 +93,18 @@ export async function GET(_req: NextRequest) {
 
           // 월례회 통과 기준 — 이번 달 월례회 전이면 이번 달은 미납 카운트 제외
           let cutoffM = currentMonth
-          const { data: pat } = await supabase
+          const { data: pat, error: patternError } = await supabase
             .from('recurring_meetings')
             .select('week_of_month, day_of_week')
             .eq('club_id', m.club_id).maybeSingle()
+          if (patternError) return unavailable()
           if (pat) {
-            const { data: ovs } = await supabase
+            const { data: ovs, error: overridesError } = await supabase
               .from('meeting_overrides')
               .select('status, override_date')
               .eq('club_id', m.club_id).eq('year', year).eq('month', currentMonth)
               .maybeSingle()
+            if (overridesError) return unavailable()
             const today = new Date(); today.setHours(0,0,0,0)
             let mtgD: Date | null = null
             if (ovs?.status === 'cancelled') mtgD = null
@@ -129,12 +139,13 @@ export async function GET(_req: NextRequest) {
     // 미납 판정 = description 이 '[미납]' 으로 시작하는 행만.
     // 총무/회장이 "✓ 수납 확인" 하면 '[미납]' prefix 를 제거 → 납부 완료 → 팝업에서 사라짐.
     // (finance/page.tsx 의 isUnpaid / markFinePaid 와 동일한 규칙)
-    const { data: fineRows } = await supabase
+    const { data: fineRows, error: finesError } = await supabase
       .from('finance_transactions')
       .select('amount, description')
       .eq('club_id', m.club_id)
       .eq('member_id', user.id)
       .eq('type', 'fine')
+    if (finesError) return unavailable()
     const unpaidRows = (fineRows ?? []).filter(
       (r: any) => typeof r.description === 'string' && r.description.startsWith('[미납]')
     )

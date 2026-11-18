@@ -3,31 +3,11 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { readRememberedEmail, rememberEmail } from '@/lib/auth/rememberedEmail'
 import { useAuthStore } from '@/stores/authStore'
 import { Eye, EyeOff } from 'lucide-react'
 import { isNativeApp } from '@/lib/native'
 import { signInWithGoogle, signInWithApple } from '@/lib/auth/nativeOAuth'
-
-// 자동 채우기 — 로컬 스토리지 키 (개인 기기 PWA 가정)
-// 비밀번호는 btoa 로 미세 난독화. 진짜 암호화는 아니지만, 회원이 같은 기기에서
-// 매번 타이핑하지 않게 하려는 목적. 공용 기기에서는 위험할 수 있음을 사용자가 인지.
-const LS_EMAIL = 'isgolf-saved-email'
-const LS_PW    = 'isgolf-saved-pw'
-
-function readSaved() {
-  if (typeof window === 'undefined') return { email: '', password: '' }
-  try {
-    const e = localStorage.getItem(LS_EMAIL) ?? ''
-    const p = localStorage.getItem(LS_PW)
-    return { email: e, password: p ? atob(p) : '' }
-  } catch { return { email: '', password: '' } }
-}
-function saveCreds(email: string, password: string) {
-  try {
-    if (email) localStorage.setItem(LS_EMAIL, email)
-    if (password) localStorage.setItem(LS_PW, btoa(password))
-  } catch {}
-}
 
 export default function LoginPage() {
   const router = useRouter()
@@ -58,11 +38,9 @@ export default function LoginPage() {
     }
   }
 
-  // 마운트 시 저장된 이메일·비밀번호 자동 로드
+  // 이메일만 기억하며 비밀번호는 브라우저 비밀번호 관리자가 처리합니다.
   useEffect(() => {
-    const saved = readSaved()
-    if (saved.email) setEmail(saved.email)
-    if (saved.password) setPassword(saved.password)
+    setEmail(readRememberedEmail())
   }, [])
 
   // 이미 로그인된 세션 있으면 대시보드로 자동 이동 (불필요한 로그인 화면 노출 방지)
@@ -79,36 +57,12 @@ export default function LoginPage() {
     setError('')
     const supabase = createClient()
 
-    // 비밀번호가 비어있으면 → 첫 로그인 시도 (관리자 사전 등록 회원만 통과)
     if (!password) {
-      try {
-        const res = await fetch('/api/auth/first-login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email }),
-        })
-        const data = await res.json()
-        if (!res.ok) {
-          setError(data.already_set
-            ? (ko ? '이미 비밀번호가 설정된 계정입니다. 비밀번호를 입력해 주세요.' : 'Password already set. Please enter your password.')
-            : (data.error ?? (ko ? '첫 로그인 실패' : 'First-login failed')))
-          setLoading(false); return
-        }
-        // 받은 hashed_token 으로 OTP 검증 → 세션 획득
-        const { error: otpErr } = await supabase.auth.verifyOtp({
-          token_hash: data.token_hash, type: 'magiclink',
-        })
-        if (otpErr) {
-          setError(ko ? '인증 실패: ' + otpErr.message : 'Verification failed: ' + otpErr.message)
-          setLoading(false); return
-        }
-        saveCreds(email, '')  // 첫 로그인은 비밀번호 없으니 이메일만 저장
-        router.push('/dashboard')
-        return
-      } catch (err: any) {
-        setError(ko ? '오류: ' + (err?.message ?? '') : 'Error: ' + (err?.message ?? ''))
-        setLoading(false); return
-      }
+      setError(ko
+        ? '비밀번호를 입력하거나 비밀번호 재설정을 이용해 주세요.'
+        : 'Enter your password or use password reset.')
+      setLoading(false)
+      return
     }
 
     // 비밀번호가 있으면 → 일반 로그인
@@ -117,8 +71,8 @@ export default function LoginPage() {
       setError(ko ? '이메일 또는 비밀번호가 올바르지 않습니다.' : 'Invalid email or password.')
       setLoading(false)
     } else {
-      // 다음 로그인부터 자동 채우기 — 같은 기기에서는 클릭 한 번으로 입장
-      saveCreds(email, password)
+      // 세션 갱신은 Supabase가 처리하며 비밀번호를 별도로 보관하지 않습니다.
+      rememberEmail(email)
       router.push('/dashboard')
     }
   }
@@ -237,7 +191,7 @@ export default function LoginPage() {
                     onChange={(e) => setPassword(e.target.value)}
                     autoComplete="current-password"
                     className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 pr-12 text-white text-sm focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500/30 transition placeholder-gray-600"
-                    placeholder={ko ? '처음이면 비워두세요' : 'Leave blank if first login'}
+                    placeholder={ko ? '비밀번호를 입력하세요' : 'Enter your password'}
                   />
                   <button
                     type="button"
@@ -266,8 +220,8 @@ export default function LoginPage() {
               </button>
               <p className="text-[11px] text-center" style={{ color: '#86efac' }}>
                 {ko
-                  ? '✨ 처음이면 비밀번호 비워두고 로그인 → 화면에서 비밀번호 등록'
-                  : '✨ First time? Leave password blank → set password on screen'}
+                  ? '✨ 처음이세요? 비밀번호 재설정으로 이메일 소유를 확인해 주세요.'
+                  : '✨ First time? Use password reset to verify your email.'}
               </p>
             </form>
 
